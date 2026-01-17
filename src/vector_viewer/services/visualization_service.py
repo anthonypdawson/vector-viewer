@@ -29,7 +29,7 @@ class VisualizationService:
         Returns:
             Reduced embeddings as numpy array, or None if failed
         """
-        if not embeddings:
+        if embeddings is None or len(embeddings) == 0:
             return None
             
         try:

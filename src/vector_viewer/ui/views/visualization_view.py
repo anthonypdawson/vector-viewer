@@ -1,6 +1,7 @@
 """Vector visualization view with dimensionality reduction."""
 
 from typing import Optional, Dict, Any
+import traceback
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QComboBox, QSpinBox, QGroupBox, QMessageBox
@@ -39,6 +40,7 @@ class VisualizationThread(QThread):
             else:
                 self.error.emit("Dimensionality reduction failed")
         except Exception as e:
+            traceback.print_exc()
             self.error.emit(str(e))
 
 
@@ -96,11 +98,12 @@ class VisualizationView(QWidget):
         
         # Embedded web view for Plotly
         self.web_view = QWebEngineView()
-        layout.addWidget(self.web_view)
+        layout.addWidget(self.web_view, stretch=10)
         
         # Status
         self.status_label = QLabel("No collection selected")
         self.status_label.setStyleSheet("color: gray;")
+        self.status_label.setMaximumHeight(30)
         layout.addWidget(self.status_label)
         
     def set_collection(self, collection_name: str):
@@ -123,7 +126,7 @@ class VisualizationView(QWidget):
             limit=sample_size
         )
         
-        if not data or not data.get("embeddings"):
+        if data is None or not data or "embeddings" not in data or data["embeddings"] is None or len(data["embeddings"]) == 0:
             QMessageBox.warning(
                 self,
                 "No Data",
@@ -160,6 +163,7 @@ class VisualizationView(QWidget):
         
     def _on_reduction_error(self, error_msg: str):
         """Handle dimensionality reduction error."""
+        print(f"Error: Visualization failed: {error_msg}")
         QMessageBox.warning(self, "Error", f"Visualization failed: {error_msg}")
         self.generate_button.setEnabled(True)
         self.status_label.setText("Visualization failed")
