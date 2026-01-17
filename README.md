@@ -76,6 +76,10 @@ Vector Viewer bridges the gap between vector databases and user-friendly data ex
   - Compute similarity matrices
   - Identify outliers and anomalies
   - Cluster analysis with k-means, DBSCAN
+- **Embedding Inspector**:
+  - For similar collections or items, automatically identify which vector dimensions (activations) most contribute to the similarity
+  - Map key activations to interpretable concepts (e.g., 'humor', 'sadness', 'anger') using metadata or labels
+  - Generate human-readable explanations for why items are similar
 - **Performance Monitoring**:
   - Query latency tracking
   - Index performance metrics
@@ -144,11 +148,11 @@ vector-viewer/
 ## Planned Roadmap
 
 ### Phase 1: Foundation (MVP)
-- [ ] Connection to ChromaDB
-- [ ] Basic metadata browsing and filtering
-- [ ] Simple similarity search interface
-- [ ] 2D vector visualization (PCA/t-SNE)
-- [ ] Basic CRUD operations
+- [x] Connection to ChromaDB
+- [x] Basic metadata browsing and filtering
+- [x] Simple similarity search interface
+- [x] 2D vector visualization (PCA/t-SNE)
+- [x] Basic CRUD operations
 
 ### Phase 2: Core Features
 - [ ] Support for all major providers
@@ -162,6 +166,7 @@ vector-viewer/
 - [ ] Cluster analysis tools
 - [ ] Performance monitoring
 - [ ] Bulk operations
+- [ ] Embedding Inspector (explain why items/collections are similar, with interpretable activations)
 - [ ] Custom plugin system
 - [ ] Team collaboration features (shared queries, annotations)
 

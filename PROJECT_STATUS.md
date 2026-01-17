@@ -129,6 +129,7 @@ All dependencies successfully installed. ✅
 
 ## Phase 2 Planning
 
+
 ### Priority Features (Recommended Next)
 
 1. **Advanced Filtering** (High Priority)
@@ -155,6 +156,10 @@ All dependencies successfully installed. ✅
    - Color by metadata
    - Cluster analysis
    - Export plots as images
+
+6. **Embedding Inspector** (Future/Advanced)
+   - Automatically explain why collections or items are similar by identifying key shared activations and mapping them to interpretable concepts (e.g., 'humor', 'sadness', 'anger').
+   - Provide human-readable explanations for similarity results.
 
 ### Technical Debt
 
