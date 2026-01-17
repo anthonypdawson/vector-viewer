@@ -1,0 +1,41 @@
+[project]
+name = "vector-viewer"
+version = "0.1.0"
+description = "A comprehensive desktop application for visualizing, querying, and managing vector database data"
+authors = [
+    {name = "Anthony Dawson", email = "anthonypdawson+github@gmail.com"},
+]
+dependencies = [
+    "chromadb>=0.4.22",
+    "pyside6>=6.6.0",
+    "PySide6-Addons>=6.10.1",
+    "pandas>=2.1.0",
+    "numpy>=1.26.0",
+    "scikit-learn>=1.3.0",
+    "umap-learn>=0.5.5",
+    "plotly>=5.18.0",
+    "sentence-transformers>=2.2.0",
+]
+requires-python = "==3.12.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+[project.scripts]
+vector-viewer = "vector_viewer.main:main"
+
+[tool.pdm]
+distribution = false
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-qt>=4.2.0",
+    "black>=23.12.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "ipython>=8.18.0",
+]
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"

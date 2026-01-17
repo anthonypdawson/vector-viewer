@@ -1,0 +1,241 @@
+"""Vector visualization view with dimensionality reduction."""
+
+from typing import Optional, Dict, Any
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QLabel, QComboBox, QSpinBox, QGroupBox, QMessageBox
+)
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtWebEngineWidgets import QWebEngineView
+import plotly.graph_objects as go
+import numpy as np
+
+from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
+from vector_viewer.services.visualization_service import VisualizationService
+
+
+class VisualizationThread(QThread):
+    """Background thread for dimensionality reduction."""
+    
+    finished = Signal(np.ndarray)
+    error = Signal(str)
+    
+    def __init__(self, embeddings, method, n_components):
+        super().__init__()
+        self.embeddings = embeddings
+        self.method = method
+        self.n_components = n_components
+        
+    def run(self):
+        """Run dimensionality reduction."""
+        try:
+            result = VisualizationService.reduce_dimensions(
+                self.embeddings,
+                method=self.method,
+                n_components=self.n_components
+            )
+            if result is not None:
+                self.finished.emit(result)
+            else:
+                self.error.emit("Dimensionality reduction failed")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class VisualizationView(QWidget):
+    """View for visualizing vectors in 2D/3D."""
+    
+    def __init__(self, connection: ChromaDBConnection, parent=None):
+        super().__init__(parent)
+        self.connection = connection
+        self.current_collection: str = ""
+        self.current_data: Optional[Dict[str, Any]] = None
+        self.reduced_data: Optional[np.ndarray] = None
+        self.visualization_thread: Optional[VisualizationThread] = None
+        
+        self._setup_ui()
+        
+    def _setup_ui(self):
+        """Setup widget UI."""
+        layout = QVBoxLayout(self)
+        
+        # Controls
+        controls_group = QGroupBox("Visualization Settings")
+        controls_layout = QHBoxLayout()
+        
+        # Method selection
+        controls_layout.addWidget(QLabel("Method:"))
+        self.method_combo = QComboBox()
+        self.method_combo.addItems(["PCA", "t-SNE", "UMAP"])
+        controls_layout.addWidget(self.method_combo)
+        
+        # Dimensions
+        controls_layout.addWidget(QLabel("Dimensions:"))
+        self.dimensions_combo = QComboBox()
+        self.dimensions_combo.addItems(["2D", "3D"])
+        controls_layout.addWidget(self.dimensions_combo)
+        
+        # Sample size
+        controls_layout.addWidget(QLabel("Sample size:"))
+        self.sample_spin = QSpinBox()
+        self.sample_spin.setMinimum(10)
+        self.sample_spin.setMaximum(10000)
+        self.sample_spin.setValue(500)
+        self.sample_spin.setSingleStep(100)
+        controls_layout.addWidget(self.sample_spin)
+        
+        controls_layout.addStretch()
+        
+        # Generate button
+        self.generate_button = QPushButton("Generate Visualization")
+        self.generate_button.clicked.connect(self._generate_visualization)
+        controls_layout.addWidget(self.generate_button)
+        
+        controls_group.setLayout(controls_layout)
+        layout.addWidget(controls_group)
+        
+        # Embedded web view for Plotly
+        self.web_view = QWebEngineView()
+        layout.addWidget(self.web_view)
+        
+        # Status
+        self.status_label = QLabel("No collection selected")
+        self.status_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.status_label)
+        
+    def set_collection(self, collection_name: str):
+        """Set the current collection to visualize."""
+        self.current_collection = collection_name
+        self.current_data = None
+        self.reduced_data = None
+        self.status_label.setText(f"Collection: {collection_name}")
+        
+    def _generate_visualization(self):
+        """Generate visualization of vectors."""
+        if not self.current_collection:
+            QMessageBox.warning(self, "No Collection", "Please select a collection first.")
+            return
+            
+        # Load data with embeddings
+        sample_size = self.sample_spin.value()
+        data = self.connection.get_all_items(
+            self.current_collection,
+            limit=sample_size
+        )
+        
+        if not data or not data.get("embeddings"):
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "No embeddings found in collection. Make sure the collection contains vector embeddings."
+            )
+            return
+            
+        self.current_data = data
+        self.status_label.setText("Reducing dimensions...")
+        self.generate_button.setEnabled(False)
+        
+        # Get parameters
+        method = self.method_combo.currentText().lower()
+        if method == "t-sne":
+            method = "tsne"
+        n_components = 2 if self.dimensions_combo.currentText() == "2D" else 3
+        
+        # Run dimensionality reduction in background thread
+        self.visualization_thread = VisualizationThread(
+            data["embeddings"],
+            method,
+            n_components
+        )
+        self.visualization_thread.finished.connect(self._on_reduction_finished)
+        self.visualization_thread.error.connect(self._on_reduction_error)
+        self.visualization_thread.start()
+        
+    def _on_reduction_finished(self, reduced_data: np.ndarray):
+        """Handle dimensionality reduction completion."""
+        self.reduced_data = reduced_data
+        self._create_plot()
+        self.generate_button.setEnabled(True)
+        self.status_label.setText("Visualization complete")
+        
+    def _on_reduction_error(self, error_msg: str):
+        """Handle dimensionality reduction error."""
+        QMessageBox.warning(self, "Error", f"Visualization failed: {error_msg}")
+        self.generate_button.setEnabled(True)
+        self.status_label.setText("Visualization failed")
+        
+    def _create_plot(self):
+        """Create plotly visualization."""
+        if self.reduced_data is None or self.current_data is None:
+            return
+            
+        ids = self.current_data.get("ids", [])
+        documents = self.current_data.get("documents", [])
+        metadatas = self.current_data.get("metadatas", [])
+        
+        # Prepare hover text
+        hover_texts = []
+        for i, (id_val, doc) in enumerate(zip(ids, documents)):
+            doc_preview = str(doc)[:100] if doc else "No document"
+            hover_texts.append(f"ID: {id_val}<br>Doc: {doc_preview}")
+        
+        # Create plot
+        if self.reduced_data.shape[1] == 2:
+            # 2D plot
+            fig = go.Figure(data=[
+                go.Scatter(
+                    x=self.reduced_data[:, 0],
+                    y=self.reduced_data[:, 1],
+                    mode='markers',
+                    marker=dict(
+                        size=8,
+                        color=list(range(len(ids))),
+                        colorscale='Viridis',
+                        showscale=True
+                    ),
+                    text=hover_texts,
+                    hoverinfo='text'
+                )
+            ])
+            
+            fig.update_layout(
+                title=f"Vector Visualization - {self.method_combo.currentText()}",
+                xaxis_title="Component 1",
+                yaxis_title="Component 2",
+                hovermode='closest',
+                height=800,
+                width=1200
+            )
+        else:
+            # 3D plot
+            fig = go.Figure(data=[
+                go.Scatter3d(
+                    x=self.reduced_data[:, 0],
+                    y=self.reduced_data[:, 1],
+                    z=self.reduced_data[:, 2],
+                    mode='markers',
+                    marker=dict(
+                        size=5,
+                        color=list(range(len(ids))),
+                        colorscale='Viridis',
+                        showscale=True
+                    ),
+                    text=hover_texts,
+                    hoverinfo='text'
+                )
+            ])
+            
+            fig.update_layout(
+                title=f"Vector Visualization - {self.method_combo.currentText()}",
+                scene=dict(
+                    xaxis_title="Component 1",
+                    yaxis_title="Component 2",
+                    zaxis_title="Component 3"
+                ),
+                height=800,
+                width=1200
+            )
+        
+        # Display in embedded web view
+        html = fig.to_html(include_plotlyjs='cdn')
+        self.web_view.setHtml(html)
