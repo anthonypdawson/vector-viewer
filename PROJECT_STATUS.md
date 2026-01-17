@@ -157,9 +157,40 @@ All dependencies successfully installed. ✅
    - Cluster analysis
    - Export plots as images
 
-6. **Embedding Inspector** (Future/Advanced)
+6. **Model Comparison Mode** (Medium Priority)
+   - Side-by-side comparison of embeddings from different models (OpenAI, Cohere, local models)
+   - Compare similarity rankings and vector distributions across models
+   - Help ML engineers select the best embedding model for their use case
+
+7. **Cluster Explorer** (Medium Priority)
+   - Interactive UI to drill into clusters
+   - View cluster statistics and characteristics
+   - Label and navigate between clusters
+   - Export cluster assignments
+
+8. **Embedding Inspector** (Future/Advanced)
    - Automatically explain why collections or items are similar by identifying key shared activations and mapping them to interpretable concepts (e.g., 'humor', 'sadness', 'anger').
    - Provide human-readable explanations for similarity results.
+
+9. **Embedding Provenance Graph** (Future/Advanced)
+   - Track complete lineage: source document → preprocessing → model version → parameters
+   - Graph visualization of embedding provenance
+   - Essential for reproducibility and debugging in production
+
+10. **Semantic Drift Timeline** (Future/Advanced)
+    - Track how embeddings change over time
+    - Visualize temporal evolution of vector distributions
+    - Alert on significant drift in production systems
+
+11. **Cross-Collection Similarity** (Future/Advanced)
+    - Find similar items across different collections
+    - Deduplication and related content discovery
+    - Handle collections with different vector dimensions
+
+12. **Vector Surgery** (Future/Experimental)
+    - Edit specific vector dimensions interactively
+    - Observe how dimensional changes affect similarity
+    - Research tool for understanding embedding spaces
 
 ### Technical Debt
 

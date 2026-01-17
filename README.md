@@ -161,12 +161,18 @@ vector-viewer/
 - [ ] Embedding model integration
 - [ ] Import/export functionality
 - [ ] Query history and saved queries
+- [ ] Model Comparison Mode (side-by-side comparison of different embedding models)
+- [ ] Cluster Explorer (interactive cluster navigation, statistics, and labeling)
 
 ### Phase 3: Advanced Features
 - [ ] Cluster analysis tools
 - [ ] Performance monitoring
 - [ ] Bulk operations
 - [ ] Embedding Inspector (explain why items/collections are similar, with interpretable activations)
+- [ ] Embedding Provenance Graph (track source → preprocessing → model → parameters lineage)
+- [ ] Semantic Drift Timeline (track how embeddings evolve over time)
+- [ ] Cross-Collection Similarity (find similar items across different collections)
+- [ ] Vector Surgery (edit specific dimensions and observe similarity changes)
 - [ ] Custom plugin system
 - [ ] Team collaboration features (shared queries, annotations)
 
