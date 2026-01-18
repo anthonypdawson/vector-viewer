@@ -3,11 +3,14 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QDialog, QFormLayout, QLineEdit,
-    QRadioButton, QButtonGroup, QGroupBox, QFileDialog
+    QRadioButton, QButtonGroup, QGroupBox, QFileDialog, QComboBox, QApplication
 )
 from PySide6.QtCore import Signal
 
+from vector_viewer.core.connections.base_connection import VectorDBConnection
 from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
+from vector_viewer.core.connections.qdrant_connection import QdrantConnection
+from vector_viewer.ui.components.loading_dialog import LoadingDialog
 
 
 class ConnectionDialog(QDialog):
@@ -15,9 +18,10 @@ class ConnectionDialog(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Connect to ChromaDB")
-        self.setMinimumWidth(400)
+        self.setWindowTitle("Connect to Vector Database")
+        self.setMinimumWidth(450)
         
+        self.provider = "chromadb"
         self.connection_type = "persistent"
         self.path = ""
         self.host = "localhost"
@@ -28,6 +32,19 @@ class ConnectionDialog(QDialog):
     def _setup_ui(self):
         """Setup dialog UI."""
         layout = QVBoxLayout(self)
+        
+        # Provider selection
+        provider_group = QGroupBox("Database Provider")
+        provider_layout = QVBoxLayout()
+        
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItem("ChromaDB", "chromadb")
+        self.provider_combo.addItem("Qdrant", "qdrant")
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+        provider_layout.addWidget(self.provider_combo)
+        provider_group.setLayout(provider_layout)
+        
+        layout.addWidget(provider_group)
         
         # Connection type selection
         type_group = QGroupBox("Connection Type")
@@ -83,6 +100,13 @@ class ConnectionDialog(QDialog):
         self.port_input.setEnabled(False)
         form_layout.addRow("Port:", self.port_input)
         
+        # API Key input (for Qdrant Cloud)
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setEnabled(False)
+        self.api_key_input.setEchoMode(QLineEdit.Password)
+        self.api_key_row = form_layout.rowCount()
+        form_layout.addRow("API Key:", self.api_key_input)
+        
         details_group.setLayout(form_layout)
         layout.addWidget(details_group)
         
@@ -111,6 +135,22 @@ class ConnectionDialog(QDialog):
         self.path_input.textChanged.connect(self._update_absolute_preview)
         self.persistent_radio.toggled.connect(self._update_absolute_preview)
         self._update_absolute_preview()
+    
+    def _on_provider_changed(self):
+        """Handle provider selection change."""
+        self.provider = self.provider_combo.currentData()
+        
+        # Update default port based on provider
+        if self.provider == "qdrant":
+            if self.port_input.text() == "8000":
+                self.port_input.setText("6333")
+        elif self.provider == "chromadb":
+            if self.port_input.text() == "6333":
+                self.port_input.setText("8000")
+        
+        # Show/hide API key field
+        is_http = self.http_radio.isChecked()
+        self.api_key_input.setEnabled(is_http and self.provider == "qdrant")
         
     def _on_type_changed(self):
         """Handle connection type change."""
@@ -120,21 +160,27 @@ class ConnectionDialog(QDialog):
         self.path_input.setEnabled(is_persistent)
         self.host_input.setEnabled(is_http)
         self.port_input.setEnabled(is_http)
+        self.api_key_input.setEnabled(is_http and self.provider == "qdrant")
 
         self._update_absolute_preview()
         
     def get_connection_config(self):
         """Get connection configuration from dialog."""
+        config = {"provider": self.provider}
+        
         if self.persistent_radio.isChecked():
-            return {"type": "persistent", "path": self.path_input.text()}
+            config.update({"type": "persistent", "path": self.path_input.text()})
         elif self.http_radio.isChecked():
-            return {
+            config.update({
                 "type": "http",
                 "host": self.host_input.text(),
-                "port": int(self.port_input.text())
-            }
+                "port": int(self.port_input.text()),
+                "api_key": self.api_key_input.text() if self.api_key_input.text() else None
+            })
         else:
-            return {"type": "ephemeral"}
+            config.update({"type": "ephemeral"})
+        
+        return config
 
     def _update_absolute_preview(self):
         """Show resolved absolute path for persistent connections."""
@@ -191,10 +237,12 @@ class ConnectionView(QWidget):
     """Widget for managing database connection."""
     
     connection_changed = Signal(bool)
+    connection_created = Signal(VectorDBConnection)  # Signal when new connection is created
     
-    def __init__(self, connection: ChromaDBConnection, parent=None):
+    def __init__(self, connection: VectorDBConnection, parent=None):
         super().__init__(parent)
         self.connection = connection
+        self.loading_dialog = LoadingDialog("Connecting to database...", self)
         self._setup_ui()
         
     def _setup_ui(self):
@@ -226,33 +274,53 @@ class ConnectionView(QWidget):
             
     def _connect_with_config(self, config: dict):
         """Connect to database with given configuration."""
-        conn_type = config.get("type")
-        
-        if conn_type == "persistent":
-            self.connection.path = config.get("path")
-            self.connection.host = None
-            self.connection.port = None
-        elif conn_type == "http":
-            self.connection.path = None
-            self.connection.host = config.get("host")
-            self.connection.port = config.get("port")
-        else:  # ephemeral
-            self.connection.path = None
-            self.connection.host = None
-            self.connection.port = None
+        self.loading_dialog.show_loading("Connecting to database...")
+        QApplication.processEvents()
+        try:
+            provider = config.get("provider", "chromadb")
+            conn_type = config.get("type")
             
-        success = self.connection.connect()
-        
+            # Create appropriate connection instance based on provider
+            if provider == "qdrant":
+                if conn_type == "persistent":
+                    self.connection = QdrantConnection(path=config.get("path"))
+                elif conn_type == "http":
+                    self.connection = QdrantConnection(
+                        host=config.get("host"),
+                        port=config.get("port"),
+                        api_key=config.get("api_key")
+                    )
+                else:  # ephemeral/memory
+                    self.connection = QdrantConnection()
+            else:  # chromadb
+                if conn_type == "persistent":
+                    self.connection = ChromaDBConnection(path=config.get("path"))
+                elif conn_type == "http":
+                    self.connection = ChromaDBConnection(
+                        host=config.get("host"),
+                        port=config.get("port")
+                    )
+                else:  # ephemeral
+                    self.connection = ChromaDBConnection()
+                    
+            # Notify parent that connection instance changed
+            self.connection_created.emit(self.connection)
+            success = self.connection.connect()
+        finally:
+            self.loading_dialog.hide_loading()
+            
         if success:
-            # Show path/host + collection count for clarity
+            # Show provider, path/host + collection count for clarity
             details = []
-            if self.connection.path:
+            details.append(f"provider: {provider}")
+            if hasattr(self.connection, 'path') and self.connection.path:
                 details.append(f"path: {self.connection.path}")
-            if self.connection.host and self.connection.port:
-                details.append(f"http: {self.connection.host}:{self.connection.port}")
+            if hasattr(self.connection, 'host') and self.connection.host:
+                port = getattr(self.connection, 'port', None)
+                details.append(f"host: {self.connection.host}:{port}")
             collections = self.connection.list_collections()
             count_text = f"collections: {len(collections)}"
-            info = ", ".join(details) if details else conn_type
+            info = ", ".join(details)
             self.status_label.setText(f"Status: Connected ({info}, {count_text})")
             self.connect_button.setText("Disconnect")
             self.connect_button.clicked.disconnect()

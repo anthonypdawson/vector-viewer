@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction
 
+from vector_viewer.core.connections.base_connection import VectorDBConnection
 from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
 from vector_viewer.ui.views.connection_view import ConnectionView
 from vector_viewer.ui.views.collection_browser import CollectionBrowser
@@ -23,7 +24,7 @@ class MainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.connection: ChromaDBConnection = ChromaDBConnection()
+        self.connection: VectorDBConnection = ChromaDBConnection()
         self.current_collection: str = ""
         
         self.setWindowTitle("Vector Viewer")
@@ -149,7 +150,17 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         """Connect signals between components."""
         self.connection_view.connection_changed.connect(self._on_connection_status_changed)
+        self.connection_view.connection_created.connect(self._on_connection_created)
         self.collection_browser.collection_selected.connect(self._on_collection_selected)
+    
+    def _on_connection_created(self, new_connection: VectorDBConnection):
+        """Handle when a new connection instance is created."""
+        self.connection = new_connection
+        # Update all views with new connection
+        self.collection_browser.connection = new_connection
+        self.metadata_view.connection = new_connection
+        self.search_view.connection = new_connection
+        self.visualization_view.connection = new_connection
         
     def _on_connect(self):
         """Handle connect action."""
@@ -194,13 +205,36 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Not Connected", "Please connect to a database first.")
             return
         
+        from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
+        from vector_viewer.core.connections.qdrant_connection import QdrantConnection
+        
         name, ok = QInputDialog.getText(
             self, "New Collection", "Enter collection name:"
         )
         
         if ok and name:
-            collection = self.connection.get_collection(name)
-            if collection:
+            success = False
+            
+            # Handle ChromaDB
+            if isinstance(self.connection, ChromaDBConnection):
+                collection = self.connection.get_collection(name)
+                success = collection is not None
+            
+            # Handle Qdrant
+            elif isinstance(self.connection, QdrantConnection):
+                # Ask for vector size (required for Qdrant)
+                vector_size, ok = QInputDialog.getInt(
+                    self, 
+                    "Vector Size", 
+                    "Enter vector dimension size:",
+                    value=384,  # Default for sentence transformers
+                    min=1,
+                    max=10000
+                )
+                if ok:
+                    success = self.connection.create_collection(name, vector_size)
+            
+            if success:
                 QMessageBox.information(
                     self, "Success", f"Collection '{name}' created successfully."
                 )

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QAction
 
-from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
+from vector_viewer.core.connections.base_connection import VectorDBConnection
 
 
 class CollectionBrowser(QWidget):
@@ -15,7 +15,7 @@ class CollectionBrowser(QWidget):
     
     collection_selected = Signal(str)
     
-    def __init__(self, connection: ChromaDBConnection, parent=None):
+    def __init__(self, connection: VectorDBConnection, parent=None):
         super().__init__(parent)
         self.connection = connection
         self._setup_ui()

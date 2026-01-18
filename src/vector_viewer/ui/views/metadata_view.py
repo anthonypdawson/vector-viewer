@@ -8,20 +8,23 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
+from vector_viewer.core.connections.base_connection import VectorDBConnection
 from vector_viewer.ui.components.item_dialog import ItemDialog
+from vector_viewer.ui.components.loading_dialog import LoadingDialog
+from PySide6.QtWidgets import QApplication
 
 
 class MetadataView(QWidget):
     """View for browsing collection data and metadata."""
     
-    def __init__(self, connection: ChromaDBConnection, parent=None):
+    def __init__(self, connection: VectorDBConnection, parent=None):
         super().__init__(parent)
         self.connection = connection
         self.current_collection: str = ""
         self.current_data: Optional[Dict[str, Any]] = None
         self.page_size = 50
         self.current_page = 0
+        self.loading_dialog = LoadingDialog("Loading data...", self)
         
         self._setup_ui()
         
@@ -100,20 +103,21 @@ class MetadataView(QWidget):
             self.status_label.setText("No collection selected")
             self.table.setRowCount(0)
             return
-            
-        offset = self.current_page * self.page_size
-        
-        data = self.connection.get_all_items(
-            self.current_collection,
-            limit=self.page_size,
-            offset=offset
-        )
-        
+        self.loading_dialog.show_loading("Loading data from collection...")
+        QApplication.processEvents()
+        try:
+            offset = self.current_page * self.page_size
+            data = self.connection.get_all_items(
+                self.current_collection,
+                limit=self.page_size,
+                offset=offset
+            )
+        finally:
+            self.loading_dialog.hide_loading()
         if not data:
             self.status_label.setText("Failed to load data")
             self.table.setRowCount(0)
             return
-            
         self.current_data = data
         self._populate_table(data)
         self._update_pagination_controls()

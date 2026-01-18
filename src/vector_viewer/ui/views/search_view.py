@@ -8,13 +8,13 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
+from vector_viewer.core.connections.base_connection import VectorDBConnection
 
 
 class SearchView(QWidget):
     """View for performing similarity searches."""
     
-    def __init__(self, connection: ChromaDBConnection, parent=None):
+    def __init__(self, connection: VectorDBConnection, parent=None):
         super().__init__(parent)
         self.connection = connection
         self.current_collection: str = ""

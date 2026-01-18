@@ -11,7 +11,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 import plotly.graph_objects as go
 import numpy as np
 
-from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
+from vector_viewer.core.connections.base_connection import VectorDBConnection
 from vector_viewer.services.visualization_service import VisualizationService
 
 
@@ -47,7 +47,7 @@ class VisualizationThread(QThread):
 class VisualizationView(QWidget):
     """View for visualizing vectors in 2D/3D."""
     
-    def __init__(self, connection: ChromaDBConnection, parent=None):
+    def __init__(self, connection: VectorDBConnection, parent=None):
         super().__init__(parent)
         self.connection = connection
         self.current_collection: str = ""
