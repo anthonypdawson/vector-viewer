@@ -1,4 +1,4 @@
-"""Main entry point for Vector Viewer application."""
+"""Main entry point for Vector Inspector application."""
 
 import sys
 from PySide6.QtWidgets import QApplication
@@ -6,7 +6,7 @@ from vector_viewer.ui.main_window import MainWindow
 
 
 def main():
-    """Launch the Vector Viewer application."""
+    """Launch the Vector Inspector application."""
     app = QApplication(sys.argv)
     app.setApplicationName("Vector Inspector")
     app.setOrganizationName("Vector Inspector")
