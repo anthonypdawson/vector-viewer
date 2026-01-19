@@ -1,12 +1,12 @@
-# Vector Viewer - Project Status
+# Vector Inspector - Project Status
 
-**Last Updated:** January 18, 2026  
+**Last Updated:** January 19, 2026  
 **Version:** 0.1.1-dev  
-**Phase:** 1.5 (ChromaDB + partial Qdrant) ⚠️
+**Phase:** 2 Complete → Planning Phase 3
 
 ## Project Overview
 
-Vector Viewer is a desktop application for visualizing, querying, and managing vector database data, starting with ChromaDB support.
+Vector Inspector is a desktop application for visualizing, querying, and managing vector database data, starting with ChromaDB support.
 
 **Partial Qdrant support is now available (experimental, see below).**
 
@@ -164,11 +164,28 @@ None critical for ChromaDB. Qdrant support is experimental and may have the foll
 
 All dependencies successfully installed. ✅
 
-## Phase 2 Planning
+## Phase 2 Status
 
+✅ **Phase 2 Complete** - All core features successfully implemented:
+- Advanced metadata filtering with customizable filter rules
+- Item editing (double-click to edit)
+- Import/export (CSV, JSON, Parquet)
+- Backup and restore system
+- Provider abstraction layer (ChromaDB, Qdrant)
 
+## Phase 3 Planning: UX & Professional Polish
 
-### Priority Features (Recommended Next)
+### Priority Features
+
+1. **Unified Information Panel** (High Priority - FIRST ITEM)
+   - New "Info" tab as default view
+   - Database-level information (provider, host, version, health, collections)
+   - Collection-level information (dimension, metric, count, schema, index config)
+   - Read-only, declarative display
+   - Updates live as connection/collection changes
+   - See: `docs/info_panel.md`
+
+### Additional Phase 3 Features (Recommended)
 
 1. **Metadata Filtering** (High Priority)
    - Metadata filter UI

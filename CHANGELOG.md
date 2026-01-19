@@ -70,36 +70,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All visualization methods tested (PCA, t-SNE, UMAP)
 - CRUD operations validated
 
-## [Unreleased] - Future Versions
+## [0.2.0] - 2026-01-19
 
-### Planned for 0.2.0 (Phase 2)
-- Advanced metadata filtering
-- Item editing functionality
-- Import/export (CSV, JSON)
-- Multiple vector database providers (Pinecone, Weaviate, Qdrant)
-- Enhanced visualizations with color-by-metadata
-- Query history and saved queries
-- Automated test suite
+### Added - Phase 2 Complete
 
-### Planned for 0.3.0 (Phase 3)
-- Cluster analysis tools
-- Performance monitoring dashboard
-- Bulk operations interface
-- Custom plugin system
-- Configuration management
-- Dark mode theme
+#### Core Features
+- Advanced metadata filtering with customizable filter rules (AND/OR logic)
+- Item editing: double-click to edit items directly in the data browser
+- Import/export: CSV, JSON, and Parquet file support
+- Backup and restore system for collections
+- Provider abstraction layer: unified interface for ChromaDB and Qdrant
+- Query builder for advanced metadata filtering
+- Combined vector similarity search with metadata filters
+- Query history and saved queries (initial support)
+- Enhanced error handling and status reporting
 
-### Planned for 1.0.0 (Phase 4)
-- Production-ready release
-- Complete test coverage (>80%)
-- User manual and tutorials
-- Installer/packaging
-- Multi-user support
-- Audit logging
+#### User Interface
+- Improved tabbed interface: Data Browser, Search, Visualization
+- Status bar and toolbar enhancements
+- More responsive and robust UI for large datasets
 
-## Version History
+#### Documentation
+- Updated README, implementation summary, and quick reference
+- Detailed documentation for new features and usage
+- Phase 2 planning and roadmap updates
 
-- **0.1.0** (2026-01-17) - Initial Phase 1 release ✅
+#### Developer Tools
+- Expanded test coverage (manual and automated tests planned)
+- Improved sample data scripts for ChromaDB and Qdrant
+- Refactored codebase for maintainability and extensibility
 
 ---
 
