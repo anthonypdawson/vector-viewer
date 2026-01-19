@@ -58,3 +58,44 @@ def test_set_get_and_clear(temp_home):
     # File should reflect cleared settings
     data2 = json.loads(settings_file.read_text(encoding="utf-8"))
     assert data2 == {}
+
+
+def test_missing_settings_file(temp_home):
+    svc = SettingsService()
+    # Remove file if exists
+    settings_file = temp_home / ".vector-viewer" / "settings.json"
+    if settings_file.exists():
+        settings_file.unlink()
+    svc._load_settings()
+    assert svc.settings == {}
+
+
+def test_invalid_json_file(temp_home):
+    settings_file = temp_home / ".vector-viewer" / "settings.json"
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text("{ invalid json }", encoding="utf-8")
+    svc = SettingsService()
+    # Should fallback to empty settings
+    assert svc.settings == {}
+
+
+def test_overwrite_key(temp_home):
+    svc = SettingsService()
+    svc.set("theme", "light")
+    svc.set("theme", "dark")
+    assert svc.get("theme") == "dark"
+
+
+def test_unicode_and_large_value(temp_home):
+    svc = SettingsService()
+    unicode_val = "你好, мир, hello!"
+    large_val = "x" * 10000
+    svc.set("greeting", unicode_val)
+    svc.set("blob", large_val)
+    assert svc.get("greeting") == unicode_val
+    assert svc.get("blob") == large_val
+    # Validate persistence
+    settings_file = temp_home / ".vector-viewer" / "settings.json"
+    data = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert data["greeting"] == unicode_val
+    assert data["blob"] == large_val
