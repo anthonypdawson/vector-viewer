@@ -29,6 +29,14 @@ vector-inspector = "vector_viewer.main:main"
 [tool.pdm]
 distribution = false
 
+[tool.pdm.build]
+package-dir = "src"
+
+[tool.pdm.scripts]
+[tool.pdm.scripts.vector-inspector]
+cmd = "python -m vector_viewer.main"
+env = { PYTHONPATH = "src" }
+
 [tool.pdm.dev-dependencies]
 dev = [
     "pytest>=7.4.0",
