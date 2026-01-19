@@ -199,14 +199,18 @@ vector-inspector/
 - [x] Import/export (CSV, JSON, Parquet, backup/restore)
 - [x] Provider abstraction layer (unified interface for all supported vector DBs)
 
-### Phase 3: Modular/Plugin System & Hybrid Model
+### Phase 3: UX & Professional Polish
+- [ ] **Unified Information Panel** (new "Info" tab as default view)
+- [ ] Database and collection metadata display
+- [ ] Connection health and version information
+- [ ] Schema visualization and index configuration display
+
+### Phase 4: Modular/Plugin System & Hybrid Model
 - [ ] Implement modular/plugin system for feature extensions
 - [ ] Migrate paid/advanced features to commercial modules
 - [ ] Add licensing/access control for commercial features
 
-
-
-### Phase 4: Provider Expansion (Incremental)
+### Phase 5: Provider Expansion (Incremental)
 - [ ] Pinecone support (free)
 - [ ] Weaviate support (free)
 - [ ] Qdrant support (paid)
@@ -219,29 +223,29 @@ vector-inspector/
 - [ ] Elasticsearch with vector search support (paid)
 
 
-### Phase 5A: Advanced Usability & Visualization
+### Phase 6A: Advanced Usability & Visualization
 - [ ] Advanced query builder (free)
 - [ ] 3D visualization (free)
 - [ ] Embedding model integration (free)
 - [ ] Query history and saved queries (free)
 - [ ] Metadata Type Detection & Rich Media Preview (free)
 
-### Phase 5B: Analytical & Comparison Tools
+### Phase 6B: Analytical & Comparison Tools
 - [ ] Model Comparison Mode (paid)
 - [ ] Cluster Explorer (paid)
 - [ ] Embedding Inspector (paid)
 - [ ] Embedding Provenance Graph (paid)
 
-### Phase 5C: Temporal & Cross-Collection Analytics
+### Phase 6C: Temporal & Cross-Collection Analytics
 - [ ] Semantic Drift Timeline (paid)
 - [ ] Cross-Collection Similarity (paid)
 
-### Phase 5D: Experimental & Power Features
+### Phase 6D: Experimental & Power Features
 - [ ] Vector Surgery (paid)
 - [ ] Custom plugin system (paid)
 - [ ] Team collaboration features (paid)
 
-### Phase 6: Enterprise Features
+### Phase 7: Enterprise Features
 - [ ] Multi-user support with auth
 - [ ] Audit logging
 - [ ] Advanced security features

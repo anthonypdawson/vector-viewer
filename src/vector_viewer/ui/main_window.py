@@ -282,5 +282,7 @@ class MainWindow(QMainWindow):
             "<h2>Vector Inspector 0.1.0</h2>"
             "<p>A comprehensive desktop application for visualizing, "
             "querying, and managing vector database data.</p>"
+            '<p><a href="https://github.com/anthonypdawson/vector-viewer" style="color:#2980b9;">GitHub Project Page</a></p>'
+            "<hr />"
             "<p>Built with PySide6 and ChromaDB</p>"
         )
