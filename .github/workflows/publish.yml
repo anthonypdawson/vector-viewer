@@ -40,6 +40,10 @@ jobs:
       run: |
         pdm install
 
+
+    - name: Clean dist directory
+      run: rm -rf dist/
+
     - name: Build package
       run: |
         pdm build
