@@ -50,3 +50,29 @@ dev = [
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
+
+
+
+# content below this line added by briefcase convert
+# This project was generated with 0.3.19 using template: https://github.com/beeware/briefcase-template@v0.3.19
+[tool.briefcase]
+project_name = "Vector Inspector"
+bundle = "com.divinedevops"
+version = "0.0.1"
+url = "https://github.com/anthonypdawson/vector-viewer"
+license.file = "LICENSE"
+author = "Anthony Dawson"
+author_email = "anthonypdawson@gmail.com"
+
+[tool.briefcase.app.vector-inspector]
+formal_name = "Vector Inspector"
+description = "A comprehensive desktop application for visualizing, querying, and managing vector database data"
+long_description = """More details about the app should go here.
+"""
+sources = [
+    "src/vector_inspector",
+]
+test_sources = [
+    "tests",
+]
+

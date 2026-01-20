@@ -1,0 +1,16 @@
+# CHANGELOG
+
+All notable changes to this project will be documented in this file.
+
+## [Unreleased]
+- Initial migration to vector_inspector package name
+- PySide6 GUI improvements
+- Packaging setup for Briefcase
+- Various bug fixes and enhancements
+
+## [0.2.0] - 2026-01-20
+- Renamed package from vector_viewer to vector_inspector
+- Updated all imports and scripts
+- Added Briefcase packaging support
+- Improved compatibility with Python 3.8+
+- Updated documentation and working notes
