@@ -35,6 +35,25 @@ jobs:
       run: |
         pdm build
 
+    - name: Get version
+      id: get_version
+      run: |
+        VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.get_version.outputs.version }}
+        name: Release v${{ steps.get_version.outputs.version }}
+        draft: false
+        prerelease: false
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+        generate_release_notes: true
+
     - name: Publish to PyPI (Trusted Publishing)
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
