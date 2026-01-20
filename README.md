@@ -5,12 +5,13 @@ A comprehensive desktop application for visualizing, querying, and managing vect
 
 ## Overview
 
+Vector Inspector bridges the gap between vector databases and user-friendly data exploration tools. While vector databases are powerful for semantic search and AI applications, they often lack the intuitive inspection and management tools that traditional SQL databases have. This project aims to provide that missing layer.
+
 ## Table of Contents
 
 - [Overview](#overview)
 - [Key Features](#key-features)
 - [Architecture](#architecture)
-- [Application Structure](#application-structure)
 - [Use Cases](#use-cases)
 - [Feature Access](#feature-access)
 - [Roadmap](#roadmap)
@@ -20,8 +21,6 @@ A comprehensive desktop application for visualizing, querying, and managing vect
 - [Contributing](#contributing)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
-
-Vector Inspector bridges the gap between vector databases and user-friendly data exploration tools. While vector databases are powerful for semantic search and AI applications, they often lack the intuitive inspection and management tools that traditional SQL databases have. This project aims to provide that missing layer.
 
 ## Key Features
 
