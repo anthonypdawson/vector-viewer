@@ -9,10 +9,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from pathlib import Path
 
-from vector_viewer.core.connections.base_connection import VectorDBConnection
-from vector_viewer.services.backup_restore_service import BackupRestoreService
-from vector_viewer.services.settings_service import SettingsService
-from vector_viewer.ui.components.loading_dialog import LoadingDialog
+from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.services.backup_restore_service import BackupRestoreService
+from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
 
 class BackupRestoreDialog(QDialog):

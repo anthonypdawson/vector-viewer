@@ -8,14 +8,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction
 
-from vector_viewer.core.connections.base_connection import VectorDBConnection
-from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
-from vector_viewer.ui.views.connection_view import ConnectionView
-from vector_viewer.ui.views.collection_browser import CollectionBrowser
-from vector_viewer.ui.views.metadata_view import MetadataView
-from vector_viewer.ui.views.search_view import SearchView
-from vector_viewer.ui.views.visualization_view import VisualizationView
-from vector_viewer.ui.components.backup_restore_dialog import BackupRestoreDialog
+from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
+from vector_inspector.ui.views.connection_view import ConnectionView
+from vector_inspector.ui.views.collection_browser import CollectionBrowser
+from vector_inspector.ui.views.metadata_view import MetadataView
+from vector_inspector.ui.views.search_view import SearchView
+from vector_inspector.ui.views.visualization_view import VisualizationView
+from vector_inspector.ui.components.backup_restore_dialog import BackupRestoreDialog
 
 
 class MainWindow(QMainWindow):
@@ -219,8 +219,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Not Connected", "Please connect to a database first.")
             return
         
-        from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
-        from vector_viewer.core.connections.qdrant_connection import QdrantConnection
+        from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
+        from vector_inspector.core.connections.qdrant_connection import QdrantConnection
         
         name, ok = QInputDialog.getText(
             self, "New Collection", "Enter collection name:"

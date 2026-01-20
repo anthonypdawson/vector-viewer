@@ -8,10 +8,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from vector_viewer.core.connections.base_connection import VectorDBConnection
-from vector_viewer.ui.components.filter_builder import FilterBuilder
-from vector_viewer.ui.components.loading_dialog import LoadingDialog
-from vector_viewer.services.filter_service import apply_client_side_filters
+from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.ui.components.filter_builder import FilterBuilder
+from vector_inspector.ui.components.loading_dialog import LoadingDialog
+from vector_inspector.services.filter_service import apply_client_side_filters
 
 
 class SearchView(QWidget):

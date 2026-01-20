@@ -1,6 +1,6 @@
 import pytest
-from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
-from vector_viewer.core.connections.qdrant_connection import QdrantConnection
+from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
+from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 import uuid
 
 @pytest.mark.parametrize("provider", ["chroma", "qdrant"])

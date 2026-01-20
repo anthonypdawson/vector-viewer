@@ -138,7 +138,7 @@ class BackupRestoreService:
                     connection.delete_collection(restore_collection_name)
             
             # Check if this is Qdrant - need to create collection first
-            from vector_viewer.core.connections.qdrant_connection import QdrantConnection
+            from vector_inspector.core.connections.qdrant_connection import QdrantConnection
             if isinstance(connection, QdrantConnection):
                 # Get vector size from collection info or embeddings
                 vector_size = None

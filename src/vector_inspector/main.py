@@ -2,7 +2,7 @@
 
 import sys
 from PySide6.QtWidgets import QApplication
-from vector_viewer.ui.main_window import MainWindow
+from vector_inspector.ui.main_window import MainWindow
 
 
 def main():

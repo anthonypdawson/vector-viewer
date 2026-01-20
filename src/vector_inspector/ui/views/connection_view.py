@@ -7,11 +7,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal
 
-from vector_viewer.core.connections.base_connection import VectorDBConnection
-from vector_viewer.core.connections.chroma_connection import ChromaDBConnection
-from vector_viewer.core.connections.qdrant_connection import QdrantConnection
-from vector_viewer.ui.components.loading_dialog import LoadingDialog
-from vector_viewer.services.settings_service import SettingsService
+from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
+from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+from vector_inspector.ui.components.loading_dialog import LoadingDialog
+from vector_inspector.services.settings_service import SettingsService
 
 
 class ConnectionDialog(QDialog):

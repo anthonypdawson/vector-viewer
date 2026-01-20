@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from vector_viewer.services.settings_service import SettingsService
+from vector_inspector.services.settings_service import SettingsService
 
 
 @pytest.fixture()

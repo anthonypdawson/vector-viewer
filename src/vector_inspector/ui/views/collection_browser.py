@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QAction
 
-from vector_viewer.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connections.base_connection import VectorDBConnection
 
 
 class CollectionBrowser(QWidget):

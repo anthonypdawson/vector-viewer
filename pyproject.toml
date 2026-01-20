@@ -9,7 +9,7 @@ dependencies = [
     "chromadb>=0.4.22",
     "qdrant-client>=1.7.0",
     "pyside6>=6.6.0",
-    "PySide6-Addons>=6.10.1",
+    "PySide6-Addons>=6.6.3.1",
     "pandas>=2.1.0",
     "numpy>=1.26.0",
     "scikit-learn>=1.3.0",
@@ -24,7 +24,7 @@ readme = "README.md"
 license = {text = "MIT"}
 
 [project.scripts]
-vector-inspector = "vector_viewer.main:main"
+vector-inspector = "vector_inspector.main:main"
 
 [tool.pdm]
 distribution = false
@@ -34,7 +34,7 @@ package-dir = "src"
 
 [tool.pdm.scripts]
 [tool.pdm.scripts.vector-inspector]
-cmd = "python -m vector_viewer.main"
+cmd = "python -m vector_inspector.main"
 env = { PYTHONPATH = "src" }
 
 [tool.pdm.dev-dependencies]
