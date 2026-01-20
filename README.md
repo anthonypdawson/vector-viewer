@@ -12,9 +12,9 @@ A comprehensive desktop application for visualizing, querying, and managing vect
 - [Architecture](#architecture)
 - [Application Structure](#application-structure)
 - [Use Cases](#use-cases)
-- [Feature Access (Free vs Pro)](#feature-access-free-vs-pro)
-- [Planned Roadmap](#planned-roadmap)
-- [Installation (Planned)](#installation-planned)
+- [Feature Access](#feature-access)
+- [Roadmap](#roadmap)
+- [Installation](#installation)
 - [Configuration](#configuration)
 - [Development Setup](#development-setup)
 - [Contributing](#contributing)
@@ -98,58 +98,9 @@ Vector Inspector bridges the gap between vector databases and user-friendly data
 
 ## Architecture
 
-### Technology Stack
+Vector Inspector is built with PySide6 (Qt for Python) for the GUI, providing a native desktop experience. The backend uses Python with support for multiple vector database providers through a unified interface.
 
-#### Frontend (GUI)
-- **Framework**: PySide6 (Qt for Python) - native desktop application
-- **UI Components**: Qt Widgets for forms, dialogs, and application structure
-- **Visualization**: 
-  - Plotly for interactive charts (embedded via QWebEngineView)
-  - matplotlib for static visualizations
-- **Data Grid**: QTableView with custom models for high-performance data display
-
-#### Backend
-- **Language**: Python 3.12
-- **Core Libraries**:
-  - Vector DB clients: `chromadb`, `qdrant-client` (implemented), `pinecone-client`, `weaviate-client`, `pymilvus` (planned)
-  - Embeddings: `sentence-transformers`, `fastembed` (implemented), `openai`, `cohere` (planned)
-  - Data processing: `pandas`, `numpy`
-  - Dimensionality reduction: `scikit-learn`, `umap-learn`
-- **API Layer**: FastAPI (planned for programmatic access) or direct Python integration
-
-#### Data Layer
-- **Connection Management**: Provider-specific connection classes with unified interface
-- **Query Abstraction**: Base connection interface that each provider implements
-- **Storage Modes**:
-  - ChromaDB: Persistent local storage
-  - Qdrant Remote: Connect via host/port (e.g., localhost:6333)
-  - Qdrant Embedded: Local path storage without separate server
-- **Caching**: Redis or in-memory cache for frequently accessed data (planned)
-- **Settings Persistence**: User settings saved to ~/.vector-viewer/settings.json
-
-### Application Structure
-
-```
-vector-viewer/
-├── src/
-│   └── vector_viewer/
-│       ├── core/
-│       │   └── connections/   # Connection managers for each provider
-│       ├── ui/
-│       │   ├── components/    # Reusable UI components
-│       │   └── views/         # Main application views
-│       ├── services/          # Business logic services
-│       └── main.py            # Application entry point
-├── tests/
-├── docs/
-├── data/                      # Local database storage
-│   ├── chroma_db/
-│   └── qdrant/
-├── run.sh / run.bat           # Launch scripts
-└── pyproject.toml
-```
-
-User settings are saved to `~/.vector-viewer/settings.json`
+For detailed architecture information, see [docs/architecture.md](docs/architecture.md).
 
 ## Use Cases
 
@@ -160,115 +111,28 @@ User settings are saved to `~/.vector-viewer/settings.json`
 5. **Data Migration**: Transfer data between vector database providers
 6. **Education**: Learn and experiment with vector databases interactively
 
-## Feature Access (Free vs Pro)
+## Feature Access
 
-| Feature                                      | Access   |
-|----------------------------------------------|----------|
-| Connection to ChromaDB                       | Free     |
-| Basic metadata browsing and filtering        | Free     |
-| Simple similarity search interface           | Free     |
-| 2D vector visualization (PCA/t-SNE)          | Free     |
-| Basic CRUD operations                        | Free     |
-| Metadata filtering (advanced)                | Free     |
-| Item editing                                 | Free     |
-| Import/export (CSV, JSON, Parquet)           | Free     |
-| Provider abstraction layer                   | Free     |
-| Pinecone support                             | Free     |
-| Weaviate support                             | Free     |
-| Qdrant support (basic/experimental)          | Free     |
-| Milvus support                               | Pro      |
-| ChromaDB advanced support                    | Pro      |
-| FAISS (local files) support                  | Pro      |
-| pgvector (PostgreSQL extension) support      | Pro      |
-| Elasticsearch with vector search support     | Pro      |
-| Advanced query builder                       | Free     |
-| 3D visualization                             | Free     |
-| Embedding model integration (basic)          | Free     |
-| Query history and saved queries              | Free     |
-| Model Comparison Mode                        | Pro      |
-| Cluster Explorer                             | Pro      |
-| Embedding Inspector                          | Pro      |
-| Embedding Provenance Graph                   | Pro      |
-| Semantic Drift Timeline                      | Pro      |
-| Cross-Collection Similarity                  | Pro      |
-| Vector Surgery                               | Pro      |
-| Custom plugin system                         | Pro      |
-| Team collaboration features                  | Pro      |
+Vector Inspector is available in both free (open source) and Pro versions. The free version includes all core features for ChromaDB and basic Qdrant support, while Pro adds advanced analytics and additional providers.
 
-> **Note:** Qdrant support is available for free users in the open source version (basic/experimental). Advanced Qdrant features (e.g., payload filtering, geo, cloud auth) may be reserved for Pro in the future.
+See [FEATURES.md](FEATURES.md) for a complete feature comparison.
 
-## Planned Roadmap
+## Roadmap
 
-### Phase 1: Foundation (MVP)
-- [x] Connection to ChromaDB
-- [x] Basic metadata browsing and filtering
-- [x] Simple similarity search interface
-- [x] 2D vector visualization (PCA/t-SNE)
-- [x] Basic CRUD operations
+**Current Status**: ✅ Phase 2 Complete
 
-### Phase 2: Core Features
-- [x] Metadata filtering (advanced filtering, combine with search)
-- [x] Item editing (update metadata and documents)
-- [x] Import/export (CSV, JSON, Parquet, backup/restore)
-- [x] Provider abstraction layer (unified interface for all supported vector DBs)
-- [x] Qdrant support (basic/experimental, free)
-
-### Phase 3: UX & Professional Polish
-- [ ] **Unified Information Panel** (new "Info" tab as default view)
-- [ ] Database and collection metadata display
-- [ ] Connection health and version information
-- [ ] Schema visualization and index configuration display
-
-### Phase 4: Modular/Plugin System & Hybrid Model
-- [ ] Implement modular/plugin system for feature extensions
-- [ ] Migrate paid/advanced features to commercial modules
-- [ ] Add licensing/access control for commercial features
-
-### Phase 5: Provider Expansion (Incremental)
-- [ ] Pinecone support (free)
-- [ ] Weaviate support (free)
-- [ ] Qdrant support (paid)
-
-#### Future/Backlog Providers
-- [ ] Milvus support (paid)
-- [ ] ChromaDB advanced support (paid)
-- [ ] FAISS (local files) support (paid)
-- [ ] pgvector (PostgreSQL extension) support (paid)
-- [ ] Elasticsearch with vector search support (paid)
-
-
-### Phase 6A: Advanced Usability & Visualization
-- [ ] Advanced query builder (free)
-- [ ] 3D visualization (free)
-- [ ] Embedding model integration (free)
-- [ ] Query history and saved queries (free)
-- [ ] Metadata Type Detection & Rich Media Preview (free)
-
-### Phase 6B: Analytical & Comparison Tools
-- [ ] Model Comparison Mode (paid)
-- [ ] Cluster Explorer (paid)
-- [ ] Embedding Inspector (paid)
-- [ ] Embedding Provenance Graph (paid)
-
-### Phase 6C: Temporal & Cross-Collection Analytics
-- [ ] Semantic Drift Timeline (paid)
-- [ ] Cross-Collection Similarity (paid)
-
-### Phase 6D: Experimental & Power Features
-- [ ] Vector Surgery (paid)
-- [ ] Custom plugin system (paid)
-- [ ] Team collaboration features (paid)
-
-### Phase 7: Enterprise Features
-- [ ] Multi-user support with auth
-- [ ] Audit logging
-- [ ] Advanced security features
-- [ ] Custom reporting
-- [ ] API for programmatic access (FastAPI backend)
-- [ ] Caching layer (Redis/in-memory) for performance
-- [ ] Connection pooling and optimization
+See [ROADMAP.md](ROADMAP.md) for the complete development roadmap and planned features.
 
 ## Installation
+
+### From PyPI (Recommended)
+
+```bash
+pip install vector-inspector
+vector-inspector
+```
+
+### From Source
 
 ```bash
 # Clone the repository
