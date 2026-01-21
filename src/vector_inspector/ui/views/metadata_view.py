@@ -15,6 +15,7 @@ from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.services.import_export_service import ImportExportService
 from vector_inspector.services.filter_service import apply_client_side_filters
+from vector_inspector.services.settings_service import SettingsService
 from PySide6.QtWidgets import QApplication
 
 
@@ -29,6 +30,7 @@ class MetadataView(QWidget):
         self.page_size = 50
         self.current_page = 0
         self.loading_dialog = LoadingDialog("Loading data...", self)
+        self.settings_service = SettingsService()
         
         # Debounce timer for filter changes
         self.filter_reload_timer = QTimer()
@@ -426,32 +428,40 @@ class MetadataView(QWidget):
                 QMessageBox.warning(self, "Error", "Failed to update item.")
     
     def _export_data(self, format_type: str):
-        """Export collection data to file."""
+        """Export current table data to file (visible rows or selected rows)."""
         if not self.current_collection:
             QMessageBox.warning(self, "No Collection", "Please select a collection first.")
             return
-            
-        # Get all data (not just current page)
-        self.loading_dialog.show_loading("Exporting data...")
-        QApplication.processEvents()
         
-        try:
-            # Get filter if active
-            where_filter = None
-            if self.filter_group.isChecked() and self.filter_builder.has_filters():
-                where_filter = self.filter_builder.get_filter()
-                
-            # Fetch all data
-            all_data = self.connection.get_all_items(
-                self.current_collection,
-                where=where_filter
-            )
-        finally:
-            self.loading_dialog.hide_loading()
-            
-        if not all_data or not all_data.get("ids"):
+        if not self.current_data or not self.current_data.get("ids"):
             QMessageBox.warning(self, "No Data", "No data to export.")
             return
+        
+        # Check if there are selected rows
+        selected_rows = self.table.selectionModel().selectedRows()
+        
+        if selected_rows:
+            # Export only selected rows
+            export_data = {
+                "ids": [],
+                "documents": [],
+                "metadatas": [],
+                "embeddings": []
+            }
+            
+            for index in selected_rows:
+                row = index.row()
+                if row < len(self.current_data["ids"]):
+                    export_data["ids"].append(self.current_data["ids"][row])
+                    if "documents" in self.current_data and row < len(self.current_data["documents"]):
+                        export_data["documents"].append(self.current_data["documents"][row])
+                    if "metadatas" in self.current_data and row < len(self.current_data["metadatas"]):
+                        export_data["metadatas"].append(self.current_data["metadatas"][row])
+                    if "embeddings" in self.current_data and row < len(self.current_data["embeddings"]):
+                        export_data["embeddings"].append(self.current_data["embeddings"][row])
+        else:
+            # Export all visible data from current table
+            export_data = self.current_data
         
         # Select file path
         file_filters = {
@@ -460,10 +470,14 @@ class MetadataView(QWidget):
             "parquet": "Parquet Files (*.parquet)"
         }
         
+        # Get last used directory from settings
+        last_dir = self.settings_service.get("last_import_export_dir", "")
+        default_path = f"{last_dir}/{self.current_collection}.{format_type}" if last_dir else f"{self.current_collection}.{format_type}"
+        
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             f"Export to {format_type.upper()}",
-            f"{self.current_collection}.{format_type}",
+            default_path,
             file_filters[format_type]
         )
         
@@ -475,17 +489,21 @@ class MetadataView(QWidget):
         success = False
         
         if format_type == "json":
-            success = service.export_to_json(all_data, file_path)
+            success = service.export_to_json(export_data, file_path)
         elif format_type == "csv":
-            success = service.export_to_csv(all_data, file_path)
+            success = service.export_to_csv(export_data, file_path)
         elif format_type == "parquet":
-            success = service.export_to_parquet(all_data, file_path)
+            success = service.export_to_parquet(export_data, file_path)
             
         if success:
+            # Save the directory for next time
+            from pathlib import Path
+            self.settings_service.set("last_import_export_dir", str(Path(file_path).parent))
+            
             QMessageBox.information(
                 self,
                 "Export Successful",
-                f"Exported {len(all_data['ids'])} items to {file_path}"
+                f"Exported {len(export_data['ids'])} items to {file_path}"
             )
         else:
             QMessageBox.warning(self, "Export Failed", "Failed to export data.")
@@ -503,10 +521,13 @@ class MetadataView(QWidget):
             "parquet": "Parquet Files (*.parquet)"
         }
         
+        # Get last used directory from settings
+        last_dir = self.settings_service.get("last_import_export_dir", "")
+        
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             f"Import from {format_type.upper()}",
-            "",
+            last_dir,
             file_filters[format_type]
         )
         
@@ -531,6 +552,54 @@ class MetadataView(QWidget):
             if not imported_data:
                 QMessageBox.warning(self, "Import Failed", "Failed to parse import file.")
                 return
+            
+            # Handle Qdrant-specific requirements (similar to backup/restore)
+            from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+            if isinstance(self.connection, QdrantConnection):
+                # Check if embeddings are missing and need to be generated
+                if not imported_data.get("embeddings"):
+                    self.loading_dialog.setLabelText("Generating embeddings for Qdrant...")
+                    QApplication.processEvents()
+                    try:
+                        from sentence_transformers import SentenceTransformer
+                        model = SentenceTransformer("all-MiniLM-L6-v2")
+                        documents = imported_data.get("documents", [])
+                        imported_data["embeddings"] = model.encode(documents, show_progress_bar=False).tolist()
+                    except Exception as e:
+                        QMessageBox.warning(self, "Import Failed", 
+                                          f"Qdrant requires embeddings. Failed to generate: {e}")
+                        return
+                
+                # Convert IDs to Qdrant-compatible format (integers or UUIDs)
+                # Store original IDs in metadata
+                original_ids = imported_data.get("ids", [])
+                qdrant_ids = []
+                metadatas = imported_data.get("metadatas", [])
+                
+                for i, orig_id in enumerate(original_ids):
+                    # Try to convert to integer, otherwise use index
+                    try:
+                        # If it's like "doc_123", extract the number
+                        if isinstance(orig_id, str) and "_" in orig_id:
+                            qdrant_id = int(orig_id.split("_")[-1])
+                        else:
+                            qdrant_id = int(orig_id)
+                    except (ValueError, AttributeError):
+                        # Use index as ID if can't convert
+                        qdrant_id = i
+                    
+                    qdrant_ids.append(qdrant_id)
+                    
+                    # Store original ID in metadata
+                    if i < len(metadatas):
+                        if metadatas[i] is None:
+                            metadatas[i] = {}
+                        metadatas[i]["original_id"] = orig_id
+                    else:
+                        metadatas.append({"original_id": orig_id})
+                
+                imported_data["ids"] = qdrant_ids
+                imported_data["metadatas"] = metadatas
                 
             # Add items to collection
             success = self.connection.add_items(
@@ -544,6 +613,10 @@ class MetadataView(QWidget):
             self.loading_dialog.hide_loading()
             
         if success:
+            # Save the directory for next time
+            from pathlib import Path
+            self.settings_service.set("last_import_export_dir", str(Path(file_path).parent))
+            
             QMessageBox.information(
                 self,
                 "Import Successful",

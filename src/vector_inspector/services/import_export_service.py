@@ -5,6 +5,7 @@ import csv
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import pandas as pd
+import numpy as np
 
 
 class ImportExportService:
@@ -36,9 +37,13 @@ class ImportExportService:
                     "document": documents[i] if i < len(documents) else None,
                     "metadata": metadatas[i] if i < len(metadatas) else {},
                 }
-                # Optionally include embeddings
-                if embeddings and i < len(embeddings):
-                    item["embedding"] = embeddings[i]
+                # Optionally include embeddings (convert numpy arrays to lists)
+                if len(embeddings) > 0 and i < len(embeddings):
+                    embedding = embeddings[i]
+                    # Convert numpy array to list if needed
+                    if isinstance(embedding, np.ndarray):
+                        embedding = embedding.tolist()
+                    item["embedding"] = embedding
                 export_data.append(item)
             
             # Write to file
@@ -82,9 +87,13 @@ class ImportExportService:
                     for key, value in metadatas[i].items():
                         row[f"metadata_{key}"] = value
                 
-                # Optionally add embeddings
-                if include_embeddings and embeddings and i < len(embeddings):
-                    row["embedding"] = json.dumps(embeddings[i])
+                # Optionally add embeddings (convert numpy arrays to lists)
+                if include_embeddings and len(embeddings) > 0 and i < len(embeddings):
+                    embedding = embeddings[i]
+                    # Convert numpy array to list if needed
+                    if isinstance(embedding, np.ndarray):
+                        embedding = embedding.tolist()
+                    row["embedding"] = json.dumps(embedding)
                     
                 rows.append(row)
             
@@ -118,17 +127,24 @@ class ImportExportService:
             # Prepare data for DataFrame
             df_data = {
                 "id": ids,
-                "document": documents if documents else [None] * len(ids),
+                "document": documents if len(documents) > 0 else [None] * len(ids),
             }
             
             # Add metadata fields as separate columns
-            if metadatas and metadatas[0]:
+            if len(metadatas) > 0 and metadatas[0]:
                 for key in metadatas[0].keys():
                     df_data[f"metadata_{key}"] = [m.get(key) if m else None for m in metadatas]
             
-            # Add embeddings as a column
-            if embeddings:
-                df_data["embedding"] = embeddings
+            # Add embeddings as a column (convert numpy arrays to lists for compatibility)
+            if len(embeddings) > 0:
+                # Convert numpy arrays to lists if needed
+                embedding_list = []
+                for emb in embeddings:
+                    if isinstance(emb, np.ndarray):
+                        embedding_list.append(emb.tolist())
+                    else:
+                        embedding_list.append(emb)
+                df_data["embedding"] = embedding_list
             
             # Create DataFrame and save
             df = pd.DataFrame(df_data)
@@ -173,7 +189,7 @@ class ImportExportService:
                 "metadatas": metadatas,
             }
             
-            if embeddings:
+            if len(embeddings) > 0:
                 result["embeddings"] = embeddings
                 
             return result
@@ -227,7 +243,7 @@ class ImportExportService:
                 "metadatas": metadatas,
             }
             
-            if embeddings:
+            if len(embeddings) > 0:
                 result["embeddings"] = embeddings
                 
             return result
@@ -277,7 +293,7 @@ class ImportExportService:
                 "metadatas": metadatas,
             }
             
-            if embeddings:
+            if len(embeddings) > 0:
                 result["embeddings"] = embeddings
                 
             return result
