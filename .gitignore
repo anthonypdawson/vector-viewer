@@ -4,6 +4,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .pdm-python
+.vscode
+*.code-workspace
+*env/
+.env
 data
 chroma_data
 backups
