@@ -52,3 +52,17 @@ vector-viewer/
 ```
 
 User settings are saved to `~/.vector-viewer/settings.json`
+
+## Risks & Mitigations
+
+### UI Complexity Creep
+- **Risk:** As features grow, business logic may leak into views, making the UI layer hard to maintain.
+- **Mitigation:** Keep heavy logic in services; maintain thin views. Consider adopting a ViewModel/presenter pattern if complexity increases.
+
+### Provider Divergence
+- **Risk:** Backend-specific quirks (e.g., tag filtering, distance metrics) may leak into higher-level logic, reducing maintainability.
+- **Mitigation:** Normalize provider capabilities explicitly. Define a capability matrix and ensure all provider differences are handled at the connection/service layer.
+
+### Visualization Scalability
+- **Risk:** Dimensionality reduction (DR) and plotting may not scale to large datasets, impacting performance and UX.
+- **Mitigation:** Choose and document a default DR method (e.g., UMAP/TSNE). For large N, precompute or sample data, and document limits/fallbacks in the code and user docs.
