@@ -230,15 +230,8 @@ This project draws inspiration from:
 
 ---
 
-**Status**: ✅ Phase 2 Complete - Advanced Features Implemented!
 
-**What's New in Phase 2:**
-- 🔍 Advanced metadata filtering with customizable filter rules (AND/OR logic)
-- ✏️ Double-click to edit items directly in the data browser
-- 📥 Import data from CSV, JSON, and Parquet files
-- 📤 Export filtered data to CSV, JSON, and Parquet formats
-- 💾 Comprehensive backup and restore system for collections
-- 🔄 Metadata filters integrated with search for powerful queries
+See [CHANGELOG.md](CHANGELOG.md) for the latest status and what's new in each release.
 
 See [GETTING_STARTED.md](GETTING_STARTED.md) for usage instructions and [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for technical details.
 
