@@ -1,4 +1,7 @@
+
 # Vector Inspector
+![PyPI](https://img.shields.io/pypi/v/vector-inspector)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/vector-inspector?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/vector-inspector)
 
 
 A comprehensive desktop application for visualizing, querying, and managing vector database data. Similar to SQL database viewers, Vector Inspector provides an intuitive GUI for exploring vector embeddings, metadata, and performing similarity searches across multiple vector database providers.
