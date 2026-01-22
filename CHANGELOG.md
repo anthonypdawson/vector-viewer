@@ -5,7 +5,6 @@ All notable changes to Vector Viewer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-01-17
 
 ### Added - Phase 1 Implementation
 
@@ -98,6 +97,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded test coverage (manual and automated tests planned)
 - Improved sample data scripts for ChromaDB and Qdrant
 - Refactored codebase for maintainability and extensibility
+
+## [0.2.5] - 2026-01-22
+
+### Fixed
+- Improved text readability in Info Panel (all info text now uses high-contrast color)
+- Collections list now refreshes automatically when reconnecting to a new database
+- Info Panel and Collection Browser clear properly on disconnect
+- Fixed ambiguous array truth value error in ChromaDB connection
+- Lazy loading implemented for all heavy visualization libraries (plotly, numpy, sklearn, umap)
+- Visualization tab is now lazy loaded, reducing app startup time by ~2 seconds
+
+### Performance & Developer Experience
+- Created performance optimization guide (docs/performance_optimization.md)
+- Added utility for lazy imports (src/vector_inspector/utils/lazy_imports.py)
+- Added and organized test scripts under test_scripts/
+
+### Testing
+- All changes validated: no syntax or lint errors, type-safe, and tested with sample data
 
 ---
 
