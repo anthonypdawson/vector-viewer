@@ -191,11 +191,71 @@ class QdrantConnection(VectorDBConnection):
                     # Extract metadata fields, excluding 'document' if present
                     metadata_fields = [k for k in point.payload.keys() if k != 'document']
             
-            return {
+            # Extract vector configuration
+            vector_dimension = "Unknown"
+            distance_metric = "Unknown"
+            config_details = {}
+            
+            if collection_info.config:
+                # Get vector parameters
+                if hasattr(collection_info.config, 'params'):
+                    params = collection_info.config.params
+                    if hasattr(params, 'vectors'):
+                        vectors = params.vectors
+                        # Handle both dict and object access
+                        if isinstance(vectors, dict):
+                            # Named vectors
+                            first_vector = next(iter(vectors.values()), None)
+                            if first_vector:
+                                vector_dimension = getattr(first_vector, 'size', 'Unknown')
+                                distance = getattr(first_vector, 'distance', None)
+                        else:
+                            # Single vector config
+                            vector_dimension = getattr(vectors, 'size', 'Unknown')
+                            distance = getattr(vectors, 'distance', None)
+                        
+                        # Map distance enum to readable name
+                        if distance:
+                            distance_str = str(distance)
+                            if 'COSINE' in distance_str.upper():
+                                distance_metric = "Cosine"
+                            elif 'EUCLID' in distance_str.upper():
+                                distance_metric = "Euclidean"
+                            elif 'DOT' in distance_str.upper():
+                                distance_metric = "Dot Product"
+                            elif 'MANHATTAN' in distance_str.upper():
+                                distance_metric = "Manhattan"
+                            else:
+                                distance_metric = distance_str
+                
+                # Get HNSW config if available
+                if hasattr(collection_info.config, 'hnsw_config'):
+                    hnsw = collection_info.config.hnsw_config
+                    config_details['hnsw_config'] = {
+                        'm': getattr(hnsw, 'm', None),
+                        'ef_construct': getattr(hnsw, 'ef_construct', None),
+                    }
+                
+                # Get optimizer config if available
+                if hasattr(collection_info.config, 'optimizer_config'):
+                    opt = collection_info.config.optimizer_config
+                    config_details['optimizer_config'] = {
+                        'indexing_threshold': getattr(opt, 'indexing_threshold', None),
+                    }
+            
+            result = {
                 "name": name,
                 "count": collection_info.points_count,
                 "metadata_fields": metadata_fields,
+                "vector_dimension": vector_dimension,
+                "distance_metric": distance_metric,
             }
+            
+            if config_details:
+                result['config'] = config_details
+            
+            return result
+            
         except Exception as e:
             print(f"Failed to get collection info: {e}")
             return None

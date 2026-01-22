@@ -1,5 +1,6 @@
 """Vector visualization view with dimensionality reduction."""
 
+from __future__ import annotations
 from typing import Optional, Dict, Any
 import traceback
 from PySide6.QtWidgets import (
@@ -8,7 +9,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
-import plotly.graph_objects as go
 import numpy as np
 
 from vector_inspector.core.connections.base_connection import VectorDBConnection
@@ -154,7 +154,7 @@ class VisualizationView(QWidget):
         self.visualization_thread.error.connect(self._on_reduction_error)
         self.visualization_thread.start()
         
-    def _on_reduction_finished(self, reduced_data: np.ndarray):
+    def _on_reduction_finished(self, reduced_data: Any):
         """Handle dimensionality reduction completion."""
         self.reduced_data = reduced_data
         self._create_plot()
@@ -172,6 +172,10 @@ class VisualizationView(QWidget):
         """Create plotly visualization."""
         if self.reduced_data is None or self.current_data is None:
             return
+        
+        # Lazy import plotly
+        from vector_inspector.utils.lazy_imports import get_plotly
+        go = get_plotly()
             
         ids = self.current_data.get("ids", [])
         documents = self.current_data.get("documents", [])

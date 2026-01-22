@@ -125,16 +125,42 @@ class ChromaDBConnection(VectorDBConnection):
         
         try:
             count = collection.count()
-            # Get a sample to determine metadata fields
-            sample = collection.get(limit=1, include=["metadatas"])
+            # Get a sample to determine metadata fields and vector dimensions
+            sample = collection.get(limit=1, include=["metadatas", "embeddings"])
             metadata_fields = []
+            vector_dimension = "Unknown"
+            
             if sample and sample["metadatas"]:
                 metadata_fields = list(sample["metadatas"][0].keys()) if sample["metadatas"][0] else []
+            
+            # Determine vector dimensions from embeddings
+            embeddings = sample.get("embeddings") if sample else None
+            if embeddings is not None and len(embeddings) > 0 and embeddings[0] is not None:
+                vector_dimension = len(embeddings[0])
+            
+            # ChromaDB uses cosine distance by default (or can be configured)
+            # Try to get metadata from collection if available
+            distance_metric = "Cosine (default)"
+            try:
+                # ChromaDB collections may have metadata about distance function
+                col_metadata = collection.metadata
+                if col_metadata and "hnsw:space" in col_metadata:
+                    space = col_metadata["hnsw:space"]
+                    if space == "l2":
+                        distance_metric = "Euclidean (L2)"
+                    elif space == "ip":
+                        distance_metric = "Inner Product"
+                    elif space == "cosine":
+                        distance_metric = "Cosine"
+            except:
+                pass  # Use default if unable to determine
             
             return {
                 "name": name,
                 "count": count,
                 "metadata_fields": metadata_fields,
+                "vector_dimension": vector_dimension,
+                "distance_metric": distance_metric,
             }
         except Exception as e:
             print(f"Failed to get collection info: {e}")

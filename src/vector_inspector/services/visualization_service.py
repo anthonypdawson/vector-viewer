@@ -1,10 +1,6 @@
 """Visualization service for dimensionality reduction."""
 
-from typing import Optional, List, Tuple
-import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-import umap
+from typing import Optional, List, Tuple, Any
 
 
 class VisualizationService:
@@ -16,7 +12,7 @@ class VisualizationService:
         method: str = "pca",
         n_components: int = 2,
         **kwargs
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[Any]:
         """
         Reduce dimensionality of embeddings.
         
@@ -33,13 +29,19 @@ class VisualizationService:
             return None
             
         try:
+            # Lazy import numpy and models
+            from vector_inspector.utils.lazy_imports import get_numpy, get_sklearn_model
+            np = get_numpy()
+            
             X = np.array(embeddings)
             
-            if method == "pca":
+            if method.lower() == "pca":
+                PCA = get_sklearn_model('PCA')
                 reducer = PCA(n_components=n_components)
                 reduced = reducer.fit_transform(X)
                 
-            elif method == "tsne":
+            elif method.lower() == "t-sne":
+                TSNE = get_sklearn_model('TSNE')
                 perplexity = kwargs.get("perplexity", min(30, len(embeddings) - 1))
                 reducer = TSNE(
                     n_components=n_components,
@@ -48,9 +50,10 @@ class VisualizationService:
                 )
                 reduced = reducer.fit_transform(X)
                 
-            elif method == "umap":
+            elif method.lower() == "umap":
+                UMAP = get_sklearn_model('UMAP')
                 n_neighbors = kwargs.get("n_neighbors", min(15, len(embeddings) - 1))
-                reducer = umap.UMAP(
+                reducer = UMAP(
                     n_components=n_components,
                     n_neighbors=n_neighbors,
                     random_state=42
@@ -69,11 +72,11 @@ class VisualizationService:
     
     @staticmethod
     def prepare_plot_data(
-        reduced_embeddings: np.ndarray,
+        reduced_embeddings: Any,
         labels: Optional[List[str]] = None,
         metadata: Optional[List[dict]] = None,
         color_by: Optional[str] = None
-    ) -> Tuple[np.ndarray, List[str], List[str]]:
+    ) -> Tuple[Any, List[str], List[str]]:
         """
         Prepare data for plotting.
         

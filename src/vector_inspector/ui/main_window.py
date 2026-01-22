@@ -12,9 +12,9 @@ from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 from vector_inspector.ui.views.connection_view import ConnectionView
 from vector_inspector.ui.views.collection_browser import CollectionBrowser
+from vector_inspector.ui.views.info_panel import InfoPanel
 from vector_inspector.ui.views.metadata_view import MetadataView
 from vector_inspector.ui.views.search_view import SearchView
-from vector_inspector.ui.views.visualization_view import VisualizationView
 from vector_inspector.ui.components.backup_restore_dialog import BackupRestoreDialog
 
 
@@ -63,13 +63,21 @@ class MainWindow(QMainWindow):
         # Right panel - Tabbed views
         self.tab_widget = QTabWidget()
         
+        self.info_panel = InfoPanel(self.connection)
         self.metadata_view = MetadataView(self.connection)
         self.search_view = SearchView(self.connection)
-        self.visualization_view = VisualizationView(self.connection)
+        self.visualization_view = None  # Lazy loaded
         
+        self.tab_widget.addTab(self.info_panel, "Info")
         self.tab_widget.addTab(self.metadata_view, "Data Browser")
         self.tab_widget.addTab(self.search_view, "Search")
-        self.tab_widget.addTab(self.visualization_view, "Visualization")
+        self.tab_widget.addTab(QWidget(), "Visualization")  # Placeholder
+        
+        # Set Info tab as default
+        self.tab_widget.setCurrentIndex(0)
+        
+        # Connect to tab change to lazy load visualization
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
         
         # Add panels to splitter
         main_splitter.addWidget(left_panel)
@@ -167,14 +175,34 @@ class MainWindow(QMainWindow):
         self.connection_view.connection_created.connect(self._on_connection_created)
         self.collection_browser.collection_selected.connect(self._on_collection_selected)
     
+    def _on_tab_changed(self, index: int):
+        """Handle tab change - lazy load visualization tab."""
+        if index == 3 and self.visualization_view is None:
+            # Lazy load visualization view
+            from vector_inspector.ui.views.visualization_view import VisualizationView
+            self.visualization_view = VisualizationView(self.connection)
+            # Replace placeholder with actual view
+            self.tab_widget.removeTab(3)
+            self.tab_widget.insertTab(3, self.visualization_view, "Visualization")
+            self.tab_widget.setCurrentIndex(3)
+            # Set collection if one is already selected
+            if self.current_collection:
+                self.visualization_view.set_collection(self.current_collection)
+    
     def _on_connection_created(self, new_connection: VectorDBConnection):
         """Handle when a new connection instance is created."""
         self.connection = new_connection
         # Update all views with new connection
         self.collection_browser.connection = new_connection
+        self.info_panel.connection = new_connection
         self.metadata_view.connection = new_connection
         self.search_view.connection = new_connection
-        self.visualization_view.connection = new_connection
+        # Only update visualization if it's been created
+        if self.visualization_view is not None:
+            self.visualization_view.connection = new_connection
+        # Refresh the collection browser to show new database's collections
+        if new_connection.is_connected:
+            self.collection_browser.refresh()
         
     def _on_connect(self):
         """Handle connect action."""
@@ -187,6 +215,11 @@ class MainWindow(QMainWindow):
             self.statusBar.showMessage("Disconnected")
             self.connection_changed.emit(False)
             self.collection_browser.clear()
+            # Clear info panel
+            self.info_panel.refresh_database_info()
+        else:
+            # Always clear collection browser on disconnect
+            self.collection_browser.clear()
             
     def _on_connection_status_changed(self, connected: bool):
         """Handle connection status change."""
@@ -194,9 +227,14 @@ class MainWindow(QMainWindow):
             self.statusBar.showMessage("Connected")
             self.connection_changed.emit(True)
             self._on_refresh_collections()
+            # Refresh info panel with new connection
+            self.info_panel.refresh_database_info()
         else:
             self.statusBar.showMessage("Connection failed")
             self.connection_changed.emit(False)
+            # Clear info panel and collection browser
+            self.info_panel.refresh_database_info()
+            self.collection_browser.clear()
             
     def _on_collection_selected(self, collection_name: str):
         """Handle collection selection."""
@@ -204,14 +242,19 @@ class MainWindow(QMainWindow):
         self.statusBar.showMessage(f"Collection: {collection_name}")
         
         # Update all views with new collection
+        self.info_panel.set_collection(collection_name)
         self.metadata_view.set_collection(collection_name)
         self.search_view.set_collection(collection_name)
-        self.visualization_view.set_collection(collection_name)
+        # Only update visualization if it's been created
+        if self.visualization_view is not None:
+            self.visualization_view.set_collection(collection_name)
         
     def _on_refresh_collections(self):
         """Refresh collection list."""
         if self.connection.is_connected:
             self.collection_browser.refresh()
+            # Also refresh database info (collection count may have changed)
+            self.info_panel.refresh_database_info()
             
     def _on_new_collection(self):
         """Create a new collection."""
