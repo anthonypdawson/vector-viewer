@@ -10,5 +10,6 @@ __pycache__/
 .env
 data
 chroma_data
+test_scripts
 backups
 qdrant
