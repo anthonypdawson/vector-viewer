@@ -50,16 +50,22 @@ class QdrantConnection(VectorDBConnection):
             True if connection successful, False otherwise
         """
         try:
+            # Common parameters for stability
+            common_params = {
+                'check_compatibility': False,
+                'timeout': 300,  # 5 minutes timeout for long operations
+            }
+            
             if self.path:
                 # Local/embedded mode
-                self._client = QdrantClient(path=self.path, check_compatibility=False)
+                self._client = QdrantClient(path=self.path, **common_params)
             elif self.url:
                 # Full URL provided
                 self._client = QdrantClient(
                     url=self.url,
                     api_key=self.api_key,
                     prefer_grpc=self.prefer_grpc,
-                    check_compatibility=False
+                    **common_params
                 )
             elif self.host:
                 # Host and port provided
@@ -68,11 +74,11 @@ class QdrantConnection(VectorDBConnection):
                     port=self.port,
                     api_key=self.api_key,
                     prefer_grpc=self.prefer_grpc,
-                    check_compatibility=False
+                    **common_params
                 )
             else:
                 # Default to in-memory client
-                self._client = QdrantClient(":memory:", check_compatibility=False)
+                self._client = QdrantClient(":memory:", **common_params)
             
             # Test connection
             self._client.get_collections()
@@ -251,6 +257,14 @@ class QdrantConnection(VectorDBConnection):
                 "distance_metric": distance_metric,
             }
             
+            # Check for embedding model metadata (if collection creator stored it)
+            if hasattr(collection_info.config, 'metadata') and collection_info.config.metadata:
+                metadata = collection_info.config.metadata
+                if 'embedding_model' in metadata:
+                    result['embedding_model'] = metadata['embedding_model']
+                if 'embedding_model_type' in metadata:
+                    result['embedding_model_type'] = metadata['embedding_model_type']
+            
             if config_details:
                 result['config'] = config_details
             
@@ -259,6 +273,46 @@ class QdrantConnection(VectorDBConnection):
         except Exception as e:
             print(f"Failed to get collection info: {e}")
             return None
+    
+    def _get_embedding_model_for_collection(self, collection_name: str):
+        """Get the appropriate embedding model for a collection based on stored metadata, settings, or dimension."""
+        from ..embedding_utils import get_model_for_dimension, load_embedding_model, DEFAULT_MODEL
+        
+        # Get collection info to determine vector dimension and check metadata
+        collection_info = self.get_collection_info(collection_name)
+        if not collection_info:
+            # Default if we can't determine
+            print(f"Warning: Could not determine collection info for {collection_name}, using default")
+            model_name, model_type = DEFAULT_MODEL
+            model = load_embedding_model(model_name, model_type)
+            return (model, model_name, model_type)
+        
+        # Priority 1: Check if collection metadata has embedding model info (most reliable)
+        if 'embedding_model' in collection_info:
+            model_name = collection_info['embedding_model']
+            model_type = collection_info.get('embedding_model_type', 'sentence-transformer')
+            print(f"Using stored embedding model '{model_name}' ({model_type}) for collection '{collection_name}'")
+            model = load_embedding_model(model_name, model_type)
+            return (model, model_name, model_type)
+        
+        # Priority 2: Check user settings for manual override (skip in connection class)
+        # Settings lookup is done in the UI layer where connection_id is available
+        
+        # Priority 3: Fall back to dimension-based guessing (least reliable)
+        vector_dim = collection_info.get("vector_dimension")
+        if not vector_dim or vector_dim == "Unknown":
+            print(f"Warning: No vector dimension in collection info, using default")
+            model_name, model_type = DEFAULT_MODEL
+            model = load_embedding_model(model_name, model_type)
+            return (model, model_name, model_type)
+        
+        # Get the appropriate model for this dimension
+        model_name, model_type = get_model_for_dimension(vector_dim)
+        model = load_embedding_model(model_name, model_type)
+        
+        print(f"⚠️ Guessing {model_type} model '{model_name}' based on dimension {vector_dim} for '{collection_name}'")
+        print(f"   To specify the correct model, use Settings > Configure Collection Embedding Models")
+        return (model, model_name, model_type)
     
     def _build_qdrant_filter(self, where: Optional[Dict[str, Any]] = None) -> Optional[Filter]:
         """
@@ -374,11 +428,11 @@ class QdrantConnection(VectorDBConnection):
             for query in queries:
                 # Embed text queries if needed
                 if isinstance(query, str):
-                    # Generate embeddings for text query
+                    # Generate embeddings for text query using appropriate model for this collection
                     try:
-                        from sentence_transformers import SentenceTransformer
-                        model = SentenceTransformer("all-MiniLM-L6-v2")
-                        query_vector = model.encode(query).tolist()
+                        model, model_name, model_type = self._get_embedding_model_for_collection(collection_name)
+                        from ..embedding_utils import encode_text
+                        query_vector = encode_text(query, model, model_type)
                     except Exception as e:
                         print(f"Failed to embed query text: {e}")
                         continue
