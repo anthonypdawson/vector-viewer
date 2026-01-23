@@ -169,36 +169,10 @@ class BackupRestoreService:
                         print(f"Failed to generate embeddings: {e}")
                         return False
                 
-                # Convert IDs to Qdrant-compatible format (integers or UUIDs)
-                # Store original IDs in metadata
+                # Keep IDs as strings - Qdrant's _to_uuid method handles conversion
+                # Just ensure all IDs are strings
                 original_ids = data.get("ids", [])
-                qdrant_ids = []
-                metadatas = data.get("metadatas", [])
-                
-                for i, orig_id in enumerate(original_ids):
-                    # Try to convert to integer, otherwise use index
-                    try:
-                        # If it's like "doc_123", extract the number
-                        if isinstance(orig_id, str) and "_" in orig_id:
-                            qdrant_id = int(orig_id.split("_")[-1])
-                        else:
-                            qdrant_id = int(orig_id)
-                    except (ValueError, AttributeError):
-                        # Use index as ID if can't convert
-                        qdrant_id = i
-                    
-                    qdrant_ids.append(qdrant_id)
-                    
-                    # Store original ID in metadata
-                    if i < len(metadatas):
-                        if metadatas[i] is None:
-                            metadatas[i] = {}
-                        metadatas[i]["original_id"] = orig_id
-                    else:
-                        metadatas.append({"original_id": orig_id})
-                
-                data["ids"] = qdrant_ids
-                data["metadatas"] = metadatas
+                data["ids"] = [str(id_val) for id_val in original_ids]
             
             # Add items to collection
             success = connection.add_items(
