@@ -47,6 +47,73 @@
         a.button:hover {
             background: #0056b3;
         }
+
+        /* Gallery styles */
+        .gallery {
+            margin-top: 2em;
+        }
+
+        .thumbs {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .thumb {
+            width: 160px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 6px;
+            box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .thumb:hover {
+            transform: scale(1.06);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: auto;
+            background: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            display: block;
+            margin: auto;
+            width: auto;
+            height: auto;
+            /* Fit as large as possible while keeping a small viewport gutter */
+            max-width: calc(100vw - 40px);
+            max-height: calc(100vh - 40px);
+            object-fit: contain;
+            border-radius: 6px;
+            box-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+            cursor: pointer;
+        }
+
+        .close {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            color: #fff;
+            font-size: 2em;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1001;
+            text-shadow: 0 2px 8px #000;
+        }
     </style>
 </head>
 
@@ -67,7 +134,55 @@
             <a class="button" href="https://github.com/anthonypdawson/vector-inspector" target="_blank">GitHub</a>
             <a class="button" href="https://pypi.org/project/vector-inspector/" target="_blank">PyPI</a>
         </p>
+        <h2>Gallery</h2>
+        <div class="gallery">
+            <div class="thumbs">
+                <img src="images/vector-inspector-info.webp" alt="Info Panel" class="thumb"
+                    onclick="showModal('images/vector-inspector-info.webp')">
+                <img src="images/vector-inspector-search.webp" alt="Search Panel" class="thumb"
+                    onclick="showModal('images/vector-inspector-search.webp')">
+                <img src="images/vector-inspector-visualization.webp" alt="Visualization Panel" class="thumb"
+                    onclick="showModal('images/vector-inspector-visualization.webp')">
+            </div>
+        </div>
+        <div id="modal" class="modal" onclick="hideModal()">
+            <span class="close" onclick="hideModal(); event.stopPropagation();">&times;</span>
+            <a id="modal-link" href="#" target="_blank" onclick="event.stopPropagation();">
+                <img class="modal-content" id="modal-img" alt="Full image" onclick="event.stopPropagation();">
+            </a>
+        </div>
     </div>
 </body>
+
+<script>
+    // Key handler to close modal with Escape
+    function _modalKeyHandler(e) {
+        if (e.key === 'Escape') {
+            hideModal();
+        }
+    }
+
+    function showModal(src) {
+        var modal = document.getElementById('modal');
+        var modalImg = document.getElementById('modal-img');
+        var modalLink = document.getElementById('modal-link');
+        modal.style.display = 'flex';
+        modalImg.src = src;
+        modalLink.href = src;
+        // Add Escape key listener
+        document.addEventListener('keydown', _modalKeyHandler);
+    }
+
+    function hideModal() {
+        var modal = document.getElementById('modal');
+        var modalImg = document.getElementById('modal-img');
+        var modalLink = document.getElementById('modal-link');
+        modal.style.display = 'none';
+        // Clear src/href to free memory
+        modalImg.src = '';
+        modalLink.href = '#';
+        document.removeEventListener('keydown', _modalKeyHandler);
+    }
+</script>
 
 </html>
