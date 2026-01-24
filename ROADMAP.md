@@ -14,31 +14,40 @@
 - [x] Provider abstraction layer (unified interface for all supported vector DBs)
 - [x] Qdrant support (basic/experimental, free)
 
-## Phase 3: UX & Professional Polish
-- [ ] **Unified Information Panel** (new "Info" tab as default view)
-- [ ] Database and collection metadata display
-- [ ] Connection health and version information
-- [ ] Schema visualization and index configuration display
-
-## Phase 4: Data Migration & Pinecone
+## Phase 3: Pinecone Support (HIGH PRIORITY)
 - [ ] Pinecone support
-- [ ] Cross-database migration (dedicated controls for migrating collections between providers)
+- [x] Cross-database migration (dedicated controls for migrating collections between providers)
 
-## Phase 5: Modular/Plugin System & Hybrid Model
-- [ ] Implement modular/plugin system for feature extensions
-- [ ] Migrate paid/advanced features to commercial modules
-- [ ] Add licensing/access control for commercial features
 
-## Phase 6: Provider Expansion (All Free)
+## Phase 4: Provider Expansion (HIGH PRIORITY)
 - [ ] Weaviate support
 - [ ] Milvus support
 - [ ] FAISS (local files) support
 - [ ] pgvector (PostgreSQL extension) support
 - [ ] Elasticsearch with vector search support
 
-> **All providers are available in the free tier.** Pro features focus on advanced workflows, not basic provider access.
+> **Priority:** Reach 5-6 database providers quickly to market as "most comprehensive vector DB tool." All providers remain free.
 
-## Phase 6A: Advanced Usability & Visualization
+## Phase 5: Analytical & Comparison Tools (DIFFERENTIATOR)
+- [ ] **Embedding Inspector** (free) - **PRIORITY: Killer differentiator feature**
+- [ ] Model Comparison Mode (free)
+- [ ] Cluster Explorer (free)
+- [ ] Embedding Provenance Graph (free)
+
+> **Priority:** Ship analytics early to differentiate from competitors. Embedding Inspector is the standout feature. All free until paid platform infrastructure is ready.
+
+## Phase 6: UX & Professional Polish
+- [x] **Unified Information Panel** (new "Info" tab as default view)
+- [x] Database and collection metadata display
+- [ ] Connection health and version information
+- [ ] Schema visualization and index configuration display
+
+## Phase 7: Modular/Plugin System & Hybrid Model
+- [ ] Implement modular/plugin system for feature extensions
+- [ ] Migrate paid/advanced features to commercial modules
+- [ ] Add licensing/access control for commercial features
+
+## Phase 8: Advanced Usability & Visualization
 - [ ] Advanced query builder (free)
 - [ ] 3D visualization (free)
 - [ ] Embedding model integration (basic, free)
@@ -46,17 +55,11 @@
 - [ ] Saved queries (named, persistent, Pro)
 - [ ] Metadata Type Detection & Rich Media Preview (free)
 
-## Phase 6B: Analytical & Comparison Tools
-- [ ] Model Comparison Mode (paid)
-- [ ] Cluster Explorer (paid)
-- [ ] Embedding Inspector (paid)
-- [ ] Embedding Provenance Graph (paid)
-
-## Phase 6C: Temporal & Cross-Collection Analytics
+## Phase 9: Temporal & Cross-Collection Analytics
 - [ ] Semantic Drift Timeline (paid)
 - [ ] Cross-Collection Similarity (paid)
 
-## Phase 6D: Experimental & Power Features
+## Phase 10: Experimental & Power Features
 - [ ] Vector Surgery (Pro)
 - [ ] Custom plugin system (Pro)
 - [ ] Team collaboration features (Pro)
@@ -72,8 +75,7 @@
   - Performance profiling
   - Index optimization tools
 
-
-## Phase 7: Enterprise Features (Pro)
+## Phase 11: Enterprise Features (Pro)
 - [ ] Multi-user support with auth
 - [ ] Audit logging
 - [ ] Advanced security features
