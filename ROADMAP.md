@@ -15,8 +15,11 @@
 - [x] Qdrant support (basic/experimental, free)
 
 ## Phase 3: Pinecone Support (HIGH PRIORITY)
-- [ ] Pinecone support
+- [x] Pinecone support (core embedding logic, provider abstraction, UI integration)
 - [x] Cross-database migration (dedicated controls for migrating collections between providers)
+  
+**Phase 3 Status:**
+All core features for Pinecone support are now implemented and tested. Embedding logic is standardized across providers, and the embedding model registry has been moved to `config/known_embedding_models.json` for maintainability. Documentation and UI have been updated to reflect these changes. Transitioning to Phase 4 and advanced analytics features.
 
 
 ## Phase 4: Provider Expansion (HIGH PRIORITY)
@@ -26,7 +29,17 @@
 - [ ] pgvector (PostgreSQL extension) support
 - [ ] Elasticsearch with vector search support
 
-> **Priority:** Reach 5-6 database providers quickly to market as "most comprehensive vector DB tool." All providers remain free.
+ > **Priority:** Reach 5-6 database providers quickly to market as "most comprehensive vector DB tool." All providers remain free.
+ 
+---
+**Recent Work Completed:**
+- Standardized provider output (distance metric)
+- Centralized embedding logic
+- Moved embedding model registry to config/
+- Updated documentation and UI for model selection
+- Improved loading dialogs and UX for slow actions
+- Refactored PineconeConnection for consistency
+- Updated docs for completed features and current phase
 
 ## Phase 5: Analytical & Comparison Tools (DIFFERENTIATOR)
 - [ ] **Embedding Inspector** (free) - **PRIORITY: Killer differentiator feature**
