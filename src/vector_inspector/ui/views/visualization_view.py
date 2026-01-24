@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 import traceback
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QComboBox, QSpinBox, QGroupBox, QMessageBox
+    QLabel, QComboBox, QSpinBox, QGroupBox, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
