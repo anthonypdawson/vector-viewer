@@ -1,8 +1,25 @@
+# ---
+# **Project Status Update (June 2024)**
+#
+# **Phase 3 Complete: Pinecone Support, Provider Consistency, Registry Refactor**
+#
+# - Pinecone provider fully integrated (embedding logic, UI, provider abstraction)
+# - All providers now return standardized distance metric
+# - Embedding model registry moved to `config/known_embedding_models.json`
+# - Documentation and UI updated for model selection and registry location
+# - Loading dialogs and UX improved for slow actions
+# - Refactored PineconeConnection for consistency
+# - All code and documentation changes tested and validated
+#
+# **Next:** Begin Phase 4 (Provider Expansion, Analytics)
+# ---
+#
+
 # Vector Inspector - Project Status
 
-**Last Updated:** January 19, 2026  
-**Version:** 0.1.1-dev  
-**Phase:** 2 Complete → Planning Phase 3
+**Last Updated:** January 24, 2026  
+**Version:** 0.3 
+**Phase:** 3 Complete → Planning Phase 4
 
 ## Project Overview
 
