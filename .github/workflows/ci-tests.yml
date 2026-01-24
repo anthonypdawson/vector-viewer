@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.11"]
 
     steps:
       - name: Check out repository
@@ -30,6 +30,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pdm
+
+      - name: Install system dependencies (Qt/OpenGL libs)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1-mesa-glx libgl1-mesa-dri libxkbcommon0 libxcb-xinerama0
 
       - name: Cache PDM virtualenv and pip
         uses: actions/cache@v4
@@ -49,4 +54,5 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: ./src
+          QT_QPA_PLATFORM: offscreen
         run: pdm run pytest -q
