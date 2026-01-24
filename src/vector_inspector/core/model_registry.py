@@ -60,16 +60,16 @@ class EmbeddingModelRegistry:
     
     def _load_registry(self):
         """Load models from JSON file."""
-        registry_path = Path(__file__).parent.parent / "data" / "known_embedding_models.json"
+        registry_path = Path(__file__).parent.parent / "config" / "known_embedding_models.json"
         
         if not registry_path.exists():
             print(f"Warning: Model registry not found at {registry_path}")
             return
-        
+
         try:
             with open(registry_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
+
             # Parse models
             for model_data in data.get("models", []):
                 model_info = ModelInfo.from_dict(model_data)
@@ -84,7 +84,7 @@ class EmbeddingModelRegistry:
                 self._name_index[model_info.name.lower()] = model_info
             
             print(f"Loaded {len(self._models)} models from registry")
-            
+            #...
         except Exception as e:
             print(f"Error loading model registry: {e}")
     

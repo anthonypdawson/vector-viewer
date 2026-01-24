@@ -1,0 +1,432 @@
+{
+    "models": [
+        {
+            "name": "all-MiniLM-L6-v2",
+            "type": "sentence-transformer",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Fast, small-footprint text embeddings (good default for text search)"
+        },
+        {
+            "name": "openai/clip-vit-base-patch32",
+            "type": "clip",
+            "dimension": 512,
+            "modality": "multimodal",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Standard CLIP ViT-B/32 model; supports matching text ↔ images"
+        },
+        {
+            "name": "paraphrase-albert-small-v2",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Smaller paraphrase-specialized model"
+        },
+        {
+            "name": "all-mpnet-base-v2",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "High-quality text embeddings; recommended for semantic tasks"
+        },
+        {
+            "name": "all-roberta-large-v1",
+            "type": "sentence-transformer",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Large model — high quality, larger memory and compute"
+        },
+        {
+            "name": "gtr-t5-large",
+            "type": "sentence-transformer",
+            "dimension": 1536,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Very large embeddings useful for specialized high-recall tasks"
+        },
+        {
+            "name": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+            "type": "sentence-transformer",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Optimized for semantic search and question-answering tasks"
+        },
+        {
+            "name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            "type": "sentence-transformer",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Multilingual support for 50+ languages"
+        },
+        {
+            "name": "sentence-transformers/msmarco-distilbert-base-v4",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Trained on MS MARCO dataset, good for passage retrieval"
+        },
+        {
+            "name": "sentence-transformers/all-distilroberta-v1",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Distilled RoBERTa model, balance of speed and quality"
+        },
+        {
+            "name": "sentence-transformers/paraphrase-mpnet-base-v2",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "High-quality paraphrase detection and semantic similarity"
+        },
+        {
+            "name": "BAAI/bge-small-en-v1.5",
+            "type": "sentence-transformer",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Beijing Academy of AI model, strong performance for size"
+        },
+        {
+            "name": "BAAI/bge-base-en-v1.5",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "High-quality English embeddings, MTEB benchmark leader"
+        },
+        {
+            "name": "BAAI/bge-large-en-v1.5",
+            "type": "sentence-transformer",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Large model with excellent retrieval performance"
+        },
+        {
+            "name": "thenlper/gte-small",
+            "type": "sentence-transformer",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "General Text Embeddings (GTE) small variant"
+        },
+        {
+            "name": "thenlper/gte-base",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "General Text Embeddings (GTE) base model"
+        },
+        {
+            "name": "thenlper/gte-large",
+            "type": "sentence-transformer",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "General Text Embeddings (GTE) large variant"
+        },
+        {
+            "name": "intfloat/e5-small-v2",
+            "type": "sentence-transformer",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "E5 family small model, prefix with 'query: ' or 'passage: '"
+        },
+        {
+            "name": "intfloat/e5-base-v2",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "E5 family base model, strong asymmetric retrieval"
+        },
+        {
+            "name": "intfloat/e5-large-v2",
+            "type": "sentence-transformer",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "E5 family large model, top MTEB performance"
+        },
+        {
+            "name": "intfloat/multilingual-e5-small",
+            "type": "sentence-transformer",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Multilingual E5 model supporting 100+ languages"
+        },
+        {
+            "name": "intfloat/multilingual-e5-base",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Multilingual E5 base model, excellent cross-lingual retrieval"
+        },
+        {
+            "name": "intfloat/multilingual-e5-large",
+            "type": "sentence-transformer",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Multilingual E5 large model, best-in-class multilingual embeddings"
+        },
+        {
+            "name": "openai/clip-vit-large-patch14",
+            "type": "clip",
+            "dimension": 768,
+            "modality": "multimodal",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Larger CLIP ViT-L/14 model, better quality than base"
+        },
+        {
+            "name": "openai/clip-vit-large-patch14-336",
+            "type": "clip",
+            "dimension": 768,
+            "modality": "multimodal",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Higher resolution (336x336) variant of ViT-L/14"
+        },
+        {
+            "name": "laion/CLIP-ViT-B-32-laion2B-s34B-b79K",
+            "type": "clip",
+            "dimension": 512,
+            "modality": "multimodal",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "LAION's CLIP trained on 2B image-text pairs"
+        },
+        {
+            "name": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+            "type": "clip",
+            "dimension": 1024,
+            "modality": "multimodal",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "LAION's huge CLIP model, excellent quality"
+        },
+        {
+            "name": "text-embedding-ada-002",
+            "type": "openai",
+            "dimension": 1536,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "openai-api",
+            "description": "OpenAI's production embedding model (legacy). Requires API key."
+        },
+        {
+            "name": "text-embedding-3-small",
+            "type": "openai",
+            "dimension": 1536,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "openai-api",
+            "description": "OpenAI's newer small model, better than ada-002. Requires API key."
+        },
+        {
+            "name": "text-embedding-3-large",
+            "type": "openai",
+            "dimension": 3072,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "openai-api",
+            "description": "OpenAI's large embedding model, highest quality. Requires API key."
+        },
+        {
+            "name": "embed-english-v3.0",
+            "type": "cohere",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "none",
+            "source": "cohere-api",
+            "description": "Cohere's English embedding model. Requires API key."
+        },
+        {
+            "name": "embed-english-light-v3.0",
+            "type": "cohere",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "none",
+            "source": "cohere-api",
+            "description": "Cohere's lightweight English model. Requires API key."
+        },
+        {
+            "name": "embed-multilingual-v3.0",
+            "type": "cohere",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "none",
+            "source": "cohere-api",
+            "description": "Cohere's multilingual model supporting 100+ languages. Requires API key."
+        },
+        {
+            "name": "embed-multilingual-light-v3.0",
+            "type": "cohere",
+            "dimension": 384,
+            "modality": "text",
+            "normalization": "none",
+            "source": "cohere-api",
+            "description": "Cohere's lightweight multilingual model. Requires API key."
+        },
+        {
+            "name": "textembedding-gecko@003",
+            "type": "vertex-ai",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "google-cloud",
+            "description": "Google's Gecko model for text embeddings. Requires Google Cloud credentials."
+        },
+        {
+            "name": "text-embedding-004",
+            "type": "vertex-ai",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "google-cloud",
+            "description": "Google's latest text embedding model. Requires Google Cloud credentials."
+        },
+        {
+            "name": "text-multilingual-embedding-002",
+            "type": "vertex-ai",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "google-cloud",
+            "description": "Google's multilingual embedding model. Requires Google Cloud credentials."
+        },
+        {
+            "name": "multimodalembedding@001",
+            "type": "vertex-ai",
+            "dimension": 1408,
+            "modality": "multimodal",
+            "normalization": "l2",
+            "source": "google-cloud",
+            "description": "Google's multimodal embedding model. Requires Google Cloud credentials."
+        },
+        {
+            "name": "voyage-large-2",
+            "type": "voyage",
+            "dimension": 1536,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "voyage-api",
+            "description": "Voyage AI's large model. Requires API key."
+        },
+        {
+            "name": "voyage-code-2",
+            "type": "voyage",
+            "dimension": 1536,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "voyage-api",
+            "description": "Voyage AI's code-optimized model. Requires API key."
+        },
+        {
+            "name": "voyage-2",
+            "type": "voyage",
+            "dimension": 1024,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "voyage-api",
+            "description": "Voyage AI's general-purpose model. Requires API key."
+        },
+        {
+            "name": "jinaai/jina-embeddings-v2-base-en",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Jina AI's 8k context length model, good for long documents"
+        },
+        {
+            "name": "jinaai/jina-embeddings-v2-small-en",
+            "type": "sentence-transformer",
+            "dimension": 512,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Jina AI's small model with 8k context length"
+        },
+        {
+            "name": "nomic-ai/nomic-embed-text-v1",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Nomic's open-source text embedding model with 8k context"
+        },
+        {
+            "name": "nomic-ai/nomic-embed-text-v1.5",
+            "type": "sentence-transformer",
+            "dimension": 768,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Nomic's improved model with better performance"
+        },
+        {
+            "name": "Alibaba-NLP/gte-Qwen2-7B-instruct",
+            "type": "sentence-transformer",
+            "dimension": 3584,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "Very large instruction-following embedding model, SOTA on many benchmarks"
+        },
+        {
+            "name": "nvidia/NV-Embed-v1",
+            "type": "sentence-transformer",
+            "dimension": 4096,
+            "modality": "text",
+            "normalization": "l2",
+            "source": "huggingface",
+            "description": "NVIDIA's embedding model, excellent for retrieval tasks"
+        }
+    ],
+    "metadata": {
+        "version": "1.0.0",
+        "last_updated": "2026-01-24",
+        "description": "Known embedding models registry for Vector Inspector"
+    }
+}

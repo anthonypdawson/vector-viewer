@@ -192,7 +192,7 @@ Edit `provider_factory.py` to add model name patterns for auto-detection.
 
 ## Model Registry
 
-Known models are stored in a JSON file at `src/vector_inspector/data/known_embedding_models.json`. This registry is loaded at runtime and provides:
+Known models are stored in a JSON file at `src/vector_inspector/config/known_embedding_models.json`. This registry is loaded at runtime and provides:
 
 - **47+ pre-configured models** across all major providers
 - **Auto-detection** of provider type from model name

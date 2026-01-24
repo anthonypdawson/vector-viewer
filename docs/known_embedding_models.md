@@ -1,7 +1,7 @@
 # Known Embedding Models (Registry)
 
 > **Note:** This document is maintained for reference. The authoritative source is the JSON registry at:
-> `src/vector_inspector/data/known_embedding_models.json`
+> `src/vector_inspector/config/known_embedding_models.json`
 >
 > The JSON file is loaded at runtime and combined with user-added custom models to provide
 > the complete model catalog. When adding new models for releases, update the JSON file.
@@ -422,7 +422,7 @@ This file is a living registry of embedding models the app is aware of. Each ent
 
 ## Contributing
 
-- **To add a new model for a release:** Edit `src/vector_inspector/data/known_embedding_models.json`
+- **To add a new model for a release:** Edit `src/vector_inspector/config/known_embedding_models.json`
 - Include: name, type, dimension, modality, normalization, source, and description
 - For cloud models, note API key/credential requirement in the description
 - Update this markdown file to keep documentation in sync
