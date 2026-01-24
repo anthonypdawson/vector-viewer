@@ -175,85 +175,84 @@ class EmbeddingConfigDialog(QDialog):
         
         layout.addLayout(button_layout)
     
-        def _setup_custom_ui(self, layout):
-            """Setup UI for custom model entry."""
-            # Info section
-            info_group = QGroupBox("Collection Information")
-            info_layout = QVBoxLayout()
-        
-            info_layout.addWidget(QLabel(f"<b>Collection:</b> {self.collection_name}"))
-            info_layout.addWidget(QLabel(f"<b>Vector Dimension:</b> {self.vector_dimension}"))
-            info_group.setLayout(info_layout)
-            layout.addWidget(info_group)
-        
-            # Custom model entry section
-            custom_group = QGroupBox("Enter Custom Model Details")
-            custom_layout = QFormLayout()
-        
-            self.custom_name_input = QLineEdit()
-            self.custom_name_input.setPlaceholderText("e.g., sentence-transformers/all-mpnet-base-v2")
-            custom_layout.addRow("Model Name:", self.custom_name_input)
-        
-            self.custom_type_combo = QComboBox()
-            self.custom_type_combo.addItems(["sentence-transformer", "clip", "openai", "cohere", "vertex-ai", "voyage", "custom"])
-            custom_layout.addRow("Model Type:", self.custom_type_combo)
-        
-            self.custom_desc_input = QLineEdit()
-            self.custom_desc_input.setPlaceholderText("Brief description (optional)")
-            custom_layout.addRow("Description:", self.custom_desc_input)
-        
-            custom_note = QLabel("💡 Custom models will be saved and available for future use with this dimension.")
-            custom_note.setWordWrap(True)
-            custom_note.setStyleSheet("color: #666; font-size: 10px; padding: 4px;")
-            custom_layout.addRow(custom_note)
-        
-            custom_group.setLayout(custom_layout)
-            layout.addWidget(custom_group)
-        
-            # Buttons for custom entry
-            button_layout = QHBoxLayout()
-            button_layout.addStretch()
-        
-            cancel_btn = QPushButton("Cancel")
-            cancel_btn.clicked.connect(self.reject)
-        
-            save_btn = QPushButton("Save")
-            save_btn.clicked.connect(self._save_custom_model)
-            save_btn.setDefault(True)
-        
-            button_layout.addWidget(cancel_btn)
-            button_layout.addWidget(save_btn)
-        
-            layout.addLayout(button_layout)
-        
-            # No combo or description for custom mode
-            self.model_combo = None
+    def _setup_custom_ui(self, layout):
+        """Setup UI for custom model entry."""
+        # Info section
+        info_group = QGroupBox("Collection Information")
+        info_layout = QVBoxLayout()
+        info_layout.addWidget(QLabel(f"<b>Collection:</b> {self.collection_name}"))
+        info_layout.addWidget(QLabel(f"<b>Vector Dimension:</b> {self.vector_dimension}"))
+        info_group.setLayout(info_layout)
+        layout.addWidget(info_group)
+
+        # Custom model entry section
+        custom_group = QGroupBox("Enter Custom Model Details")
+        custom_layout = QFormLayout()
+
+        self.custom_name_input = QLineEdit()
+        self.custom_name_input.setPlaceholderText("e.g., sentence-transformers/all-mpnet-base-v2")
+        custom_layout.addRow("Model Name:", self.custom_name_input)
+
+        self.custom_type_combo = QComboBox()
+        self.custom_type_combo.addItems(["sentence-transformer", "clip", "openai", "cohere", "vertex-ai", "voyage", "custom"])
+        custom_layout.addRow("Model Type:", self.custom_type_combo)
+
+        self.custom_desc_input = QLineEdit()
+        self.custom_desc_input.setPlaceholderText("Brief description (optional)")
+        custom_layout.addRow("Description:", self.custom_desc_input)
+
+        custom_note = QLabel("💡 Custom models will be saved and available for future use with this dimension.")
+        custom_note.setWordWrap(True)
+        custom_note.setStyleSheet("color: #666; font-size: 10px; padding: 4px;")
+        custom_layout.addRow(custom_note)
+
+        custom_group.setLayout(custom_layout)
+        layout.addWidget(custom_group)
+
+        # Buttons for custom entry
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self._save_custom_model)
+        save_btn.setDefault(True)
+
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+
+        layout.addLayout(button_layout)
+
+        # No combo or description for custom mode
+        self.model_combo = None
     
-        def _save_custom_model(self):
-            """Save custom model entry."""
-            custom_name = self.custom_name_input.text().strip()
-            custom_desc = self.custom_desc_input.text().strip()
-            custom_type = self.custom_type_combo.currentText()
-        
-            if not custom_name:
-                QMessageBox.warning(self, "Invalid Input", "Please enter a model name.")
-                return
-        
-            # Save custom model to registry
-            from vector_inspector.services.settings_service import SettingsService
-            settings = SettingsService()
-        
-            settings.add_custom_embedding_model(
-                model_name=custom_name,
-                dimension=self.vector_dimension,
-                model_type=custom_type,
-                description=custom_desc if custom_desc else f"Custom {custom_type} model"
-            )
-        
-            # Set selection to custom model
-            self.selected_model = custom_name
-            self.selected_type = custom_type
-            self.accept()
+    def _save_custom_model(self):
+        """Save custom model entry."""
+        custom_name = self.custom_name_input.text().strip()
+        custom_desc = self.custom_desc_input.text().strip()
+        custom_type = self.custom_type_combo.currentText()
+
+        if not custom_name:
+            QMessageBox.warning(self, "Invalid Input", "Please enter a model name.")
+            return
+
+        # Save custom model to registry
+        from vector_inspector.services.settings_service import SettingsService
+        settings = SettingsService()
+
+        settings.add_custom_embedding_model(
+            model_name=custom_name,
+            dimension=self.vector_dimension,
+            model_type=custom_type,
+            description=custom_desc if custom_desc else f"Custom {custom_type} model"
+        )
+
+        # Set selection to custom model
+        self.selected_model = custom_name
+        self.selected_type = custom_type
+        self.accept()
     
     def _update_description(self):
         """Update the description text based on selected model."""

@@ -463,8 +463,34 @@ class ChromaDBConnection(VectorDBConnection):
 
     # Implement base connection uniform APIs
     def create_collection(self, name: str, vector_size: int, distance: str = "Cosine") -> bool:
-        """Create a collection. Chroma doesn't require vector size at creation."""
-        return self.get_collection(name) is not None
+        """Create a collection. If it doesn't exist, attempt to create it using Chroma client APIs."""
+        if not self._client:
+            return False
+
+        try:
+            # Prefer get_or_create_collection if available
+            if hasattr(self._client, "get_or_create_collection"):
+                col = self._client.get_or_create_collection(name=name)
+                self._current_collection = col
+                return True
+
+            # Fallback to create_collection/create and then fetch
+            if hasattr(self._client, "create_collection"):
+                try:
+                    self._client.create_collection(name=name)
+                except Exception:
+                    # Some clients may raise if already exists; ignore
+                    pass
+                col = self._client.get_collection(name=name)
+                self._current_collection = col
+                return col is not None
+
+            # As a last resort, check if collection exists
+            col = self.get_collection(name)
+            return col is not None
+        except Exception as e:
+            print(f"Failed to create collection: {e}")
+            return False
 
     def get_items(self, name: str, ids: List[str]) -> Dict[str, Any]:
         """Retrieve items by IDs."""
