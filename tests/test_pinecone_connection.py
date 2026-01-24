@@ -154,14 +154,19 @@ def test_pinecone_add_items_without_embeddings(mock_pinecone_client):
 
 
 def test_pinecone_query_collection(mock_pinecone_client):
-    """Test querying a collection."""
+    """Test querying a collection.
+    
+    Note: Pinecone returns similarity scores (not distances).
+    The 'distances' field in results actually contains similarity scores
+    in the range [0, 1] for cosine metric, where higher is more similar.
+    """
     mock_index = Mock()
     mock_pinecone_client.Index.return_value = mock_index
     
     # Mock query results
     mock_match1 = Mock()
     mock_match1.id = "match1"
-    mock_match1.score = 0.9
+    mock_match1.score = 0.9  # Similarity score
     mock_match1.metadata = {"document": "doc1", "key": "value1"}
     mock_match1.values = [0.1, 0.2]
     
@@ -182,6 +187,7 @@ def test_pinecone_query_collection(mock_pinecone_client):
     assert results is not None
     assert len(results["ids"]) == 1
     assert results["ids"][0] == ["match1"]
+    # Expects similarity score (0.9), not distance (0.1)
     assert results["distances"][0] == [0.9]
     assert results["documents"][0] == ["doc1"]
 

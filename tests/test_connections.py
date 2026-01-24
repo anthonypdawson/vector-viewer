@@ -5,7 +5,17 @@ import uuid
 
 @pytest.mark.parametrize("provider", ["chroma", "qdrant"])
 def test_provider_integration(provider, tmp_path):
-    """Test provider connection using standard add_items signature."""
+    """Test provider connection using standard add_items signature.
+    
+    This integration test verifies that both ChromaDB and Qdrant providers:
+    1. Can create collections with proper vector dimensions
+    2. Accept items via standard add_items(collection, documents, metadatas, ids, embeddings) signature
+    3. Persist items and allow retrieval
+    4. Support collection deletion
+    
+    Note: Tests expect create_collection to return True on success (implemented via
+    get_or_create_collection for ChromaDB compatibility).
+    """
     collection_name = f"test_collection_{uuid.uuid4().hex[:8]}"
     test_ids = ["id1", "id2"]
     test_vectors = [[0.1, 0.2], [0.3, 0.4]]
@@ -15,6 +25,7 @@ def test_provider_integration(provider, tmp_path):
     if provider == "chroma":
         conn = ChromaDBConnection()
         assert conn.connect()
+        # Expects create_collection to return True (using get_or_create_collection internally)
         assert conn.create_collection(collection_name, vector_size=2)
         # Use standard signature: collection_name, documents, metadatas, ids, embeddings
         success = conn.add_items(
