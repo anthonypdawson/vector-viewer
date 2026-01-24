@@ -266,6 +266,7 @@ class ProfileEditorDialog(QDialog):
         self.provider_combo = QComboBox()
         self.provider_combo.addItem("ChromaDB", "chromadb")
         self.provider_combo.addItem("Qdrant", "qdrant")
+        self.provider_combo.addItem("Pinecone", "pinecone")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         form_layout.addRow("Provider:", self.provider_combo)
         
@@ -356,23 +357,48 @@ class ProfileEditorDialog(QDialog):
             if self.port_input.text() == "6333":
                 self.port_input.setText("8000")
         
-        # Show/hide API key field
-        is_http = self.http_radio.isChecked()
-        self.api_key_input.setEnabled(is_http and provider == "qdrant")
+        # For Pinecone, disable persistent/ephemeral modes and only show API key
+        if provider == "pinecone":
+            self.persistent_radio.setEnabled(False)
+            self.http_radio.setEnabled(True)
+            self.http_radio.setChecked(True)
+            self.ephemeral_radio.setEnabled(False)
+            self.path_input.setEnabled(False)
+            self.path_browse_btn.setEnabled(False)
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+            self.api_key_input.setEnabled(True)
+        else:
+            self.persistent_radio.setEnabled(True)
+            self.http_radio.setEnabled(True)
+            self.ephemeral_radio.setEnabled(True)
+            # Show/hide API key field
+            is_http = self.http_radio.isChecked()
+            self.api_key_input.setEnabled(is_http and provider == "qdrant")
+            # Update other fields based on connection type
+            self._on_type_changed()
     
     def _on_type_changed(self):
         """Handle connection type change."""
         is_persistent = self.persistent_radio.isChecked()
         is_http = self.http_radio.isChecked()
         
-        # Show/hide relevant fields
-        self.path_input.setEnabled(is_persistent)
-        self.path_browse_btn.setEnabled(is_persistent)
-        self.host_input.setEnabled(is_http)
-        self.port_input.setEnabled(is_http)
-        
         provider = self.provider_combo.currentData()
-        self.api_key_input.setEnabled(is_http and provider == "qdrant")
+        
+        # Pinecone always uses API key, no path/host/port
+        if provider == "pinecone":
+            self.path_input.setEnabled(False)
+            self.path_browse_btn.setEnabled(False)
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+            self.api_key_input.setEnabled(True)
+        else:
+            # Show/hide relevant fields
+            self.path_input.setEnabled(is_persistent)
+            self.path_browse_btn.setEnabled(is_persistent)
+            self.host_input.setEnabled(is_http)
+            self.port_input.setEnabled(is_http)
+            self.api_key_input.setEnabled(is_http and provider == "qdrant")
     
     def _browse_for_path(self):
         """Browse for persistent storage path."""
@@ -405,7 +431,10 @@ class ProfileEditorDialog(QDialog):
         conn_type = config.get("type", "persistent")
         
         # Set connection type
-        if conn_type == "persistent":
+        if conn_type == "cloud":
+            # Pinecone cloud connection
+            self.http_radio.setChecked(True)
+        elif conn_type == "persistent":
             self.persistent_radio.setChecked(True)
             self.path_input.setText(config.get("path", ""))
         elif conn_type == "http":
@@ -429,9 +458,16 @@ class ProfileEditorDialog(QDialog):
         # Create connection
         from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
         from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+        from vector_inspector.core.connections.pinecone_connection import PineconeConnection
         
         try:
-            if provider == "chromadb":
+            if provider == "pinecone":
+                api_key = self.api_key_input.text()
+                if not api_key:
+                    QMessageBox.warning(self, "Missing API Key", "Pinecone requires an API key.")
+                    return
+                conn = PineconeConnection(api_key=api_key)
+            elif provider == "chromadb":
                 conn = ChromaDBConnection(**self._get_connection_kwargs(config))
             else:
                 conn = QdrantConnection(**self._get_connection_kwargs(config))
@@ -455,8 +491,12 @@ class ProfileEditorDialog(QDialog):
     def _get_config(self) -> dict:
         """Get configuration from form."""
         config = {}
+        provider = self.provider_combo.currentData()
         
-        if self.persistent_radio.isChecked():
+        # Pinecone uses cloud connection type
+        if provider == "pinecone":
+            config["type"] = "cloud"
+        elif self.persistent_radio.isChecked():
             config["type"] = "persistent"
             config["path"] = self.path_input.text()
         elif self.http_radio.isChecked():
@@ -494,7 +534,14 @@ class ProfileEditorDialog(QDialog):
         
         # Get credentials
         credentials = {}
-        if self.api_key_input.text() and self.http_radio.isChecked():
+        if provider == "pinecone":
+            # Pinecone always requires API key
+            if self.api_key_input.text():
+                credentials["api_key"] = self.api_key_input.text()
+            else:
+                QMessageBox.warning(self, "Missing API Key", "Pinecone requires an API key.")
+                return
+        elif self.api_key_input.text() and self.http_radio.isChecked():
             credentials["api_key"] = self.api_key_input.text()
         
         if self.is_edit_mode:

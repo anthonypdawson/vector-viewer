@@ -289,11 +289,18 @@ class ConnectionManagerPanel(QWidget):
         if not instance or not instance.connection.is_connected:
             return
         
+        # Show loading while refreshing
+        from ..components.loading_dialog import LoadingDialog
+        loading = LoadingDialog("Refreshing collections...", self)
+        loading.show_loading("Refreshing collections...")
+        QApplication.processEvents()
         try:
             collections = instance.connection.list_collections()
             self.connection_manager.update_collections(connection_id, collections)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to refresh collections: {e}")
+        finally:
+            loading.hide_loading()
     
     def _disconnect_connection(self, connection_id: str):
         """Disconnect a connection."""

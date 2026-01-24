@@ -3,31 +3,33 @@
 from typing import Optional, Union, Tuple
 from sentence_transformers import SentenceTransformer
 
+from .model_registry import get_model_registry
 
-# Mapping of vector dimensions to appropriate models
-# Format: dimension -> list of (model_name, model_type, description)
-# Listed in order of preference for ambiguous cases
-DIMENSION_TO_MODEL = {
-    384: [
-        ("all-MiniLM-L6-v2", "sentence-transformer", "Fast text embeddings"),
-    ],
-    512: [
-        ("openai/clip-vit-base-patch32", "clip", "Multi-modal (text + images)"),
-        ("paraphrase-albert-small-v2", "sentence-transformer", "Text-only paraphrase"),
-    ],
-    768: [
-        ("all-mpnet-base-v2", "sentence-transformer", "High quality text embeddings"),
-    ],
-    1024: [
-        ("all-roberta-large-v1", "sentence-transformer", "Large text embeddings"),
-    ],
-    1536: [
-        ("gtr-t5-large", "sentence-transformer", "Very large text embeddings"),
-    ],
-}
 
 # Default model to use when dimension is unknown or not mapped
 DEFAULT_MODEL = ("all-MiniLM-L6-v2", "sentence-transformer")
+
+
+def _get_dimension_to_model_dict():
+    """Build dimension->models dictionary from registry.
+    
+    Returns:
+        Dict mapping dimension to list of (name, type, description) tuples
+    """
+    registry = get_model_registry()
+    dimension_map = {}
+    
+    for dimension in registry.get_all_dimensions():
+        models = registry.get_models_by_dimension(dimension)
+        dimension_map[dimension] = [
+            (m.name, m.type, m.description) for m in models
+        ]
+    
+    return dimension_map
+
+
+# For backward compatibility - dynamically loads from registry
+DIMENSION_TO_MODEL = _get_dimension_to_model_dict()
 
 
 def get_model_for_dimension(dimension: int, prefer_multimodal: bool = True) -> Tuple[str, str]:
@@ -42,30 +44,36 @@ def get_model_for_dimension(dimension: int, prefer_multimodal: bool = True) -> T
     Returns:
         Tuple of (model_name, model_type) where model_type is "sentence-transformer" or "clip"
     """
-    if dimension in DIMENSION_TO_MODEL:
-        models = DIMENSION_TO_MODEL[dimension]
-        if len(models) == 1:
-            return (models[0][0], models[0][1])
-        
-        # Multiple models available - apply preference
-        if prefer_multimodal:
-            # Prefer CLIP/multimodal
-            for model_name, model_type, desc in models:
-                if model_type == "clip":
-                    return (model_name, model_type)
-        
-        # Default to first option
-        return (models[0][0], models[0][1])
+    registry = get_model_registry()
+    models = registry.get_models_by_dimension(dimension)
     
-    # Find the closest dimension if exact match not found
-    closest_dim = min(DIMENSION_TO_MODEL.keys(), key=lambda x: abs(x - dimension))
-    models = DIMENSION_TO_MODEL[closest_dim]
-    return (models[0][0], models[0][1])
+    if not models:
+        # Find the closest dimension if exact match not found
+        closest_dim = registry.find_closest_dimension(dimension)
+        if closest_dim:
+            models = registry.get_models_by_dimension(closest_dim)
+    
+    if not models:
+        return DEFAULT_MODEL
+    
+    if len(models) == 1:
+        return (models[0].name, models[0].type)
+    
+    # Multiple models available - apply preference
+    if prefer_multimodal:
+        # Prefer CLIP/multimodal
+        for model in models:
+            if model.modality == "multimodal" or model.type == "clip":
+                return (model.name, model.type)
+    
+    # Default to first option
+    return (models[0].name, models[0].type)
 
 
 def get_available_models_for_dimension(dimension: int) -> list:
     """
     Get all available model options for a given dimension.
+    Includes both predefined (from registry) and custom user-added models.
     
     Args:
         dimension: The vector dimension size
@@ -73,9 +81,28 @@ def get_available_models_for_dimension(dimension: int) -> list:
     Returns:
         List of tuples: [(model_name, model_type, description), ...]
     """
-    if dimension in DIMENSION_TO_MODEL:
-        return DIMENSION_TO_MODEL[dimension]
-    return []
+    # Start with models from registry
+    registry = get_model_registry()
+    registry_models = registry.get_models_by_dimension(dimension)
+    models = [(m.name, m.type, m.description) for m in registry_models]
+    
+    # Add custom models from settings
+    try:
+        from ..services.settings_service import SettingsService
+        settings = SettingsService()
+        custom_models = settings.get_custom_embedding_models(dimension)
+        
+        for model in custom_models:
+            # Format: (model_name, model_type, description)
+            models.append((
+                model["name"],
+                model["type"],
+                f"{model['description']} (custom)"
+            ))
+    except Exception as e:
+        print(f"Warning: Could not load custom models: {e}")
+    
+    return models
 
 
 def load_embedding_model(model_name: str, model_type: str) -> Union[SentenceTransformer, any]:

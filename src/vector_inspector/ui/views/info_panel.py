@@ -7,10 +7,12 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QObject
 from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QApplication
 
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 from vector_inspector.core.cache_manager import get_cache_manager
 
 
@@ -199,6 +201,15 @@ class InfoPanel(QWidget):
                 self._update_label(self.api_key_label, "Present (hidden)")
             else:
                 self._update_label(self.api_key_label, "Not configured")
+                
+        elif isinstance(self.connection, PineconeConnection):
+            self._update_label(self.connection_type_label, "Cloud")
+            self._update_label(self.endpoint_label, "Pinecone Cloud")
+            
+            if self.connection.api_key:
+                self._update_label(self.api_key_label, "Present (hidden)")
+            else:
+                self._update_label(self.api_key_label, "Not configured")
         else:
             self._update_label(self.connection_type_label, "Unknown")
             self._update_label(self.endpoint_label, "N/A")
@@ -317,6 +328,18 @@ class InfoPanel(QWidget):
                     opt = config["optimizer_config"]
                     details_list.append(f"• Indexing threshold: {opt.get('indexing_threshold', 'N/A')}")
         
+        elif isinstance(self.connection, PineconeConnection):
+            details_list.append("• Provider: Pinecone")
+            details_list.append("• Supports: Vectors, Metadata")
+            details_list.append("• Cloud-hosted vector database")
+            # Add Pinecone-specific info if available
+            if "host" in collection_info:
+                details_list.append(f"• Host: {collection_info['host']}")
+            if "status" in collection_info:
+                details_list.append(f"• Status: {collection_info['status']}")
+            if "spec" in collection_info:
+                details_list.append(f"• Spec: {collection_info['spec']}")
+        
         if details_list:
             self.provider_details_label.setText("\n".join(details_list))
             self.provider_details_label.setStyleSheet("color: white; padding-left: 20px; font-family: monospace;")
@@ -358,18 +381,24 @@ class InfoPanel(QWidget):
         # Check if stored in collection metadata
         if 'embedding_model' in collection_info:
             model_name = collection_info['embedding_model']
-            model_type = collection_info.get('embedding_model_type', 'unknown')
+            model_type = collection_info.get('embedding_model_type', 'stored')
             self.embedding_model_label.setText(f"{model_name} ({model_type})")
             self.embedding_model_label.setStyleSheet("color: lightgreen;")
             return
         
+        # Try to get from connection using the helper method
+        if self.connection and self.current_collection:
+            detected_model = self.connection.get_embedding_model(self.current_collection, self.connection_id)
+            if detected_model:
+                self.embedding_model_label.setText(f"{detected_model} (detected)")
+                self.embedding_model_label.setStyleSheet("color: lightgreen;")
+                return
+        
         # Check user settings
         settings = SettingsService()
-        collection_models = settings.get('collection_embedding_models', {})
-        collection_key = f"{self.connection_id}:{self.current_collection}"
+        model_info = settings.get_embedding_model(self.connection_id, self.current_collection)
         
-        if collection_key in collection_models:
-            model_info = collection_models[collection_key]
+        if model_info:
             model_name = model_info['model']
             model_type = model_info.get('type', 'unknown')
             self.embedding_model_label.setText(f"{model_name} ({model_type})")
@@ -385,11 +414,21 @@ class InfoPanel(QWidget):
         if not self.current_collection:
             return
         
-        from ..dialogs.embedding_config_dialog import EmbeddingConfigDialog
+        # Show loading immediately; preparing can touch DB/registry
+        from ..components.loading_dialog import LoadingDialog
+        loading = LoadingDialog("Preparing model configuration...", self)
+        loading.show_loading("Preparing model configuration...")
+        QApplication.processEvents()
+
+        from ..dialogs import ProviderTypeDialog, EmbeddingConfigDialog
         from ...services.settings_service import SettingsService
         
         # Get current collection info
-        collection_info = self.connection.get_collection_info(self.current_collection)
+        try:
+            collection_info = self.connection.get_collection_info(self.current_collection)
+        finally:
+            # Hide loading before presenting dialogs
+            loading.hide_loading()
         if not collection_info:
             return
         
@@ -399,8 +438,6 @@ class InfoPanel(QWidget):
         
         # Get current configuration if any
         settings = SettingsService()
-        collection_models = settings.get('collection_embedding_models', {})
-        collection_key = f"{self.connection_id}:{self.current_collection}"
         
         current_model = None
         current_type = None
@@ -408,37 +445,49 @@ class InfoPanel(QWidget):
         # Check metadata first
         if 'embedding_model' in collection_info:
             current_model = collection_info['embedding_model']
-            current_type = collection_info.get('embedding_model_type')
+            current_type = collection_info.get('embedding_model_type', 'stored')
         # Then check settings
-        elif collection_key in collection_models:
-            model_info = collection_models[collection_key]
-            current_model = model_info.get('model')
-            current_type = model_info.get('type')
+        else:
+            model_info = settings.get_embedding_model(self.connection_id, self.current_collection)
+            if model_info:
+                current_model = model_info.get('model')
+                current_type = model_info.get('type')
         
-        # Open dialog
-        dialog = EmbeddingConfigDialog(
+        # Step 1: Provider Type Selection
+        type_dialog = ProviderTypeDialog(
             self.current_collection,
             vector_dim,
+            self
+        )
+        
+        type_result = type_dialog.exec()
+        if type_result != QDialog.DialogCode.Accepted:
+            return  # User cancelled
+        
+        provider_type = type_dialog.get_selected_type()
+        if not provider_type:
+            return
+        
+        # Step 2: Model Selection (filtered by provider type)
+        model_dialog = EmbeddingConfigDialog(
+            self.current_collection,
+            vector_dim,
+            provider_type,
             current_model,
             current_type,
             self
         )
         
-        result = dialog.exec()
+        # Optionally show brief loading while populating models
+        # (dialog itself handles content; only show if provider lists are large)
+        result = model_dialog.exec()
         
         if result == QDialog.DialogCode.Accepted:
-            # Save the configuration
-            selection = dialog.get_selection()
+            # Save the configuration using the new SettingsService method
+            selection = model_dialog.get_selection()
             if selection:
                 model_name, model_type = selection
-                
-                if collection_key not in collection_models:
-                    collection_models[collection_key] = {}
-                
-                collection_models[collection_key]['model'] = model_name
-                collection_models[collection_key]['type'] = model_type
-                
-                settings.set('collection_embedding_models', collection_models)
+                settings.save_embedding_model(self.connection_id, self.current_collection, model_name, model_type)
                 
                 # Refresh display
                 self._update_embedding_model_display(collection_info)
@@ -446,12 +495,10 @@ class InfoPanel(QWidget):
                 print(f"✓ Configured embedding model for '{self.current_collection}': {model_name} ({model_type})")
                 
         elif result == 2:  # Clear configuration
-            # Remove from settings
-            if collection_key in collection_models:
-                del collection_models[collection_key]
-                settings.set('collection_embedding_models', collection_models)
-                
-                # Refresh display
-                self._update_embedding_model_display(collection_info)
-                
-                print(f"✓ Cleared embedding model configuration for '{self.current_collection}'")
+            # Remove from settings using the new SettingsService method
+            settings.remove_embedding_model(self.connection_id, self.current_collection)
+            
+            # Refresh display
+            self._update_embedding_model_display(collection_info)
+            
+            print(f"✓ Cleared embedding model configuration for '{self.current_collection}'")

@@ -107,12 +107,31 @@ class MigrationThread(QThread):
                 self.progress.emit(100, f"Migration complete!")
                 self.finished.emit(True, f"Successfully migrated {self.source_collection} to {self.target_collection}")
             else:
-                self.finished.emit(False, "Failed to restore to target collection.")
+                # Clean up target collection on failure
+                try:
+                    if self.target_collection in self.target_conn.connection.list_collections():
+                        self.progress.emit(90, "Cleaning up failed migration...")
+                        print(f"Cleaning up failed migration: deleting target collection '{self.target_collection}'")
+                        self.target_conn.connection.delete_collection(self.target_collection)
+                except Exception as cleanup_error:
+                    print(f"Warning: Failed to clean up target collection: {cleanup_error}")
+                
+                self.finished.emit(False, "Failed to restore to target collection. Target collection cleaned up.")
         
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
             print(f"Migration error details:\n{error_details}")
+            
+            # Clean up target collection on exception
+            try:
+                if self.target_conn and self.target_conn.connection.is_connected:
+                    if self.target_collection in self.target_conn.connection.list_collections():
+                        print(f"Cleaning up failed migration: deleting target collection '{self.target_collection}'")
+                        self.target_conn.connection.delete_collection(self.target_collection)
+            except Exception as cleanup_error:
+                print(f"Warning: Failed to clean up target collection: {cleanup_error}")
+            
             self.finished.emit(False, f"Migration error: {str(e)}")
         
         finally:

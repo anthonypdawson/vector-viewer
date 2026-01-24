@@ -13,6 +13,7 @@ import numpy as np
 
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.services.visualization_service import VisualizationService
+from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
 
 class VisualizationThread(QThread):
@@ -106,6 +107,9 @@ class VisualizationView(QWidget):
         self.status_label.setMaximumHeight(30)
         layout.addWidget(self.status_label)
         
+        # Loading dialog for data fetch and reduction
+        self.loading_dialog = LoadingDialog("Loading visualization...", self)
+        
     def set_collection(self, collection_name: str):
         """Set the current collection to visualize."""
         self.current_collection = collection_name
@@ -119,12 +123,17 @@ class VisualizationView(QWidget):
             QMessageBox.warning(self, "No Collection", "Please select a collection first.")
             return
             
-        # Load data with embeddings
+        # Load data with embeddings (show loading immediately)
+        self.loading_dialog.show_loading("Loading data for visualization...")
+        QApplication.processEvents()
         sample_size = self.sample_spin.value()
-        data = self.connection.get_all_items(
-            self.current_collection,
-            limit=sample_size
-        )
+        try:
+            data = self.connection.get_all_items(
+                self.current_collection,
+                limit=sample_size
+            )
+        finally:
+            self.loading_dialog.hide_loading()
         
         if data is None or not data or "embeddings" not in data or data["embeddings"] is None or len(data["embeddings"]) == 0:
             QMessageBox.warning(
@@ -152,10 +161,14 @@ class VisualizationView(QWidget):
         )
         self.visualization_thread.finished.connect(self._on_reduction_finished)
         self.visualization_thread.error.connect(self._on_reduction_error)
+        # Show loading during reduction
+        self.loading_dialog.show_loading("Reducing dimensions...")
+        QApplication.processEvents()
         self.visualization_thread.start()
         
     def _on_reduction_finished(self, reduced_data: Any):
         """Handle dimensionality reduction completion."""
+        self.loading_dialog.hide_loading()
         self.reduced_data = reduced_data
         self._create_plot()
         self.generate_button.setEnabled(True)
@@ -163,6 +176,7 @@ class VisualizationView(QWidget):
         
     def _on_reduction_error(self, error_msg: str):
         """Handle dimensionality reduction error."""
+        self.loading_dialog.hide_loading()
         print(f"Error: Visualization failed: {error_msg}")
         QMessageBox.warning(self, "Error", f"Visualization failed: {error_msg}")
         self.generate_button.setEnabled(True)

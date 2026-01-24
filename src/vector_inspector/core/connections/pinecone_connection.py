@@ -350,6 +350,44 @@ class PineconeConnection(VectorDBConnection):
         except Exception:
             return 0
     
+    def _get_embedding_function_for_collection(self, collection_name: str):
+        """
+        Returns embedding function and model type for a given collection, matching ChromaDB/Qdrant API.
+        """
+        info = self.get_collection_info(collection_name)
+        dim = info.get("vector_dimension") if info else None
+        try:
+            dim_int = int(dim) if dim is not None else None
+        except Exception:
+            dim_int = None
+
+        # Prefer user-configured model for this collection
+        from vector_inspector.services.settings_service import SettingsService
+        model = None
+        model_type: str = "sentence-transformer"
+        if hasattr(self, "connection_id") and collection_name:
+            settings = SettingsService()
+            cfg = settings.get_embedding_model(getattr(self, "connection_id", ""), collection_name)
+            if cfg and cfg.get("model") and cfg.get("type"):
+                from vector_inspector.core.embedding_utils import load_embedding_model
+                model = load_embedding_model(cfg["model"], cfg["type"])
+                model_type = str(cfg["type"]) or "sentence-transformer"
+
+        # Fallback to dimension-based model if none configured
+        if model is None:
+            from vector_inspector.core.embedding_utils import get_embedding_model_for_dimension
+            if dim_int is None:
+                dim_int = 384  # default for MiniLM
+            loaded_model, _, inferred_type = get_embedding_model_for_dimension(dim_int)
+            model = loaded_model
+            model_type = str(inferred_type) or "sentence-transformer"
+
+        from vector_inspector.core.embedding_utils import encode_text
+        def embedding_fn(text: str):
+            return encode_text(text, model, model_type)
+
+        return embedding_fn, model_type
+
     def query_collection(
         self,
         collection_name: str,
@@ -364,15 +402,21 @@ class PineconeConnection(VectorDBConnection):
         
         Args:
             collection_name: Name of index
-            query_texts: Text queries (not supported - embeddings required)
+            query_texts: Text queries (will be embedded if provided)
             query_embeddings: Query embedding vectors
             n_results: Number of results to return
             where: Metadata filter
             where_document: Document content filter (not directly supported)
-            
         Returns:
             Query results or None if failed
         """
+
+        # If query_embeddings not provided, but query_texts are, embed them using the embedding function
+        if query_embeddings is None and query_texts:
+            embedding_fn, _ = self._get_embedding_function_for_collection(collection_name)
+            query_embeddings = [embedding_fn(q) for q in query_texts]
+            query_texts = None
+
         if not query_embeddings:
             print("Query embeddings are required for Pinecone")
             return None
@@ -413,7 +457,12 @@ class PineconeConnection(VectorDBConnection):
                 if hasattr(result, 'matches'):
                     for match in result.matches:  # type: ignore
                         ids.append(match.id)  # type: ignore
-                        distances.append(match.score)  # type: ignore
+                        # Convert similarity to distance for cosine metric
+                        score = getattr(match, 'score', None)
+                        if score is not None:
+                            distances.append(1.0 - score)
+                        else:
+                            distances.append(None)
                         
                         metadata = match.metadata or {}  # type: ignore
                         doc = metadata.pop('document', '')

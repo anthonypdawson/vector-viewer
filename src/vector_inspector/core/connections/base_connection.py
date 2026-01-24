@@ -229,5 +229,46 @@ class VectorDBConnection(ABC):
             {"name": "in", "server_side": True},
             {"name": "not in", "server_side": True},
             {"name": "contains", "server_side": False},
-            {"name": "not contains", "server_side": False},
         ]
+    
+    def get_embedding_model(self, collection_name: str, connection_id: Optional[str] = None) -> Optional[str]:
+        """
+        Get the embedding model used for a collection.
+        
+        Retrieves the model name from:
+        1. Collection-level metadata (if supported)
+        2. Vector metadata (_embedding_model field)
+        3. User settings (for collections we can't modify)
+        
+        Args:
+            collection_name: Name of collection
+            connection_id: Optional connection ID for settings lookup
+            
+        Returns:
+            Model name string (e.g., "sentence-transformers/all-MiniLM-L6-v2") or None
+        """
+        try:
+            # First try to get from collection-level metadata
+            info = self.get_collection_info(collection_name)
+            if info and info.get("embedding_model"):
+                return info["embedding_model"]
+            
+            # Fall back to checking a sample vector's metadata
+            data = self.get_all_items(collection_name, limit=1, offset=0)
+            if data and data.get("metadatas") and len(data["metadatas"]) > 0:
+                metadata = data["metadatas"][0]
+                if "_embedding_model" in metadata:
+                    return metadata["_embedding_model"]
+            
+            # Finally, check user settings (for collections we can't modify)
+            if connection_id:
+                from ...services.settings_service import SettingsService
+                settings = SettingsService()
+                model_info = settings.get_embedding_model(connection_id, collection_name)
+                if model_info:
+                    return model_info["model"]
+            
+            return None
+        except Exception as e:
+            print(f"Failed to get embedding model: {e}")
+            return None

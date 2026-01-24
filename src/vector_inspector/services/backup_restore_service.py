@@ -189,12 +189,28 @@ class BackupRestoreService:
                 return True
             else:
                 print("Failed to restore collection")
+                # Clean up partially created collection
+                try:
+                    if restore_collection_name in connection.list_collections():
+                        print(f"Cleaning up failed restore: deleting collection '{restore_collection_name}'")
+                        connection.delete_collection(restore_collection_name)
+                except Exception as cleanup_error:
+                    print(f"Warning: Failed to clean up collection: {cleanup_error}")
                 return False
                 
         except Exception as e:
             print(f"Restore failed: {e}")
             import traceback
             traceback.print_exc()
+            
+            # Clean up partially created collection
+            try:
+                if restore_collection_name in connection.list_collections():
+                    print(f"Cleaning up failed restore: deleting collection '{restore_collection_name}'")
+                    connection.delete_collection(restore_collection_name)
+            except Exception as cleanup_error:
+                print(f"Warning: Failed to clean up collection: {cleanup_error}")
+            
             return False
     
     @staticmethod

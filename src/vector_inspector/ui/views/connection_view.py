@@ -10,6 +10,7 @@ from PySide6.QtCore import Signal, QThread
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.services.settings_service import SettingsService
 
@@ -66,6 +67,7 @@ class ConnectionDialog(QDialog):
         self.provider_combo = QComboBox()
         self.provider_combo.addItem("ChromaDB", "chromadb")
         self.provider_combo.addItem("Qdrant", "qdrant")
+        self.provider_combo.addItem("Pinecone", "pinecone")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         provider_layout.addWidget(self.provider_combo)
         provider_group.setLayout(provider_layout)
@@ -179,19 +181,42 @@ class ConnectionDialog(QDialog):
             if self.port_input.text() == "6333":
                 self.port_input.setText("8000")
         
-        # Show/hide API key field
-        is_http = self.http_radio.isChecked()
-        self.api_key_input.setEnabled(is_http and self.provider == "qdrant")
+        # For Pinecone, hide persistent/HTTP options and only show API key
+        if self.provider == "pinecone":
+            self.persistent_radio.setEnabled(False)
+            self.http_radio.setEnabled(True)
+            self.http_radio.setChecked(True)
+            self.ephemeral_radio.setEnabled(False)
+            self.path_input.setEnabled(False)
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+            self.api_key_input.setEnabled(True)
+        else:
+            self.persistent_radio.setEnabled(True)
+            self.http_radio.setEnabled(True)
+            self.ephemeral_radio.setEnabled(True)
+            # Show/hide API key field
+            is_http = self.http_radio.isChecked()
+            self.api_key_input.setEnabled(is_http and self.provider == "qdrant")
+            # Update path/host/port based on connection type
+            self._on_type_changed()
         
     def _on_type_changed(self):
         """Handle connection type change."""
         is_persistent = self.persistent_radio.isChecked()
         is_http = self.http_radio.isChecked()
         
-        self.path_input.setEnabled(is_persistent)
-        self.host_input.setEnabled(is_http)
-        self.port_input.setEnabled(is_http)
-        self.api_key_input.setEnabled(is_http and self.provider == "qdrant")
+        # Pinecone always uses API key, no path/host/port
+        if self.provider == "pinecone":
+            self.path_input.setEnabled(False)
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+            self.api_key_input.setEnabled(True)
+        else:
+            self.path_input.setEnabled(is_persistent)
+            self.host_input.setEnabled(is_http)
+            self.port_input.setEnabled(is_http)
+            self.api_key_input.setEnabled(is_http and self.provider == "qdrant")
 
         self._update_absolute_preview()
         
@@ -202,7 +227,13 @@ class ConnectionDialog(QDialog):
         
         config = {"provider": self.provider}
         
-        if self.persistent_radio.isChecked():
+        # Pinecone only needs API key
+        if self.provider == "pinecone":
+            config.update({
+                "type": "cloud",
+                "api_key": self.api_key_input.text()
+            })
+        elif self.persistent_radio.isChecked():
             config.update({"type": "persistent", "path": self.path_input.text()})
         elif self.http_radio.isChecked():
             config.update({
@@ -286,7 +317,13 @@ class ConnectionDialog(QDialog):
         
         # Set connection type
         conn_type = last_config.get("type", "persistent")
-        if conn_type == "persistent":
+        if conn_type == "cloud":
+            # Pinecone cloud connection
+            self.http_radio.setChecked(True)
+            api_key = last_config.get("api_key")
+            if api_key:
+                self.api_key_input.setText(api_key)
+        elif conn_type == "persistent":
             self.persistent_radio.setChecked(True)
             path = last_config.get("path", "")
             if path:
@@ -370,7 +407,15 @@ class ConnectionView(QWidget):
         conn_type = config.get("type")
         
         # Create appropriate connection instance based on provider
-        if provider == "qdrant":
+        if provider == "pinecone":
+            api_key = config.get("api_key")
+            if not api_key:
+                self.loading_dialog.hide_loading()
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Missing API Key", "Pinecone requires an API key to connect.")
+                return
+            self.connection = PineconeConnection(api_key=api_key)
+        elif provider == "qdrant":
             if conn_type == "persistent":
                 self.connection = QdrantConnection(path=config.get("path"))
             elif conn_type == "http":

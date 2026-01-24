@@ -202,7 +202,7 @@ class SearchView(QWidget):
         QApplication.processEvents()
         
         try:
-            # Perform query
+            # Always pass query_texts; provider handles embedding if needed
             results = self.connection.query_collection(
                 self.current_collection,
                 query_texts=[query_text],

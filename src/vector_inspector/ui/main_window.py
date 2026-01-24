@@ -12,6 +12,7 @@ from vector_inspector.core.connection_manager import ConnectionManager, Connecti
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 from vector_inspector.services.profile_service import ProfileService
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.ui.components.connection_manager_panel import ConnectionManagerPanel
@@ -219,6 +220,7 @@ class MainWindow(QMainWindow):
         self.connection_manager.active_connection_changed.connect(self._on_active_connection_changed)
         self.connection_manager.active_collection_changed.connect(self._on_active_collection_changed)
         self.connection_manager.collections_updated.connect(self._on_collections_updated)
+        self.connection_manager.connection_opened.connect(self._on_connection_opened)
         
         # Connection panel signals
         self.connection_panel.collection_selected.connect(self._on_collection_selected_from_panel)
@@ -277,16 +279,35 @@ class MainWindow(QMainWindow):
             
             # Update views if this is the active connection
             if connection_id == self.connection_manager.get_active_connection_id():
+                # Show loading immediately when collection changes
                 if collection_name:
-                    self._update_views_for_collection(collection_name)
+                    self.loading_dialog.show_loading(f"Loading collection '{collection_name}'...")
+                    QApplication.processEvents()
+                    try:
+                        self._update_views_for_collection(collection_name)
+                    finally:
+                        self.loading_dialog.hide_loading()
                 else:
                     # Clear collection from views
-                    self._update_views_for_collection(None)
+                    self.loading_dialog.show_loading("Clearing collection...")
+                    QApplication.processEvents()
+                    try:
+                        self._update_views_for_collection(None)
+                    finally:
+                        self.loading_dialog.hide_loading()
     
     def _on_collections_updated(self, connection_id: str, collections: list):
         """Handle collections list updated."""
         # UI automatically updates via connection_manager_panel
         pass
+    
+    def _on_connection_opened(self, connection_id: str):
+        """Handle connection successfully opened."""
+        # If this is the active connection, refresh the info panel
+        if connection_id == self.connection_manager.get_active_connection_id():
+            instance = self.connection_manager.get_connection(connection_id)
+            if instance and instance.connection:
+                self.info_panel.refresh_database_info()
     
     def _on_collection_selected_from_panel(self, connection_id: str, collection_name: str):
         """Handle collection selection from connection panel."""
@@ -378,6 +399,8 @@ class MainWindow(QMainWindow):
                 connection = self._create_chroma_connection(config, credentials)
             elif provider == "qdrant":
                 connection = self._create_qdrant_connection(config, credentials)
+            elif provider == "pinecone":
+                connection = self._create_pinecone_connection(config, credentials)
             else:
                 QMessageBox.warning(self, "Error", f"Unsupported provider: {provider}")
                 return
@@ -438,6 +461,14 @@ class MainWindow(QMainWindow):
             )
         else:  # ephemeral
             return QdrantConnection()
+    
+    def _create_pinecone_connection(self, config: dict, credentials: dict) -> PineconeConnection:
+        """Create a Pinecone connection."""
+        api_key = credentials.get("api_key")
+        if not api_key:
+            raise ValueError("Pinecone requires an API key")
+        
+        return PineconeConnection(api_key=api_key)
     
     def _on_connection_finished(self, connection_id: str, success: bool, collections: list, error: str):
         """Handle connection thread completion."""
