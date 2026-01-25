@@ -622,6 +622,12 @@ class MainWindow(QMainWindow):
                 thread.quit()
                 thread.wait(1000)  # Wait up to 1 second
 
+        # Clean up temp HTML files from visualization view
+        if self.visualization_view is not None:
+            try:
+                self.visualization_view.cleanup_temp_html()
+            except Exception:
+                pass
         # Close all connections
         self.connection_manager.close_all_connections()
 
