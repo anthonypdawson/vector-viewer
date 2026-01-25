@@ -89,7 +89,12 @@ class ConnectionManager(QObject):
         self._active_connection_id: Optional[str] = None
 
     def create_connection(
-        self, name: str, provider: str, connection: VectorDBConnection, config: Dict[str, Any]
+        self,
+        name: str,
+        provider: str,
+        connection: VectorDBConnection,
+        config: Dict[str, Any],
+        connection_id: str = None,
     ) -> str:
         """
         Create a new connection instance (not yet connected).
@@ -99,6 +104,7 @@ class ConnectionManager(QObject):
             provider: Provider type
             connection: The connection object
             config: Connection configuration
+            connection_id: Optional. Use this ID instead of generating a new one (for profiles).
 
         Returns:
             The connection ID
@@ -109,7 +115,8 @@ class ConnectionManager(QObject):
         if len(self._connections) >= self.MAX_CONNECTIONS:
             raise RuntimeError(f"Maximum number of connections ({self.MAX_CONNECTIONS}) reached")
 
-        connection_id = str(uuid.uuid4())
+        if connection_id is None:
+            connection_id = str(uuid.uuid4())
         instance = ConnectionInstance(connection_id, name, provider, connection, config)
         self._connections[connection_id] = instance
 
