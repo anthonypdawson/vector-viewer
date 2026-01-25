@@ -23,3 +23,7 @@ Whenever a decision is made or new project information should be remembered, fol
 - **Confirm**: If the change is destructive or irreversible (migrations, deletions, major policy changes), request explicit confirmation before persisting.
 
 Keep this checklist in the file so it's always visible when contributors read the instructions.
+
+## Import Style
+
+- Prefer absolute imports within the project (for example: `from vector_inspector.core.embedding_utils import ...`) over relative imports. Absolute paths make code easier to edit across repositories and work better with editors and static analysis tools. Use relative imports only for very small, tightly-coupled internal modules when clearly justified.
