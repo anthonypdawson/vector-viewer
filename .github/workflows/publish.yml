@@ -102,7 +102,7 @@ jobs:
         cp README.md README.md.bak
         reason="${{ steps.release_reason.outputs.reason }}"
         if [ -n "$reason" ]; then
-          echo -e "$reason\n\n---\n" | cat - README.md.bak > README.md
+          echo -e "$reason" | cat - README.md.bak > README.md
         else
           cp README.md.bak README.md
         fi
