@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Create Github Release and Publish to PyPI
 
 on:
   push:
