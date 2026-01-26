@@ -81,6 +81,23 @@ class MainWindow(QMainWindow):
         self._setup_statusbar()
         self._connect_signals()
         self._restore_session()
+        # Show splash after main window is visible
+        QTimer.singleShot(0, self._maybe_show_splash)
+
+    def _maybe_show_splash(self):
+        # Only show splash if not hidden in settings
+        if not self.settings_service.get("hide_splash_window", False):
+            try:
+                from vector_inspector.ui.components.splash_window import SplashWindow
+
+                splash = SplashWindow(self)
+                splash.setWindowModality(Qt.ApplicationModal)
+                splash.raise_()
+                splash.activateWindow()
+                if splash.exec() == QDialog.Accepted and splash.should_hide():
+                    self.settings_service.set("hide_splash_window", True)
+            except Exception as e:
+                print(f"[SplashWindow] Failed to show splash: {e}")
 
     def _setup_ui(self):
         """Setup the main UI layout."""
@@ -285,7 +302,7 @@ class MainWindow(QMainWindow):
             self.breadcrumb_label.setText("No active connection")
             self._update_views_with_connection(None)
 
-    def _on_active_collection_changed(self, connection_id: str, collection_name):
+    def _on_active_collection_changed(self, connection_id: str, collection_name: str):
         """Handle active collection change."""
         instance = self.connection_manager.get_connection(connection_id)
         if instance:
@@ -554,16 +571,12 @@ class MainWindow(QMainWindow):
 
     def _show_about(self):
         """Show about dialog."""
+        from .main_window import get_about_html
+
         QMessageBox.about(
             self,
             "About Vector Inspector",
-            "<h2>Vector Inspector 0.3.0</h2>"
-            "<p>A comprehensive desktop application for visualizing, "
-            "querying, and managing multiple vector databases simultaneously.</p>"
-            '<p><a href="https://github.com/anthonypdawson/vector-inspector" style="color:#2980b9;">GitHub Project Page</a></p>'
-            "<hr />"
-            "<p>Built with PySide6, ChromaDB, and Qdrant</p>"
-            "<p><b>New:</b> Multi-database support with saved connection profiles</p>",
+            get_about_html(),
         )
 
     def _toggle_cache(self, checked: bool):
@@ -632,3 +645,20 @@ class MainWindow(QMainWindow):
         self.connection_manager.close_all_connections()
 
         event.accept()
+
+
+def get_about_html():
+    from vector_inspector.utils.version import get_app_version
+
+    version = get_app_version()
+    version_html = (
+        f"<h2>Vector Inspector {version}</h2>" if version else "<h2>Vector Inspector</h2>"
+    )
+    return (
+        version_html + "<p>A comprehensive desktop application for visualizing, "
+        "querying, and managing multiple vector databases simultaneously.</p>"
+        '<p><a href="https://github.com/anthonypdawson/vector-inspector" style="color:#2980b9;">GitHub Project Page</a></p>'
+        "<hr />"
+        "<p>Built with PySide6</p>"
+        "<p><b>New:</b> Pinecone support!</p>"
+    )
