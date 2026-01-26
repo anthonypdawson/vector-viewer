@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:a5ccd1e81035206cf08685ff6ca3b4839cd6067879c14af5d728f1001dcec470"
+content_hash = "sha256:da02d850ea63717e5189f51d5f0fe0cd4c03d4d10bf087d75834965c8cd2e839"
 
 [[metadata.targets]]
 requires_python = ">=3.10,<3.13"
@@ -484,6 +484,19 @@ groups = ["dev"]
 files = [
     {file = "decorator-5.2.1-py3-none-any.whl", hash = "sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a"},
     {file = "decorator-5.2.1.tar.gz", hash = "sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360"},
+]
+
+[[package]]
+name = "deprecation"
+version = "2.1.0"
+summary = "A library to handle automated deprecations"
+groups = ["default"]
+dependencies = [
+    "packaging",
+]
+files = [
+    {file = "deprecation-2.1.0-py2.py3-none-any.whl", hash = "sha256:a10811591210e1fb0e768a8c25517cabeabcba6f0bf96564f8ff45189f90b14a"},
+    {file = "deprecation-2.1.0.tar.gz", hash = "sha256:72b3bde64e5d778694b0cf68178aed03d15e15477116add3fb773e581f9518ff"},
 ]
 
 [[package]]
@@ -1072,6 +1085,62 @@ dependencies = [
 files = [
     {file = "kubernetes-35.0.0-py2.py3-none-any.whl", hash = "sha256:39e2b33b46e5834ef6c3985ebfe2047ab39135d41de51ce7641a7ca5b372a13d"},
     {file = "kubernetes-35.0.0.tar.gz", hash = "sha256:3d00d344944239821458b9efd484d6df9f011da367ecb155dadf9513f05f09ee"},
+]
+
+[[package]]
+name = "lance-namespace"
+version = "0.4.5"
+requires_python = ">=3.8"
+summary = "Lance Namespace interface and plugin registry"
+groups = ["default"]
+dependencies = [
+    "lance-namespace-urllib3-client==0.4.5",
+]
+files = [
+    {file = "lance_namespace-0.4.5-py3-none-any.whl", hash = "sha256:cd1a4f789de03ba23a0c16f100b1464cca572a5d04e428917a54d09db912d548"},
+    {file = "lance_namespace-0.4.5.tar.gz", hash = "sha256:0aee0abed3a1fa762c2955c7d12bb3004cea5c82ba28f6fcb9fe79d0cc19e317"},
+]
+
+[[package]]
+name = "lance-namespace-urllib3-client"
+version = "0.4.5"
+requires_python = ">=3.8"
+summary = "Lance Namespace Specification"
+groups = ["default"]
+dependencies = [
+    "pydantic>=2",
+    "python-dateutil>=2.8.2",
+    "typing-extensions>=4.7.1",
+    "urllib3<3.0.0,>=1.25.3",
+]
+files = [
+    {file = "lance_namespace_urllib3_client-0.4.5-py3-none-any.whl", hash = "sha256:2ee154d616ba4721f0bfdf043d33c4fef2e79d380653e2f263058ab00fb4adf4"},
+    {file = "lance_namespace_urllib3_client-0.4.5.tar.gz", hash = "sha256:184deda8cf8700926d994618187053c644eb1f2866a4479e7b80843cacc92b1c"},
+]
+
+[[package]]
+name = "lancedb"
+version = "0.27.0"
+requires_python = ">=3.9"
+summary = "lancedb"
+groups = ["default"]
+dependencies = [
+    "deprecation",
+    "lance-namespace>=0.3.2",
+    "numpy",
+    "overrides>=0.7; python_full_version < \"3.12\"",
+    "packaging",
+    "pyarrow>=16",
+    "pydantic>=1.10",
+    "tqdm>=4.27.0",
+]
+files = [
+    {file = "lancedb-0.27.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:b0f2ad52fef7248056f8db1e6ca2b2c052807f1c8074e3e3e33a44f5082465b7"},
+    {file = "lancedb-0.27.0-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d643ee9d86e1250f0e63a68841c8f4da73a2c35fdc5e0d741e731ce30f4f0e41"},
+    {file = "lancedb-0.27.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b90c12d36be1362f7f9b9b897c80400389d9c81ba4f6c2297f374d0ec5facb3a"},
+    {file = "lancedb-0.27.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:79422a916843c08435ff2f7f2e9778a4efda8a73c847ce21df80e548bae0f752"},
+    {file = "lancedb-0.27.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:2d70eb1ec33a18d5afc1210e30870c3ca29ef562271253b6953f6c32208caa8c"},
+    {file = "lancedb-0.27.0-cp39-abi3-win_amd64.whl", hash = "sha256:3c36ba6941a69405e45750d3bbc94899d141fe68c7e24c3b92ecb7c4e4d84bc7"},
 ]
 
 [[package]]
@@ -2441,6 +2510,27 @@ files = [
 ]
 
 [[package]]
+name = "pymilvus"
+version = "2.6.6"
+requires_python = ">=3.8"
+summary = "Python Sdk for Milvus"
+groups = ["default"]
+dependencies = [
+    "grpcio!=1.68.0,!=1.68.1,!=1.69.0,!=1.70.0,!=1.70.1,!=1.71.0,!=1.72.1,!=1.73.0,>=1.66.2",
+    "numpy<1.25.0; python_version <= \"3.8\"",
+    "orjson>=3.10.15",
+    "pandas>=1.2.4",
+    "protobuf>=5.27.2",
+    "python-dotenv<2.0.0,>=1.0.1",
+    "setuptools<70.1; python_version <= \"3.8\"",
+    "setuptools>69",
+]
+files = [
+    {file = "pymilvus-2.6.6-py3-none-any.whl", hash = "sha256:0e61daa573b0025650f072493cb978a9ada9cdb1d450594707592174b1f297c0"},
+    {file = "pymilvus-2.6.6.tar.gz", hash = "sha256:2522617ea34dcc9adaad0128d230f0306962a122f08366a24dd0e84bdada1f60"},
+]
+
+[[package]]
 name = "pynndescent"
 version = "0.6.0"
 summary = "Nearest Neighbor Descent"
@@ -3093,7 +3183,6 @@ version = "80.10.1"
 requires_python = ">=3.9"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
 groups = ["default"]
-marker = "python_version >= \"3.12\""
 files = [
     {file = "setuptools-80.10.1-py3-none-any.whl", hash = "sha256:fc30c51cbcb8199a219c12cc9c281b5925a4978d212f84229c909636d9f6984e"},
     {file = "setuptools-80.10.1.tar.gz", hash = "sha256:bf2e513eb8144c3298a3bd28ab1a5edb739131ec5c22e045ff93cd7f5319703a"},
