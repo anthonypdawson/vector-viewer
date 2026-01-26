@@ -24,10 +24,10 @@ All core features for Pinecone support are now implemented and tested. Embedding
 
 ## Phase 4: Provider Expansion (HIGH PRIORITY)
 - [ ] LanceDB support
-- [ ] Milvus support
+- [ ] pgvector (PostgreSQL extension) support
+- [ ] Milvus Lite support (Once upstream supports Windows)
 - [ ] Weaviate support
 - [ ] FAISS (local files) support
-- [ ] pgvector (PostgreSQL extension) support
 - [ ] Elasticsearch with vector search support
 
  > **Priority:** Reach 5-6 database providers quickly to market as "most comprehensive vector DB tool." All providers remain free.
