@@ -23,8 +23,9 @@ All core features for Pinecone support are now implemented and tested. Embedding
 
 
 ## Phase 4: Provider Expansion (HIGH PRIORITY)
-- [ ] Weaviate support
+- [ ] LanceDB support
 - [ ] Milvus support
+- [ ] Weaviate support
 - [ ] FAISS (local files) support
 - [ ] pgvector (PostgreSQL extension) support
 - [ ] Elasticsearch with vector search support
