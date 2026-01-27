@@ -126,7 +126,7 @@ jobs:
         generate_release_notes: true
         body: |
           ${{ steps.release_reason.outputs.reason }}
-          ${{ steps.release_reason.outputs.reason && '\n---\n' || '' }}
+                    
           ## Installation
 
           Download the `.whl` or `.tar.gz` file from the Assets section below, then install with:
