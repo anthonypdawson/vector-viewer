@@ -1,0 +1,161 @@
+name: Create Github Release and Publish to PyPI
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'pyproject.toml'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force run all steps regardless of version change'
+        required: false
+        default: false
+        type: boolean
+      reason:
+        description: 'Release reason/notes (used as release notes)'
+        required: false
+        default: ''
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork != true && github.event_name != 'pull_request' }}
+    permissions:
+      id-token: write  # Required for trusted publishing
+      contents: write  # Required for creating releases and tags
+
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Get current and previous version
+      id: get_version
+      run: |
+        # Current version from pyproject (supports generic 'version = "x.y.z"' anywhere)
+        curr=$(grep -Po '^\s*version\s*=\s*"\K[^"]+' pyproject.toml || true)
+
+        # Previous version from prior commit of the file (if it existed)
+        prev=$(git show HEAD^:pyproject.toml 2>/dev/null | grep -Po '^\s*version\s*=\s*"\K[^"]+' || true)
+
+        changed=false
+        if [[ -n "$curr" && "$curr" != "$prev" ]]; then changed=true; fi
+
+        echo "current=$curr" >> "$GITHUB_OUTPUT"
+        echo "previous=$prev" >> "$GITHUB_OUTPUT"
+        echo "changed=$changed" >> "$GITHUB_OUTPUT"
+        echo "Current: $curr"
+        echo "Previous: $prev"
+        echo "Changed: $changed"
+
+    - name: Set up Python
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install PDM
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      run: |
+        pip install pdm
+
+    - name: Cache PDM packages
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pdm
+          ~/.cache/pip          
+
+        key: ${{ runner.os }}-pdm-${{ hashFiles('**/pdm.lock', '**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pdm-
+
+    - name: Install dependencies
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      run: |
+        pdm install
+
+    - name: Clean dist directory
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      run: rm -rf dist/
+
+    - name: Read release reason from file if input is empty (safe multiline)
+      id: release_reason
+      run: |
+        if [ -n "${{ github.event.inputs.reason }}" ]; then
+          reason="${{ github.event.inputs.reason }}"
+        elif [ -f RELEASE_REASON.md ]; then
+          reason="$(cat RELEASE_REASON.md)"
+        else
+          reason=""
+        fi
+        # Use safe multiline output for GitHub Actions
+        echo "reason<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$reason" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+
+    - name: Prepend release reason to README.md (for PyPI)
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      run: |
+        cp README.md README.md.bak
+        reason="${{ steps.release_reason.outputs.reason }}"
+        if [ -n "$reason" ]; then
+          echo -e "$reason" | cat - README.md.bak > README.md
+        else
+          cp README.md.bak README.md
+        fi
+
+    - name: Build package
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      run: |
+        pdm build
+
+    - name: Create GitHub Release
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.get_version.outputs.current }}
+        name: Release v${{ steps.get_version.outputs.current }}
+        draft: false
+        prerelease: false
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+        generate_release_notes: true
+        body: |
+          ${{ steps.release_reason.outputs.reason }}
+                    
+          ## Installation
+
+          Download the `.whl` or `.tar.gz` file from the Assets section below, then install with:
+
+          ```bash
+          pip install <your-filename.whl>
+          # or
+          pip install <your-filename.tar.gz>
+          ```
+
+          After installation, run the application with:
+
+          ```bash
+          vector-inspector
+          ```
+
+          For more details and troubleshooting, see the [README](https://github.com/anthonypdawson/vector-inspector#installation).
+
+    - name: Restore original README.md
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      run: |
+        if [ -f README.md.bak ]; then
+          mv README.md.bak README.md
+        fi
+
+    - name: Publish to PyPI (Trusted Publishing)
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: dist/
+        skip-existing: true
