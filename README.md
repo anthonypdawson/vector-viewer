@@ -4,7 +4,7 @@
 > **Disclaimer:** This tool is currently under active development and is **not production ready**. Not all features have been thoroughly tested and code is released frequently. Use with caution in critical or production environments.
 
 [![CI](https://github.com/anthonypdawson/vector-inspector/actions/workflows/ci-tests.yml/badge.svg?branch=master)](https://github.com/anthonypdawson/vector-inspector/actions/workflows/ci-tests.yml)
-[![Publish](https://github.com/anthonypdawson/vector-inspector/actions/workflows/publish.yml/badge.svg?branch=master)](https://github.com/anthonypdawson/vector-inspector/actions/workflows/publish%20copy.yml)
+[![Publish](https://github.com/anthonypdawson/vector-inspector/actions/workflows/publish%20copy.yml/badge.svg?branch=master)](https://github.com/anthonypdawson/vector-inspector/actions/workflows/publish%20copy.yml)
 
 [![PyPI Version](https://img.shields.io/pypi/v/vector-inspector.svg?cacheSeconds=300)](https://pypi.org/project/vector-inspector/)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/vector-inspector?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/vector-inspector)
