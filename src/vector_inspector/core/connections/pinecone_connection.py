@@ -239,6 +239,10 @@ class PineconeConnection(VectorDBConnection):
                 log_error("Embeddings are required for Pinecone and computing them failed: %s", e)
                 return False
 
+        if not embeddings:
+            log_error("Embeddings are required for Pinecone but none were provided or computed")
+            return False
+
         index = self._get_index(collection_name)
         if not index:
             return False
