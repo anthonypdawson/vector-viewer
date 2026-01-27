@@ -15,7 +15,9 @@ Add new items below as needed. When an item is scheduled for a phase or release,
 
 - Fix disappearing-row after edit in MetadataView: when an edit regenerates embeddings the row can move to the end of the server-side result set and the UI reload currently shows the last page. Investigate and implement a reliable strategy to keep the edited item visible (e.g., locate its server-side index and load that page, or preserve stable sorting keys). (blocking UX; unscheduled)
 
- - Fix my workflow using the file "publish copy.yml", rename the file to have no spaces and update tags on the site and in my readme. Update the pypi trusted publishing.  Remove the old publish workflows.
+- Fix my workflow using the file "publish copy.yml", rename the file to have no spaces and update tags on the site and in my readme. Update the pypi trusted publishing.  Remove the old publish workflows.
+
+- Refactor UI MainWindow as suggested here https://copilot.microsoft.com/shares/2657KN5vHbc1qNwLHQMc3
 
 ### Update available flow (Partially completed)
  - Implement a user notification system for available updates
