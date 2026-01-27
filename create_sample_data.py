@@ -108,6 +108,171 @@ def create_sample_data_qdrant(
     print("4. Browse, search, and visualize the data!")
 
 
+def create_sample_data_pgvector(
+    host: str = "localhost",
+    port: int = 5432,
+    database: str = "postgres",
+    user: str = "postgres",
+    password: str | None = None,
+    table_name: str = "sample_documents",
+    vector_size: int = 384,
+    flat_metadata: bool = False,
+):
+    """Create sample data in a Postgres database using the pgvector extension.
+
+    This will create the `pgvector` extension if missing, create a table with a
+    `vector` column, and upsert sample rows with embeddings.
+    """
+    print(f"Creating sample pgvector data in {host}:{port}/{database} -> table {table_name}...")
+
+    try:
+        import psycopg2
+        import psycopg2.extras as extras
+    except Exception as e:
+        print("Error: psycopg2 is required to populate pgvector data:", e)
+        return
+
+    # Connect
+    conn = psycopg2.connect(host=host, port=port, dbname=database, user=user, password=password)
+    cur = conn.cursor()
+
+    # Try to register pgvector adapter if available
+    try:
+        from pgvector.psycopg2 import register_vector
+
+        register_vector(cur)
+    except Exception:
+        # If pgvector adapter not available, continue — psycopg2 may still accept lists
+        pass
+
+    # Ensure extension (table creation happens after we inspect metadata keys)
+    cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+    documents, metadatas, ids = get_sample_docs()
+
+    # Ensure embedding model is recorded in metadata for all items
+    for m in metadatas:
+        if isinstance(m, dict):
+            m["_embedding_model"] = EMBEDDING_MODEL
+
+    # Determine metadata keys (for flat metadata mode)
+    metadata_keys = []
+    if flat_metadata:
+        keys = set()
+        for m in metadatas:
+            if isinstance(m, dict):
+                keys.update(m.keys())
+        metadata_keys = sorted(keys)
+
+    # Create table according to flat_metadata choice
+    try:
+        # If table exists, drop it and recreate to ensure a clean sample dataset
+        try:
+            cur.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+            print(f"Dropped existing table if present: {table_name}")
+        except Exception:
+            # best-effort drop; continue if it fails
+            pass
+
+        if flat_metadata and metadata_keys:
+            # Create table with explicit metadata columns
+            cols = ",\n            ".join(f"{k} TEXT" for k in metadata_keys)
+            create_sql = f"""
+            CREATE TABLE {table_name} (
+                id TEXT PRIMARY KEY,
+                embedding vector({vector_size}),
+                document TEXT,
+                {cols}
+            )
+            """
+            cur.execute(create_sql)
+            # Create simple indexes for flattened metadata columns to help filtering
+            try:
+                for k in metadata_keys:
+                    idx_name = f"{table_name}_{k}_idx"
+                    cur.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table_name} ({k})")
+            except Exception as ie:
+                print("Warning: failed to create index for metadata column:", ie)
+        else:
+            # Default: use JSONB metadata column
+            cur.execute(
+                f"""
+                CREATE TABLE {table_name} (
+                    id TEXT PRIMARY KEY,
+                    embedding vector({vector_size}),
+                    document TEXT,
+                    metadata JSONB
+                )
+                """
+            )
+    except Exception as e:
+        print("Warning: failed to create table as requested:", e)
+
+    print("Generating embeddings with sentence-transformers (all-MiniLM-L6-v2)...")
+    from sentence_transformers import SentenceTransformer
+
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    embeddings = model.encode(documents, show_progress_bar=True).tolist()
+
+    # Build rows and insert depending on flat_metadata
+    if flat_metadata and metadata_keys:
+        rows = []
+        for i in range(len(documents)):
+            row_vals = [ids[i], embeddings[i], documents[i]]
+            md = metadatas[i] if i < len(metadatas) and isinstance(metadatas[i], dict) else {}
+            for k in metadata_keys:
+                row_vals.append(md.get(k))
+            rows.append(tuple(row_vals))
+
+        columns = ["id", "embedding", "document"] + metadata_keys
+        cols_sql = ", ".join(columns)
+        placeholders = "(" + ", ".join(["%s"] * len(columns)) + ")"
+        update_sql = ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col != "id"])
+        insert_sql = f"INSERT INTO {table_name} ({cols_sql}) VALUES %s ON CONFLICT (id) DO UPDATE SET {update_sql}"
+
+        try:
+            extras.execute_values(cur, insert_sql, rows, template=placeholders)
+            conn.commit()
+            print(f"Added/updated {len(rows)} documents to table '{table_name}'")
+        except Exception as e:
+            conn.rollback()
+            print("Failed to insert rows:", e)
+    else:
+        # Default behavior: store metadata JSONB
+        rows = []
+        for i in range(len(documents)):
+            rows.append((ids[i], embeddings[i], documents[i], extras.Json(metadatas[i])))
+
+        # Upsert in a single statement using execute_values
+        insert_sql = (
+            f"INSERT INTO {table_name} (id, embedding, document, metadata) VALUES %s "
+            f"ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, document = EXCLUDED.document, metadata = EXCLUDED.metadata"
+        )
+
+        try:
+            extras.execute_values(cur, insert_sql, rows, template="(%s, %s, %s, %s)")
+            conn.commit()
+            print(f"Added/updated {len(rows)} documents to table '{table_name}'")
+        except Exception as e:
+            conn.rollback()
+            print("Failed to insert rows:", e)
+    # Close DB resources
+    try:
+        cur.close()
+    except Exception:
+        pass
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+    print("\nYou can now:")
+    print("1. Run the Vector Inspector application")
+    print(f"2. Connect to PgVector at {host}:{port}/{database} (table {table_name})")
+    print(f"3. Select the '{table_name}' collection")
+    print("4. Browse, search, and visualize the data!")
+
+
 def create_sample_data_pinecone(
     api_key: str, index_name: str = "sample-documents", environment: str | None = None
 ):
@@ -414,10 +579,23 @@ def get_sample_docs():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create sample data for Vector Inspector.")
+    parser = argparse.ArgumentParser(
+        description="Create sample data for Vector Inspector.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  Create pgvector sample with flattened metadata (default):\n"
+            "    python create_sample_data.py --provider pgvector --host localhost --port 5432 --database postgres --user postgres --password secret --name sample_documents\n\n"
+            "  Create pgvector sample using JSONB metadata:\n"
+            "    python create_sample_data.py --provider pgvector --host localhost --port 5432 --database postgres --user postgres --password secret --name sample_documents --no-flat-metadata\n\n"
+            "Notes:\n"
+            "  - By default the script creates explicit TEXT columns for metadata keys and simple indexes.\n"
+            "  - Use --no-flat-metadata to keep metadata in a single JSONB column.\n"
+        ),
+    )
     parser.add_argument(
         "--provider",
-        choices=["chroma", "qdrant", "pinecone"],
+        choices=["chroma", "qdrant", "pinecone", "pgvector"],
         default="chroma",
         help="Which vector DB to use",
     )
@@ -426,6 +604,24 @@ def main():
     parser.add_argument(
         "--path", default=None, help="Local Qdrant DB path (if using embedded mode or chroma)"
     )
+    parser.add_argument(
+        "--database", default="postgres", help="Postgres database name (for pgvector)"
+    )
+    parser.add_argument("--user", default="postgres", help="Postgres user (for pgvector)")
+    parser.add_argument("--password", default=None, help="Postgres password (for pgvector)")
+    parser.add_argument(
+        "--flat-metadata",
+        dest="flat_metadata",
+        action="store_true",
+        help="Create explicit columns for metadata keys instead of JSONB (default)",
+    )
+    parser.add_argument(
+        "--no-flat-metadata",
+        dest="flat_metadata",
+        action="store_false",
+        help="Disable creating explicit metadata columns and use JSONB instead",
+    )
+    parser.set_defaults(flat_metadata=True)
     parser.add_argument(
         "--vector-size", type=int, default=384, help="Vector size for Qdrant collection"
     )
@@ -466,6 +662,17 @@ def main():
             api_key=args.api_key,
             index_name=args.name,
             environment=args.environment,
+        )
+    elif args.provider == "pgvector":
+        create_sample_data_pgvector(
+            host=args.host,
+            port=args.port,
+            database=args.database,
+            user=args.user,
+            password=args.password,
+            table_name=args.name,
+            vector_size=args.vector_size,
+            flat_metadata=args.flat_metadata,
         )
     else:
         print("Unknown provider.")
