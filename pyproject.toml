@@ -23,6 +23,8 @@ dependencies = [
     "hf-xet>=1.2.0",
     "pymilvus>=2.6.6",
     "lancedb>=0.27.0",
+    "psycopg2>=2.9.11",
+    "pgvector>=0.4.2",
 ]
 requires-python = ">=3.10,<3.14"
 readme = "README.md"
