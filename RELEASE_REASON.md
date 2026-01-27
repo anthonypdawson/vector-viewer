@@ -1,7 +1,7 @@
 # Latest updates
-- Added and tested support for python 3.13
-- Miscellaneous documentation updates and fixes
-- Splash screen now shows after main window is visible
+- Added Postgres (pgvector extension) support as a new vector database connection option.
+- Fixed issue with embedding regeneration on add/edit
+- Added option for editing items without regenerating embeddings
 ---
 
 
