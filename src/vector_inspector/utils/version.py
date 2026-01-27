@@ -1,5 +1,12 @@
-APP_VERSION = "0.3.3"  # Update this when pyproject.toml version changes
-
-
 def get_app_version():
-    return APP_VERSION
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+    except ImportError:
+        try:
+            from importlib_metadata import version, PackageNotFoundError  # type: ignore
+        except ImportError:
+            return "?"
+    try:
+        return version("vector-inspector")
+    except PackageNotFoundError:
+        return "?"

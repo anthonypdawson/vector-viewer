@@ -211,10 +211,28 @@ class MainWindow(QMainWindow):
 
         # Help menu
         help_menu = menubar.addMenu("&Help")
-
         about_action = QAction("&About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+        check_update_action = QAction("Check for Update", self)
+        check_update_action.triggered.connect(self._check_for_update_from_menu)
+        help_menu.addAction(check_update_action)
+
+    def _check_for_update_from_menu(self):
+        from vector_inspector.services.update_service import UpdateService
+        from vector_inspector.utils.version import get_app_version
+        from PySide6.QtWidgets import QMessageBox
+
+        latest = UpdateService.get_latest_release(force_refresh=True)
+        if latest:
+            current_version = get_app_version()
+            latest_version = latest.get("tag_name")
+            if latest_version and UpdateService.compare_versions(current_version, latest_version):
+                # Show update modal
+                self._latest_release = latest
+                self._on_update_indicator_clicked(None)
+                return
+        QMessageBox.information(self, "Check for Update", "No update available.")
 
     def _setup_toolbar(self):
         """Setup application toolbar."""
@@ -233,7 +251,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(refresh_action)
 
     def _setup_statusbar(self):
-        """Setup status bar with connection breadcrumb."""
+        """Setup status bar with connection breadcrumb and update indicator."""
         status_bar = QStatusBar()
         self.setStatusBar(status_bar)
 
@@ -241,7 +259,61 @@ class MainWindow(QMainWindow):
         self.breadcrumb_label = QLabel("No active connection")
         self.statusBar().addPermanentWidget(self.breadcrumb_label)
 
+        # Update indicator label (hidden by default)
+        self.update_indicator = QLabel()
+        self.update_indicator.setText("")
+        self.update_indicator.setStyleSheet(
+            "color: #2980b9; font-weight: bold; text-decoration: underline;"
+        )
+        self.update_indicator.setVisible(False)
+        self.update_indicator.setCursor(Qt.PointingHandCursor)
+        self.statusBar().addPermanentWidget(self.update_indicator)
+
         self.statusBar().showMessage("Ready")
+
+        # Connect click event
+        self.update_indicator.mousePressEvent = self._on_update_indicator_clicked
+
+        # Check for updates on launch
+        from vector_inspector.services.update_service import UpdateService
+        from vector_inspector.utils.version import get_app_version
+        import threading
+
+        from PySide6.QtCore import QTimer
+
+        def check_updates():
+            latest = UpdateService.get_latest_release()
+            if latest:
+                current_version = get_app_version()
+                latest_version = latest.get("tag_name")
+                if latest_version and UpdateService.compare_versions(
+                    current_version, latest_version
+                ):
+
+                    def show_update():
+                        self._latest_release = latest
+                        self.update_indicator.setText(f"Update available: v{latest_version}")
+                        self.update_indicator.setVisible(True)
+
+                    QTimer.singleShot(0, show_update)
+
+        threading.Thread(target=check_updates, daemon=True).start()
+
+    def _on_update_indicator_clicked(self, event):
+        # Show update details dialog
+        if not hasattr(self, "_latest_release"):
+            return
+        from vector_inspector.ui.components.update_details_dialog import UpdateDetailsDialog
+        from vector_inspector.services.update_service import UpdateService
+
+        latest = self._latest_release
+        version = latest.get("tag_name", "?")
+        notes = latest.get("body", "")
+        instructions = UpdateService.get_update_instructions()
+        pip_cmd = instructions["pip"]
+        github_url = instructions["github"]
+        dlg = UpdateDetailsDialog(version, notes, pip_cmd, github_url, self)
+        dlg.exec()
 
     def _connect_signals(self):
         """Connect signals between components."""
