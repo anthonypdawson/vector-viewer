@@ -15,7 +15,7 @@ This approach ensures you can **try and use the entire app** with any provider, 
 ### 🌍 Vector Database Providers (All Free)
 
 | Provider                                     | Access   | Notes                                      |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | ChromaDB                                     | Free     | Persistent local or remote                 |
 | Qdrant                                       | Free     | Local, remote, or cloud                    |
 | Pinecone                                     | Free     | Cloud-hosted vector database               |
@@ -32,7 +32,7 @@ This approach ensures you can **try and use the entire app** with any provider, 
 ### 🎯 Core Features (Free)
 
 | Feature                                      | Access   | Description                                |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | Connection management                        | Free     | Connect to any supported provider          |
 | Collection/index browsing                    | Free     | View all collections with statistics       |
 | Metadata browsing & filtering                | Free     | Advanced filters, AND/OR logic             |
@@ -56,7 +56,7 @@ This approach ensures you can **try and use the entire app** with any provider, 
 #### 📊 Advanced Data Formats & Import/Export
 
 | Feature                                      | Access   | Description                                |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | Parquet import/export                        | Pro      | Enterprise schema-aware format             |
 | Bulk import/export pipelines                 | Pro      | Large-scale data migration tools           |
 | Schema-aware import/export                   | Pro      | Automatic type detection and mapping       |
@@ -64,9 +64,9 @@ This approach ensures you can **try and use the entire app** with any provider, 
 #### 🔍 Advanced Queries & Search
 
 | Feature                                      | Access   | Description                                |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | Saved queries (named, persistent)            | Pro      | Save and share query templates             |
-| Similarity search                            | Free     | Vector-to-vector                           |
+| Similarity search                            | Pro      | Vector-to-vector                           |
 | Cross-collection queries                     | Pro      | Query across multiple collections          |
 | Query templates                              | Pro      | Reusable query patterns                    |
 | Nested condition builder                     | Pro      | Complex boolean logic with nesting         |
@@ -74,7 +74,7 @@ This approach ensures you can **try and use the entire app** with any provider, 
 #### 🧠 Embedding & Model Tools
 
 | Feature                                      | Access   | Description                                |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | Model Comparison Mode                        | Pro      | Compare embeddings from different models   |
 | Embedding Inspector                          | Pro      | Analyze which dimensions drive similarity  |
 | Large batch embedding jobs                   | Pro      | Process thousands of items                 |
@@ -85,7 +85,7 @@ This approach ensures you can **try and use the entire app** with any provider, 
 #### 📈 Analytics & Insights
 
 | Feature                                      | Access   | Description                                |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | Cluster Explorer                             | Pro      | Advanced clustering with DBSCAN, HDBSCAN   |
 | Embedding Provenance Graph                   | Pro      | Track embedding lineage and transformations|
 | Semantic Drift Timeline                      | Pro      | Monitor how embeddings change over time    |
@@ -95,7 +95,7 @@ This approach ensures you can **try and use the entire app** with any provider, 
 #### 🏢 Enterprise & Provider Features
 
 | Feature                                      | Access   | Description                                |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | Cloud authentication flows                   | Pro      | OAuth, API key management for cloud DBs    |
 | Advanced payload filtering                   | Pro      | Provider-specific advanced queries         |
 | Hybrid search (semantic + keyword)           | Pro      | Combined search strategies                 |
@@ -105,7 +105,7 @@ This approach ensures you can **try and use the entire app** with any provider, 
 #### 🛠️ Power Tools
 
 | Feature                                      | Access   | Description                                |
-|----------------------------------------------|----------|--------------------------------------------||
+|----------------------------------------------|----------|--------------------------------------------|
 | Vector Surgery                               | Pro      | Modify vector dimensions directly          |
 | Custom plugin system                         | Pro      | Extend app with custom features            |
 | Team collaboration                           | Pro      | Share queries, collections, and workspaces |
