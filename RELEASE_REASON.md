@@ -1,28 +1,36 @@
 # Latest updates
 
-## Vector Inspector 2026.01 Release Notes
+- Major refactor and studio-ready architecture
+  - Refactored main window into modular components (InspectorShell, ProviderFactory, DialogService, ConnectionController, InspectorTabs)
+  - MainWindow is reusable as a widget; tab system is pluggable so Studio can extend or override tabs
 
-### Major Refactor and Studio-Ready Architecture
-- Refactored main window into modular components:
-  - InspectorShell: reusable UI shell (splitter, tabs, layout)
-  - ProviderFactory: centralized connection creation
-  - DialogService: dialog management
-  - ConnectionController: connection lifecycle and threading
-  - InspectorTabs: pluggable tab registry
-- MainWindow now inherits from InspectorShell and is fully reusable as a widget
-- Bootstrap logic is separated from UI logic—Studio can host Inspector as a component
-- Tab system is now pluggable: Studio and Inspector can add, remove, or override tabs via TabDefinition
-- All Inspector UI logic is self-contained; Studio can extend without modifying Inspector code
+- Data browser improvements
+  - Added Generate embeddings on edit (persisted per user)
 
-### Data Browser Improvements
-- Added a checkbox: Generate embeddings on edit (default: checked)
-  - When unchecked, editing a row skips embedding regeneration
-  - Setting is persisted per user
+- Settings / Preferences
+  - SettingsService persists preferences and exposes typed accessors (breadcrumb, search defaults, auto-embed, window geometry)
+  - SettingsService emits a setting_changed Qt signal so UI reacts immediately
+  - SettingsDialog (modal) added with add_section API and hook integration for extension panels
+  - Breadcrumb controls moved out of core so Pro (Vector Studio) injects them via the settings_panel_hook
 
-### Developer and Architecture Notes
-- All modules pass syntax checks and are ready for Studio integration
-- No breaking changes for existing Inspector users
-- Inspector is now a true UI module, not just an application
+- Extension hook for settings panels
+  - *settings_panel_hook* added to *vector_inspector.extensions*; Vector Studio registers breadcrumb controls at startup
+
+- Breadcrumb and UI improvements
+  - Breadcrumb label now elides long trails (left/middle) and shows full trail on hover
+  - SearchView supports runtime elide-mode changes and responds to settings signals
+
+- Window geometry persistence
+  - Main window saves/restores geometry when window.restore_geometry is enabled
+
+- Pro (Vector Studio) features
+  - *Search Similar* (Pro): right-click any row in Data Browser or Search Results to run a vector-to-vector similarity search
+  - *table_context_menu* handler hardened for many embedding/id formats and includes fallbacks
+  - Vector Studio injects breadcrumb controls into Settings dialog via *settings_panel_hook*
+
+- Tests and CI
+  - Added *tests/test_settings_injection.py* to assert settings panel hook registration
+  - Updated context-menu tests to use *log_info* and *assert* for pytest
+  - Local test run: 5 tests passed; GUI-heavy suite ~9s due to PySide6 startup
 
 ---
-
