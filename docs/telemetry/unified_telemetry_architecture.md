@@ -28,38 +28,44 @@ This document combines the privacy-focused telemetry payload from `model_telemet
 
 ---
 
+
 ## 2. Telemetry Submission Flow
 
-- App POSTs telemetry payload to a Netlify Function endpoint
-- Includes a shared secret header: `X-Telemetry-Key: <secret>`
-- No user identity, no sensitive data, no complex auth
+- App POSTs telemetry payload to the production endpoint:
+
+	**POST https://api.divinedevops.com/api/v1/telemetry**
+
+- Payload (JSON):
+	- `hwid` (required): hardware or client identifier
+	- `event_name` (required): event type/name
+	- `app_version` (required): application version
+	- `client_type` (optional, defaults to "vector-inspector")
+	- `metadata` (optional, object)
+
+- The server records the client’s IP address from the `X-Forwarded-For` header or `remote_addr`.
+
+- No user identity, credentials, or sensitive data are sent.
 
 ---
 
-## 3. Netlify Function: Append to GitHub NDJSON
 
-- Accepts POST, validates shared secret
-- Parses payload (must match above schema)
-- Fetches NDJSON file from GitHub
-- Appends new line: `JSON.stringify(payload)`
-- Writes updated file back to GitHub
+## 3. Server Endpoint Details
 
-**Example (pseudo-JS):**
-```js
-// ...existing code for secret validation...
-const newLine = JSON.stringify(payload);
-const updatedContent = existingContent + "\n" + newLine;
-// ...write updatedContent back to GitHub...
-```
+- Endpoint: `https://api.divinedevops.com/api/v1/telemetry`
+- Method: POST
+- Content-Type: application/json
+- Required fields: `hwid`, `event_name`, `app_version`
+- Optional fields: `client_type`, `metadata`
+- The server will record the client’s IP address automatically.
 
 ---
+
 
 ## 4. Implementation Checklist
 
 - [ ] Implement telemetry payload as above
 - [ ] Store queued events locally until user opts in
-- [ ] POST events to Netlify endpoint with shared secret
-- [ ] Netlify Function appends each event as NDJSON line in GitHub file
+- [ ] POST events to `https://api.divinedevops.com/api/v1/telemetry`
 - [ ] Document opt-in, privacy, and user controls
 
 ---

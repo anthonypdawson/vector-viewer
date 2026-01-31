@@ -1,3 +1,53 @@
+
+## Telemetry: App Launch Event (Ping)
+
+In addition to model registry telemetry, you can send a simple telemetry event to indicate that the app has launched successfully. This is a minimal 'ping' event for usage analytics and reliability monitoring.
+
+**Minimal payload structure for app launch telemetry:**
+
+```
+{
+  "hwid": <client or hardware identifier>,
+  "event_name": "app_launch",
+  "app_version": <application version>,
+  "client_type": "vector-inspector" // optional
+  "metadata": { "os": <operating system> } // optional, include only if OS info is available
+}
+```
+
+- The `event_name` must be set to `app_launch` for this event type.
+- The `metadata` object is optional. Include it only if you want to record the OS or other launch context. Timestamp and session ID are not required, as the server records the timestamp automatically and session tracking is not needed for a simple launch ping.
+
+**Example (minimal):**
+
+```json
+{
+  "hwid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "event_name": "app_launch",
+  "app_version": "1.2.3",
+  "client_type": "vector-inspector"
+}
+```
+
+**Example (with OS):**
+
+```json
+{
+  "hwid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "event_name": "app_launch",
+  "app_version": "1.2.3",
+  "client_type": "vector-inspector",
+  "metadata": {
+    "os": "Windows-10"
+  }
+}
+```
+
+This event should be sent once per application launch, as a POST to the production endpoint:
+
+`POST https://api.divinedevops.com/api/v1/telemetry`
+
+The server will record the client’s IP address and timestamp automatically.
 # Telemetry & Model Registry Contributions
 
 Purpose: provide a safe, minimal opt-in telemetry flow so users can (optionally) share anonymized information about custom embedding models they register. This helps maintain a central model registry without sending sensitive data.
@@ -8,9 +58,39 @@ Purpose: provide a safe, minimal opt-in telemetry flow so users can (optionally)
 - **Anonymized client id**: use a locally stored UUID; prefer hashing when possible to avoid exposing model IDs directly.
 - **User control**: allow viewing queued events, send now, disable, and purge collected telemetry from Settings.
 
+
 ## Telemetry: Embedding Model Metadata (Optional)
 
-The following is the precise telemetry payload we should collect when users opt in to share anonymized model metadata. This form is privacy-safe and minimal — do not send any sensitive fields such as API keys, full local paths, or user-generated content.
+For model registry telemetry, all model metadata should be included in the `metadata` field of the telemetry payload. The `event_name` field should use a standard value, such as `model_registration`, to indicate a model information event. This approach ensures compatibility with the production telemetry endpoint and keeps the payload schema flexible for future event types.
+
+**Payload structure for model registry telemetry:**
+
+```
+{
+  "hwid": <client or hardware identifier>,
+  "event_name": "model_registration",
+  "app_version": <application version>,
+  "client_type": "vector-inspector", // optional
+  "metadata": {
+    // All model metadata fields go here (see below)
+    "model_name": ...,
+    "model_source": ...,
+    "model_version": ...,
+    "embedding_dimension": ...,
+    "modalities": ...,
+    "distance_metric": ...,
+    "normalization": ...,
+    "load_success": ...,
+    "inference_success": ...,
+    "device_type": ...,
+    "local_path_hash": ...,
+    "timestamp": ...,
+    "client_id": ...
+  }
+}
+```
+
+All model metadata fields previously described should be placed inside the `metadata` object. The top-level fields are reserved for telemetry routing and event type identification.
 
 ### Data to Collect
 
@@ -37,43 +117,41 @@ The following is the precise telemetry payload we should collect when users opt 
 #### Client Identification
 - `client_id` (locally generated UUID stored in settings; used only for deduplication/analytics)
 
-### Example Event (JSON)
 
-Complete telemetry event with all fields:
+### Example Event (JSON)
 
 ```json
 {
-  "event_type": "model_registration",
-  "model_name": "sentence-transformers/all-mpnet-base-v2",
-  "model_source": "sentence-transformers",
-  "model_version": "2.1.0",
-  "embedding_dimension": 768,
-  "modalities": ["text"],
-  "distance_metric": "cosine",
-  "normalization": "l2",
-  "load_success": true,
-  "inference_success": true,
-  "device_type": "cpu",
-  "local_path_hash": null,
-  "timestamp": "2026-01-23T12:34:56Z",
-  "client_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  "hwid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "event_name": "model_registration",
+  "app_version": "1.2.3",
+  "client_type": "vector-inspector",
+  "metadata": {
+    "model_name": "sentence-transformers/all-mpnet-base-v2",
+    "model_source": "sentence-transformers",
+    "model_version": "2.1.0",
+    "embedding_dimension": 768,
+    "modalities": ["text"],
+    "distance_metric": "cosine",
+    "normalization": "l2",
+    "load_success": true,
+    "inference_success": true,
+    "device_type": "cpu",
+    "local_path_hash": null,
+    "timestamp": "2026-01-23T12:34:56Z",
+    "client_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
 }
 ```
 
+
 ### Fields Explanation
-- `model_name`: public model identifier (HF id or short name). Do NOT include local file paths.
-- `model_source`: origin of the model (sentence-transformers, nomic, openai, local_path, etc.)
-- `model_version`: version string if available from model metadata.
-- `embedding_dimension`: integer vector size.
-- `modalities`: array of supported modalities: `["text"]`, `["image"]`, or `["text", "image"]` for multimodal.
-- `distance_metric`: detected or configured distance metric (cosine, euclidean, dot, etc.)
-- `normalization`: whether vectors are L2-normalized or not (`l2` or `none`).
-- `load_success`: boolean indicating whether the model loaded successfully.
-- `inference_success`: boolean indicating whether test inference completed successfully.
-- `device_type`: `cpu` or `gpu` (or specific GPU identifier if available).
-- `local_path_hash`: SHA256 hash of the local file path if model is loaded from disk (null for remote/HF models).
-- `timestamp`: ISO 8601 timestamp of when the event was created.
-- `client_id`: locally generated UUID stored in settings; used only for deduplication/analytics.
+All model metadata fields (such as `model_name`, `model_source`, etc.) should be included inside the `metadata` object. The top-level fields are:
+- `hwid`: hardware or client identifier
+- `event_name`: use `model_registration` for model registry events
+- `app_version`: application version
+- `client_type`: (optional) client type string
+- `metadata`: object containing all model metadata fields
 
 ## Client Behaviour
 - Queue events locally (append to a small file under settings dir). Send in batches (e.g., daily) or when user clicks "Send now".
@@ -86,12 +164,14 @@ Complete telemetry event with all fields:
 - Do NOT collect user content, API keys, local file paths (only hash), or any PII.
 - Provide a clear data deletion/purge flow: both client-side purge (clear queue + reset client_id) and a server-side removal request process for aggregated records if needed.
 
-## Server API (Recommended Minimal Contract)
 
-- Endpoint: `POST https://registry.example.com/api/v1/telemetry`
-- Auth: optional API key for controlled ingestion; otherwise protect with rate-limits and CORS restrictions.
-- Accepts batch array of event objects (same schema as above).
-- Response: 200 OK with simple JSON: `{ "accepted": N, "rejected": M }`
+## Server API (Production Endpoint)
+
+- Endpoint: `POST https://api.divinedevops.com/api/v1/telemetry`
+- Auth: none required (rate-limited and CORS protected)
+- Accepts a single event object (fields: `hwid`, `event_name`, `app_version`, optional `client_type`, `metadata`)
+- Response: 201 Created with `{ "status": "success" }` or error JSON
+- The server records the client’s IP address from the `X-Forwarded-For` header or `remote_addr`.
 
 ## Security Notes
 - Always use HTTPS and validate TLS certs.
