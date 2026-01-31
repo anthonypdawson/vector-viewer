@@ -68,7 +68,7 @@ class MetadataView(QWidget):
 
     def __init__(self, connection: VectorDBConnection, parent=None):
         super().__init__(parent)
-        # Expect a ConnectionInstance wrapper with proxy methods.
+        # Currently expects a raw VectorDBConnection instance.
         self._raw_connection = connection
         self.connection = connection
         self.current_collection: str = ""
