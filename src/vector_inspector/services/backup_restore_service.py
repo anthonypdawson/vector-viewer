@@ -105,6 +105,11 @@ class BackupRestoreService:
             backup_file: Path to backup zip file
             collection_name: Optional new name for restored collection
             overwrite: Whether to overwrite existing collection
+            recompute_embeddings: Whether to recompute embeddings during restore.
+                - True: Always recompute embeddings from documents if model metadata is available
+                - False: Never recompute, use embeddings from backup as-is
+                - None (default): Auto mode - only recompute if backup contains embeddings
+                  and model metadata is available
 
         Returns:
             True if successful, False otherwise
@@ -182,19 +187,22 @@ class BackupRestoreService:
                 # User explicitly requested restore without embeddings: ignore any stored embeddings
                 embeddings_to_use = None
 
-            # If embeddings exist in backup and caller requested recompute (True), or auto (None) and
-            # the metadata contains an embedding_model, attempt to recompute embeddings using that model.
+            # Determine if we should recompute embeddings based on:
+            # 1. Explicit request (recompute_embeddings=True), OR
+            # 2. Auto mode (None) with embedding_model in metadata and embeddings in backup
             try:
                 should_recompute = False
-                if data.get("embeddings"):
-                    if recompute_embeddings is True:
-                        should_recompute = True
-                    elif (
-                        recompute_embeddings is None
-                        and metadata
-                        and metadata.get("embedding_model")
-                    ):
-                        should_recompute = True
+                if recompute_embeddings is True:
+                    # Explicit recompute request - allow regardless of backup having embeddings
+                    should_recompute = True
+                elif (
+                    recompute_embeddings is None
+                    and metadata
+                    and metadata.get("embedding_model")
+                    and data.get("embeddings")
+                ):
+                    # Auto mode: only recompute if embeddings exist in backup
+                    should_recompute = True
 
                 if should_recompute:
                     try:
@@ -203,11 +211,24 @@ class BackupRestoreService:
                             encode_text,
                         )
 
-                        model_name = metadata.get("embedding_model")
-                        model_type = metadata.get("embedding_model_type", "sentence-transformer")
-                        if model_name:
+                        model_name = metadata.get("embedding_model") if metadata else None
+                        docs = data.get("documents", [])
+
+                        # Check if we have the necessary data to recompute
+                        if not model_name:
+                            log_info(
+                                "No embedding model available in metadata to recompute embeddings"
+                            )
+                            embeddings_to_use = None
+                        elif not docs:
+                            log_info(
+                                "No documents available in backup to recompute embeddings"
+                            )
+                            embeddings_to_use = None
+                        else:
+                            # We have both model metadata and documents, proceed with recomputation
+                            model_type = metadata.get("embedding_model_type", "sentence-transformer")
                             model = load_embedding_model(model_name, model_type)
-                            docs = data.get("documents", [])
                             new_embeddings = []
                             if model_type == "clip":
                                 # CLIP: encode per-document
@@ -220,11 +241,6 @@ class BackupRestoreService:
                                 ).tolist()
 
                             embeddings_to_use = new_embeddings
-                        else:
-                            log_info(
-                                "No embedding model available in metadata to recompute embeddings"
-                            )
-                            embeddings_to_use = None
                     except Exception as e:
                         log_error("Failed to recompute embeddings during restore: %s", e)
                         embeddings_to_use = None
