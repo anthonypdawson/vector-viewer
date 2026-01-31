@@ -103,3 +103,9 @@ class SettingsPanelHook:
 
 # Global singleton instance
 settings_panel_hook = SettingsPanelHook()
+
+# Register built-in settings panel extensions
+try:
+    import vector_inspector.extensions.telemetry_settings_panel
+except Exception:
+    pass

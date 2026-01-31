@@ -137,6 +137,14 @@ class SettingsService:
         else:
             cache.disable()
 
+    def get_telemetry_enabled(self) -> bool:
+        """Get whether telemetry is enabled (default: True)."""
+        return bool(self.settings.get("telemetry.enabled", True))
+
+    def set_telemetry_enabled(self, enabled: bool):
+        """Set whether telemetry is enabled."""
+        self.set("telemetry.enabled", bool(enabled))
+
     def set(self, key: str, value: Any):
         """Set a setting value."""
         self.settings[key] = value
