@@ -35,11 +35,23 @@ jobs:
       id: get_version
       run: |
         # Current version from pyproject (supports generic 'version = "x.y.z"' anywhere)
-        curr=$(awk '/^\[project\]/ {found=1} /^\[.*\]/ && $0!~"\\[project\\]" {found=0} found && /^version/ {gsub(/.*=\\s*\"|\"/,\"\"); print; exit}' pyproject.toml)
+        curr=$(awk '
+        $0 ~ /^\[project\]/ { in_project=1; next }
+        $0 ~ /^\[/ { in_project=0 }
+        in_project && $0 ~ /^version/ {
+          gsub(/.*= *\"|\"/, "", $0); print; exit
+        }
+        ' pyproject.toml)
 
         # Previous version from prior commit of the file (if it existed)
-        prev=$(git show HEAD^:pyproject.toml 2>/dev/null | awk '/^\[project\]/ {found=1} /^\[.*\]/ && $0!~"\\[project\\]" {found=0} found && /^version/ {gsub(/.*=\\s*\"|\"/,\"\"); print; exit}')
-
+        prev=$(git show HEAD^:pyproject.toml 2>/dev/null | awk '
+          $0 ~ /^\[project\]/ { in_project=1; next }
+          $0 ~ /^\[/ { in_project=0 }
+          in_project && $0 ~ /^version/ {
+            gsub(/.*= *\"|\"/, "", $0); print; exit
+          }
+        ')
+        
         changed=false
         if [[ -n "$curr" && "$curr" != "$prev" ]]; then changed=true; fi
 
