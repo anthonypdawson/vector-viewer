@@ -337,12 +337,20 @@ class BackupRestoreDialog(QDialog):
 
             if include_embeddings:
                 # Present options: Recompute (Yes), Omit embeddings (No), Cancel (Cancel)
-                prompt = (
-                    "This backup includes embedding vectors.\n\n"
-                    "Choose 'Yes' to attempt to recompute embeddings using the recorded embedding model (if available).\n"
-                    "Choose 'No' to restore documents/metadatas without embeddings.\n\n"
-                    "Recomputing is recommended for providers like Chroma."
-                )
+                if has_model:
+                    prompt = (
+                        "This backup includes embedding vectors.\n\n"
+                        "Choose 'Yes' to attempt to recompute embeddings using the recorded embedding model.\n"
+                        "Choose 'No' to restore documents/metadatas without embeddings.\n\n"
+                        "Recomputing is recommended for providers like Chroma."
+                    )
+                else:
+                    prompt = (
+                        "This backup includes embedding vectors, but no embedding model was recorded.\n\n"
+                        "Choose 'Yes' to attempt to recompute embeddings using your current embedding configuration.\n"
+                        "Choose 'No' to restore documents/metadatas without embeddings.\n\n"
+                        "Recomputing is recommended for providers like Chroma."
+                    )
                 choice = QMessageBox.question(
                     self,
                     "Restore Embeddings",
