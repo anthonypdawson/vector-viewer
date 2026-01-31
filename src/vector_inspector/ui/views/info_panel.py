@@ -215,7 +215,8 @@ class InfoPanel(QWidget):
             return
 
         # Get provider name
-        backend = getattr(self.connection, "connection", None)
+        # Support both wrapper connections (with .connection) and raw VectorDBConnection instances.
+        backend = getattr(self.connection, "connection", self.connection)
         provider_name = (
             backend.__class__.__name__.replace("Connection", "") if backend else "Unknown"
         )
