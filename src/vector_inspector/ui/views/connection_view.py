@@ -1,5 +1,7 @@
 """Connection configuration view."""
 
+from typing import Optional
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -437,7 +439,7 @@ class ConnectionView(QWidget):
     connection_changed = Signal(bool)
     connection_created = Signal(VectorDBConnection)  # Signal when new connection is created
 
-    def __init__(self, connection: VectorDBConnection = None, parent=None):
+    def __init__(self, connection: Optional[VectorDBConnection] = None, parent=None):
         super().__init__(parent)
         # This view may be constructed without an active connection; it manages
         # creation of `VectorDBConnection` instances. Keep `self.connection` as
