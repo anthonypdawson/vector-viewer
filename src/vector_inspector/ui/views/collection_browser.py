@@ -22,7 +22,7 @@ class CollectionBrowser(QWidget):
 
     def __init__(self, connection: VectorDBConnection, parent=None):
         super().__init__(parent)
-        # Expect a ConnectionInstance wrapper with proxy methods.
+        # Store the provided connection object (raw or wrapped) exposing the VectorDBConnection interface.
         self._raw_connection = connection
         self.connection = connection
         self._setup_ui()
