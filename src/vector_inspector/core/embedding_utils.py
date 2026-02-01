@@ -128,7 +128,7 @@ def load_embedding_model(model_name: str, model_type: str) -> SentenceTransforme
         return SentenceTransformer(model_name)
 
 
-def encode_text(text: str, model: Union["SentenceTransformer", Tuple], model_type: str) -> list:
+def encode_text(text: str, model: "SentenceTransformer" | Tuple, model_type: str) -> list:
     """
     Encode text using the appropriate model.
 
@@ -160,7 +160,7 @@ def encode_text(text: str, model: Union["SentenceTransformer", Tuple], model_typ
 
 def get_embedding_model_for_dimension(
     dimension: int,
-) -> Tuple[Union["SentenceTransformer", Tuple], str, str]:
+) -> Tuple["SentenceTransformer" | Tuple, str, str]:
     """
     Get a loaded embedding model for a specific dimension.
 
