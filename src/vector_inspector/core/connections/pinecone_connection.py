@@ -233,7 +233,7 @@ class PineconeConnection(VectorDBConnection):
         if not embeddings and documents:
             try:
                 embeddings = self.compute_embeddings_for_documents(
-                    collection_name, documents, getattr(self, "connection_id", None)
+                    collection_name, documents, getattr(self, "profile_name", None)
                 )
             except Exception as e:
                 log_error("Embeddings are required for Pinecone and computing them failed: %s", e)
@@ -375,9 +375,10 @@ class PineconeConnection(VectorDBConnection):
 
         model = None
         model_type: str = "sentence-transformer"
-        if hasattr(self, "connection_id") and collection_name:
+        profile_name = getattr(self, "profile_name", None)
+        if profile_name and collection_name:
             settings = SettingsService()
-            cfg = settings.get_embedding_model(getattr(self, "connection_id", ""), collection_name)
+            cfg = settings.get_embedding_model(profile_name, collection_name)
             if cfg and cfg.get("model") and cfg.get("type"):
                 from vector_inspector.core.embedding_utils import load_embedding_model
 

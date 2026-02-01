@@ -1,11 +1,10 @@
 """PgVector/PostgreSQL connection manager."""
 
-from typing import Any
 import json
+from typing import Any
+
 import psycopg2
 from psycopg2 import sql
-
-from vector_inspector.core.logging import log_info
 
 ## No need to import register_vector; pgvector extension is enabled at table creation
 from vector_inspector.core.connections.base_connection import VectorDBConnection
@@ -525,52 +524,12 @@ class PgVectorConnection(VectorDBConnection):
         # If caller provided query texts (not embeddings), compute embeddings using configured model
         if (not query_embeddings) and query_texts:
             try:
-                from vector_inspector.services.settings_service import SettingsService
-                from vector_inspector.core.embedding_utils import (
-                    load_embedding_model,
-                    get_embedding_model_for_dimension,
-                    DEFAULT_MODEL,
-                    encode_text,
+                from vector_inspector.core.embedding_utils import encode_text
+
+                # Use inherited method to resolve and load the embedding model
+                loaded_model, model_name, model_type = self.load_embedding_model_for_collection(
+                    collection_name
                 )
-
-                model_name = None
-                model_type = None
-
-                # 1) settings
-                settings = SettingsService()
-                model_info = settings.get_embedding_model(self.database, collection_name)
-                if model_info:
-                    model_name = model_info.get("model")
-                    model_type = model_info.get("type", "sentence-transformer")
-
-                # 2) collection metadata
-                if not model_name:
-                    coll_info = self.get_collection_info(collection_name)
-                    if coll_info and coll_info.get("embedding_model"):
-                        model_name = coll_info.get("embedding_model")
-                        model_type = coll_info.get("embedding_model_type", "stored")
-
-                # 3) dimension-based fallback
-                loaded_model = None
-                if not model_name:
-                    # Try to get vector dimension
-                    dim = None
-                    coll_info = self.get_collection_info(collection_name)
-                    if coll_info and coll_info.get("vector_dimension"):
-                        try:
-                            dim = int(coll_info.get("vector_dimension"))
-                        except Exception:
-                            dim = None
-                    if dim:
-                        loaded_model, model_name, model_type = get_embedding_model_for_dimension(
-                            dim
-                        )
-                    else:
-                        # Use default model
-                        model_name, model_type = DEFAULT_MODEL
-
-                if not loaded_model:
-                    loaded_model = load_embedding_model(model_name, model_type)
 
                 # Compute embeddings for the provided query_texts (use helper for CLIP)
                 if model_type != "clip":
@@ -820,70 +779,14 @@ class PgVectorConnection(VectorDBConnection):
             self._last_regenerated_count = 0
             if (not embeddings) and documents:
                 try:
-                    # Resolve model for this collection: prefer settings -> collection metadata -> dimension-based
-                    from vector_inspector.services.settings_service import SettingsService
-                    from vector_inspector.core.embedding_utils import (
-                        load_embedding_model,
-                        get_embedding_model_for_dimension,
-                        DEFAULT_MODEL,
-                    )
-
-                    model_name = None
-                    model_type = None
-
-                    # 1) settings
-                    settings = SettingsService()
-                    model_info = settings.get_embedding_model(self.database, collection_name)
-                    if model_info:
-                        model_name = model_info.get("model")
-                        model_type = model_info.get("type", "sentence-transformer")
-
-                    # 2) collection metadata
-                    if not model_name:
-                        coll_info = self.get_collection_info(collection_name)
-                        if coll_info and coll_info.get("embedding_model"):
-                            model_name = coll_info.get("embedding_model")
-                            model_type = coll_info.get("embedding_model_type", "stored")
-
-                    # 3) dimension-based fallback
-                    loaded_model = None
-                    if not model_name:
-                        # Try to get vector dimension
-                        dim = None
-                        coll_info = self.get_collection_info(collection_name)
-                        if coll_info and coll_info.get("vector_dimension"):
-                            try:
-                                dim = int(coll_info.get("vector_dimension"))
-                            except Exception:
-                                dim = None
-                        if dim:
-                            loaded_model, model_name, model_type = (
-                                get_embedding_model_for_dimension(dim)
-                            )
-                        else:
-                            # Use default model
-                            model_name, model_type = DEFAULT_MODEL
-
-                    # Load model if not already loaded
-                    if not loaded_model:
-                        loaded_model = load_embedding_model(model_name, model_type)
-
+                    # Use inherited method to compute embeddings
                     # Compute embeddings only for documents that are present
                     compute_idxs = [i for i, d in enumerate(documents) if d]
                     if compute_idxs:
                         docs_to_compute = [documents[i] for i in compute_idxs]
-                        # Use SentenceTransformer batch encode when possible
-                        if model_type != "clip":
-                            computed = loaded_model.encode(
-                                docs_to_compute, show_progress_bar=False
-                            ).tolist()
-                        else:
-                            # CLIP type - encode per document using helper
-                            from vector_inspector.core.embedding_utils import encode_text
-
-                            computed = [
-                                encode_text(d, loaded_model, model_type) for d in docs_to_compute
-                            ]
+                        computed = self.compute_embeddings_for_documents(
+                            collection_name, docs_to_compute
+                        )
                         embeddings_local = [None] * len(ids)
                         for idx, emb in zip(compute_idxs, computed):
                             embeddings_local[idx] = emb
@@ -1075,66 +978,3 @@ class PgVectorConnection(VectorDBConnection):
                 return []
         log_info("[pgvector] _parse_vector: unhandled type %s, returning []", type(vector_str))
         return []
-
-    def compute_embeddings_for_documents(
-        self, collection_name: str, documents: list[str]
-    ) -> list[list[float]] | None:
-        """
-        Compute embeddings for a list of documents using the configured/default model for the collection.
-        Returns a list of embeddings, or None on failure.
-        """
-        try:
-            from vector_inspector.services.settings_service import SettingsService
-            from vector_inspector.core.embedding_utils import (
-                load_embedding_model,
-                get_embedding_model_for_dimension,
-                DEFAULT_MODEL,
-                encode_text,
-            )
-
-            model_name = None
-            model_type = None
-
-            # 1) settings
-            settings = SettingsService()
-            model_info = settings.get_embedding_model(self.database, collection_name)
-            if model_info:
-                model_name = model_info.get("model")
-                model_type = model_info.get("type", "sentence-transformer")
-
-            # 2) collection metadata
-            if not model_name:
-                coll_info = self.get_collection_info(collection_name)
-                if coll_info and coll_info.get("embedding_model"):
-                    model_name = coll_info.get("embedding_model")
-                    model_type = coll_info.get("embedding_model_type", "stored")
-
-            # 3) dimension-based fallback
-            loaded_model = None
-            if not model_name:
-                # Try to get vector dimension
-                dim = None
-                coll_info = self.get_collection_info(collection_name)
-                if coll_info and coll_info.get("vector_dimension"):
-                    try:
-                        dim = int(coll_info.get("vector_dimension"))
-                    except Exception:
-                        dim = None
-                if dim:
-                    loaded_model, model_name, model_type = get_embedding_model_for_dimension(dim)
-                else:
-                    model_name, model_type = DEFAULT_MODEL
-
-            # Load model
-            if not loaded_model:
-                loaded_model = load_embedding_model(model_name, model_type)
-
-            # Compute embeddings for all documents
-            if model_type != "clip":
-                embeddings = loaded_model.encode(documents, show_progress_bar=False).tolist()
-            else:
-                embeddings = [encode_text(d, loaded_model, model_type) for d in documents]
-            return embeddings
-        except Exception as e:
-            log_error("Failed to compute embeddings: %s", e)
-            return None

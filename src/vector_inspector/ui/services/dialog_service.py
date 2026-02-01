@@ -55,6 +55,7 @@ class DialogService:
 
         from vector_inspector.ui.components.backup_restore_dialog import BackupRestoreDialog
 
+        # Pass through the connection object (ConnectionInstance expected by UI)
         dialog = BackupRestoreDialog(connection, collection_name or "", parent)
         return dialog.exec()
 

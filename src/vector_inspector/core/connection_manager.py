@@ -1,12 +1,14 @@
 """Connection manager for handling multiple vector database connections."""
 
 import uuid
-from typing import Dict, Optional, List, Any
 from enum import Enum
+from typing import Any
+
 from PySide6.QtCore import QObject, Signal
 
-from .connections.base_connection import VectorDBConnection
 from vector_inspector.core.logging import log_error
+
+from .connections.base_connection import VectorDBConnection
 
 
 class ConnectionState(Enum):
@@ -27,7 +29,7 @@ class ConnectionInstance:
         name: str,
         provider: str,
         connection: VectorDBConnection,
-        config: Dict[str, Any],
+        config: dict[str, Any],
     ):
         """
         Initialize a connection instance.
@@ -42,12 +44,17 @@ class ConnectionInstance:
         self.id = connection_id
         self.name = name
         self.provider = provider
-        self.connection = connection
+        self.database = connection
         self.config = config
         self.state = ConnectionState.DISCONNECTED
-        self.active_collection: Optional[str] = None
-        self.collections: List[str] = []
-        self.error_message: Optional[str] = None
+        self.active_collection: str | None = None
+        self.collections: list[str] = []
+        self.error_message: str | None = None
+
+        # Set profile_name on the underlying connection object so it can be used
+        # for settings lookups (embedding models, etc.)
+        # Note: This dynamically adds an attribute to the connection object
+        self.database.profile_name = name  # type: ignore[attr-defined]
 
     def get_display_name(self) -> str:
         """Get a display-friendly connection name."""
@@ -58,6 +65,59 @@ class ConnectionInstance:
         if self.active_collection:
             return f"{self.name} > {self.active_collection}"
         return self.name
+
+    def __getattr__(self, name):
+        """Forward unknown attribute lookups to the underlying database connection.
+
+        This allows `ConnectionInstance` to act as a thin wrapper while
+        exposing the provider-specific API (e.g. `get_all_items`,
+        `query_collection`) without callers needing to access
+        `.database` explicitly.
+        """
+        return getattr(self.database, name)
+
+    # Convenience proxy methods to forward common operations to the underlying
+    # VectorDBConnection. This prevents callers from needing to access
+    # `instance.database` directly and centralizes error handling.
+    def list_collections(self) -> list[str]:
+        """Return list of collections from the underlying database connection.
+
+        Falls back to the cached `collections` attribute on error.
+        """
+        try:
+            return self.database.list_collections()
+        except Exception:
+            return self.collections or []
+
+    def connect(self) -> bool:
+        """Proxy to connect the underlying database connection."""
+        return self.database.connect()
+
+    def disconnect(self) -> None:
+        """Proxy to disconnect the underlying database connection; logs errors."""
+        try:
+            self.database.disconnect()
+        except Exception as e:
+            log_error("Error disconnecting underlying database: %s", e)
+
+    @property
+    def is_connected(self) -> bool:
+        """Whether the underlying database connection is currently connected."""
+        return getattr(self.database, "is_connected", False)
+
+    def get_collection_info(self, collection_name: str):
+        """Proxy to get collection-specific information."""
+        try:
+            return self.database.get_collection_info(collection_name)
+        except Exception:
+            return None
+
+    def delete_collection(self, collection_name: str) -> bool:
+        """Proxy to delete a collection on the underlying database connection."""
+        try:
+            return self.database.delete_collection(collection_name)
+        except Exception:
+            return False
 
 
 class ConnectionManager(QObject):
@@ -85,16 +145,28 @@ class ConnectionManager(QObject):
     def __init__(self):
         """Initialize the connection manager."""
         super().__init__()
-        self._connections: Dict[str, ConnectionInstance] = {}
-        self._active_connection_id: Optional[str] = None
+        self._connections: dict[str, ConnectionInstance] = {}
+        self._active_connection_id: str | None = None
+
+    def get_active_collection(self) -> str | None:
+        """
+        Get the active collection name for the currently active connection.
+
+        Returns:
+            The active collection name, or None if no active connection or collection.
+        """
+        active_conn = self.get_active_connection()
+        if active_conn:
+            return active_conn.active_collection
+        return None
 
     def create_connection(
         self,
         name: str,
         provider: str,
         connection: VectorDBConnection,
-        config: Dict[str, Any],
-        connection_id: str = None,
+        config: dict[str, Any],
+        connection_id: str | None = None,
     ) -> str:
         """
         Create a new connection instance (not yet connected).
@@ -138,17 +210,17 @@ class ConnectionManager(QObject):
         if connection_id in self._connections:
             self.connection_opened.emit(connection_id)
 
-    def get_connection(self, connection_id: str) -> Optional[ConnectionInstance]:
+    def get_connection(self, connection_id: str) -> ConnectionInstance | None:
         """Get a connection instance by ID."""
         return self._connections.get(connection_id)
 
-    def get_active_connection(self) -> Optional[ConnectionInstance]:
+    def get_active_connection(self) -> ConnectionInstance | None:
         """Get the currently active connection instance."""
         if self._active_connection_id:
             return self._connections.get(self._active_connection_id)
         return None
 
-    def get_active_connection_id(self) -> Optional[str]:
+    def get_active_connection_id(self) -> str | None:
         """Get the currently active connection ID."""
         return self._active_connection_id
 
@@ -185,7 +257,7 @@ class ConnectionManager(QObject):
 
         # Disconnect the connection
         try:
-            instance.connection.disconnect()
+            instance.disconnect()
         except Exception as e:
             log_error("Error disconnecting: %s", e)
 
@@ -206,7 +278,7 @@ class ConnectionManager(QObject):
         return True
 
     def update_connection_state(
-        self, connection_id: str, state: ConnectionState, error: Optional[str] = None
+        self, connection_id: str, state: ConnectionState, error: str | None = None
     ):
         """
         Update the state of a connection.
@@ -225,7 +297,7 @@ class ConnectionManager(QObject):
                 instance.error_message = None
             self.connection_state_changed.emit(connection_id, state)
 
-    def update_collections(self, connection_id: str, collections: List[str]):
+    def update_collections(self, connection_id: str, collections: list[str]):
         """
         Update the collections list for a connection.
 
@@ -238,7 +310,7 @@ class ConnectionManager(QObject):
             instance.collections = collections
             self.collections_updated.emit(connection_id, collections)
 
-    def set_active_collection(self, connection_id: str, collection_name: Optional[str]):
+    def set_active_collection(self, connection_id: str, collection_name: str | None):
         """
         Set the active collection for a connection.
 
@@ -251,7 +323,7 @@ class ConnectionManager(QObject):
             instance.active_collection = collection_name
             self.active_collection_changed.emit(connection_id, collection_name)
 
-    def get_all_connections(self) -> List[ConnectionInstance]:
+    def get_all_connections(self) -> list[ConnectionInstance]:
         """Get list of all connection instances."""
         return list(self._connections.values())
 

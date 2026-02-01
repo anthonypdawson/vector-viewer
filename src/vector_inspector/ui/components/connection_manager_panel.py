@@ -1,25 +1,31 @@
 """Connection manager panel showing multiple active connections."""
 
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QPushButton,
+    QApplication,
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
-    QMenu,
-    QMessageBox,
     QInputDialog,
     QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon, QColor, QBrush
 
 from vector_inspector.core.connection_manager import (
     ConnectionManager,
-    ConnectionInstance,
     ConnectionState,
 )
+from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
 
 class ConnectionManagerPanel(QWidget):
@@ -283,6 +289,18 @@ class ConnectionManagerPanel(QWidget):
                 lambda: self._view_collection_info(connection_id, collection_name)
             )
 
+            menu.addSeparator()
+
+            delete_action = menu.addAction("Delete Collection...")
+            delete_action.triggered.connect(
+                lambda: self._delete_collection(connection_id, collection_name)
+            )
+            # Make delete action red/warning style
+            delete_action.setIcon(QIcon())  # Could add warning icon
+            font = delete_action.font()
+            font.setBold(True)
+            delete_action.setFont(font)
+
         menu.exec_(self.connection_tree.mapToGlobal(pos))
 
     def _rename_connection(self, connection_id: str):
@@ -305,17 +323,15 @@ class ConnectionManagerPanel(QWidget):
     def _refresh_collections(self, connection_id: str):
         """Refresh collections for a connection."""
         instance = self.connection_manager.get_connection(connection_id)
-        if not instance or not instance.connection.is_connected:
+        if not instance or not instance.is_connected:
             return
 
         # Show loading while refreshing
-        from vector_inspector.ui.components.loading_dialog import LoadingDialog
-
         loading = LoadingDialog("Refreshing collections...", self)
         loading.show_loading("Refreshing collections...")
         QApplication.processEvents()
         try:
-            collections = instance.connection.list_collections()
+            collections = instance.list_collections()
             self.connection_manager.update_collections(connection_id, collections)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to refresh collections: {e}")
@@ -344,3 +360,128 @@ class ConnectionManagerPanel(QWidget):
         # For now, just select it
         self.connection_manager.set_active_collection(connection_id, collection_name)
         self.collection_selected.emit(connection_id, collection_name)
+
+    def _delete_collection(self, connection_id: str, collection_name: str):
+        """Delete a collection with strict warning."""
+        instance = self.connection_manager.get_connection(connection_id)
+        if not instance:
+            return
+
+        # Get collection info for warning
+        try:
+            col_info = instance.get_collection_info(collection_name)
+            item_count = col_info.get("count", 0) if col_info else 0
+        except Exception:
+            item_count = 0
+
+        # Create a very strict warning dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("⚠️ DELETE Collection - WARNING")
+        dialog.setMinimumWidth(500)
+        layout = QVBoxLayout(dialog)
+
+        # Warning header
+        warning_label = QLabel("⚠️ PERMANENT DELETION WARNING ⚠️")
+        warning_label.setStyleSheet(
+            "font-size: 16px; font-weight: bold; color: #d32f2f; padding: 10px;"
+        )
+        warning_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(warning_label)
+
+        # Details
+        details_text = (
+            f"You are about to PERMANENTLY DELETE the collection:\n\n"
+            f"Collection: {collection_name}\n"
+            f"Connection: {instance.name}\n"
+            f"Items: {item_count:,}\n\n"
+            f"⛔ THIS ACTION CANNOT BE UNDONE ⛔\n\n"
+            f"All vectors, documents, metadata, and embeddings in this collection\n"
+            f"will be PERMANENTLY DELETED from the database.\n\n"
+            f"If you have not created a backup, you will LOSE ALL DATA."
+        )
+        details_label = QLabel(details_text)
+        details_label.setWordWrap(True)
+        details_label.setStyleSheet("padding: 10px; border-radius: 5px;")
+        layout.addWidget(details_label)
+
+        # Confirmation checkbox
+        confirm_checkbox = QCheckBox(
+            f"I understand this will PERMANENTLY DELETE '{collection_name}' "
+            f"and all {item_count:,} items"
+        )
+        confirm_checkbox.setStyleSheet("font-weight: bold; color: #d32f2f; padding: 10px;")
+        layout.addWidget(confirm_checkbox)
+
+        # Type collection name to confirm
+        type_confirm_label = QLabel(
+            f"Type the collection name to confirm: <b>{collection_name}</b>"
+        )
+        layout.addWidget(type_confirm_label)
+
+        name_input = QLineEdit()
+        name_input.setPlaceholderText(f"Type '{collection_name}' here")
+        layout.addWidget(name_input)
+
+        # Buttons
+        button_box = QDialogButtonBox()
+        delete_button = button_box.addButton("DELETE PERMANENTLY", QDialogButtonBox.DestructiveRole)
+        delete_button.setEnabled(False)  # Disabled until confirmed
+        delete_button.setStyleSheet(
+            "QPushButton { background-color: #d32f2f; color: white; font-weight: bold; "
+            "padding: 8px 16px; } "
+            "QPushButton:disabled { background-color: #cccccc; }"
+        )
+        cancel_button = button_box.addButton(QDialogButtonBox.Cancel)
+
+        # Enable delete button only when both confirmations are met
+        def check_confirmations():
+            checkbox_ok = confirm_checkbox.isChecked()
+            name_ok = name_input.text().strip() == collection_name
+            delete_button.setEnabled(checkbox_ok and name_ok)
+
+        confirm_checkbox.stateChanged.connect(check_confirmations)
+        name_input.textChanged.connect(check_confirmations)
+
+        delete_button.clicked.connect(dialog.accept)
+        cancel_button.clicked.connect(dialog.reject)
+
+        layout.addWidget(button_box)
+
+        # Show dialog
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        # Perform deletion
+        loading = LoadingDialog("Deleting collection...", self)
+        loading.show_loading(f"Deleting collection '{collection_name}'...")
+        try:
+            success = instance.delete_collection(collection_name)
+
+            if success:
+                # Remove embedding model info from settings
+                profile_name = instance.name
+                SettingsService().remove_embedding_model(profile_name, collection_name)
+
+                # Refresh collections list
+                collections = instance.list_collections()
+                self.connection_manager.update_collections(connection_id, collections)
+
+                # Clear active collection if it was this one
+                if instance.active_collection == collection_name:
+                    self.connection_manager.set_active_collection(connection_id, None)
+
+                QMessageBox.information(
+                    self,
+                    "Collection Deleted",
+                    f"Collection '{collection_name}' has been permanently deleted.",
+                )
+            else:
+                QMessageBox.warning(
+                    self, "Deletion Failed", f"Failed to delete collection '{collection_name}'."
+                )
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Deletion Error", f"Error deleting collection '{collection_name}': {e}"
+            )
+        finally:
+            loading.hide_loading()

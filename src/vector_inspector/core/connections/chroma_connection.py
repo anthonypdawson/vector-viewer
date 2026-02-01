@@ -389,7 +389,7 @@ class ChromaDBConnection(VectorDBConnection):
             if not embeddings and documents:
                 try:
                     embeddings = self.compute_embeddings_for_documents(
-                        collection_name, documents, getattr(self, "connection_id", None)
+                        collection_name, documents, getattr(self, "profile_name", None)
                     )
                 except Exception as e:
                     log_error("Failed to compute embeddings for Chroma add_items: %s", e)

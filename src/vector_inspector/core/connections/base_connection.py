@@ -1,7 +1,8 @@
 """Abstract base class for vector database connections."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
+from typing import Any
+
 from vector_inspector.core.logging import log_error
 
 
@@ -39,7 +40,7 @@ class VectorDBConnection(ABC):
         pass
 
     @abstractmethod
-    def list_collections(self) -> List[str]:
+    def list_collections(self) -> list[str]:
         """
         Get list of all collections/indexes.
 
@@ -49,7 +50,7 @@ class VectorDBConnection(ABC):
         pass
 
     @abstractmethod
-    def get_collection_info(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_collection_info(self, name: str) -> dict[str, Any] | None:
         """
         Get collection metadata and statistics.
 
@@ -73,16 +74,16 @@ class VectorDBConnection(ABC):
     def add_items(
         self,
         collection_name: str,
-        documents: List[str],
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
-        embeddings: Optional[List[List[float]]] = None,
+        documents: list[str],
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
+        embeddings: list[list[float]] | None = None,
     ) -> bool:
         """Add items to a collection."""
         pass
 
     @abstractmethod
-    def get_items(self, name: str, ids: List[str]) -> Dict[str, Any]:
+    def get_items(self, name: str, ids: list[str]) -> dict[str, Any]:
         """Retrieve items by original ids. Should return a dict with 'documents' and 'metadatas'."""
         pass
 
@@ -100,12 +101,12 @@ class VectorDBConnection(ABC):
     def query_collection(
         self,
         collection_name: str,
-        query_texts: Optional[List[str]] = None,
-        query_embeddings: Optional[List[List[float]]] = None,
+        query_texts: list[str] | None = None,
+        query_embeddings: list[list[float]] | None = None,
         n_results: int = 10,
-        where: Optional[Dict[str, Any]] = None,
-        where_document: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        where: dict[str, Any] | None = None,
+        where_document: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Query a collection for similar vectors.
 
@@ -131,10 +132,10 @@ class VectorDBConnection(ABC):
     def get_all_items(
         self,
         collection_name: str,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-        where: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        limit: int | None = None,
+        offset: int | None = None,
+        where: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Get all items from a collection.
 
@@ -157,10 +158,10 @@ class VectorDBConnection(ABC):
     def update_items(
         self,
         collection_name: str,
-        ids: List[str],
-        documents: Optional[List[str]] = None,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        embeddings: Optional[List[List[float]]] = None,
+        ids: list[str],
+        documents: list[str] | None = None,
+        metadatas: list[dict[str, Any]] | None = None,
+        embeddings: list[list[float]] | None = None,
     ) -> bool:
         """
         Update items in a collection.
@@ -181,8 +182,8 @@ class VectorDBConnection(ABC):
     def delete_items(
         self,
         collection_name: str,
-        ids: Optional[List[str]] = None,
-        where: Optional[Dict[str, Any]] = None,
+        ids: list[str] | None = None,
+        where: dict[str, Any] | None = None,
     ) -> bool:
         """
         Delete items from a collection.
@@ -199,7 +200,7 @@ class VectorDBConnection(ABC):
 
     # Optional: Methods that may be provider-specific but useful to define
 
-    def get_connection_info(self) -> Dict[str, Any]:
+    def get_connection_info(self) -> dict[str, Any]:
         """
         Get information about the current connection.
 
@@ -208,7 +209,7 @@ class VectorDBConnection(ABC):
         """
         return {"provider": self.__class__.__name__, "connected": self.is_connected}
 
-    def get_supported_filter_operators(self) -> List[Dict[str, Any]]:
+    def get_supported_filter_operators(self) -> list[dict[str, Any]]:
         """
         Get list of filter operators supported by this provider.
 
@@ -228,9 +229,7 @@ class VectorDBConnection(ABC):
             {"name": "contains", "server_side": False},
         ]
 
-    def get_embedding_model(
-        self, collection_name: str, connection_id: Optional[str] = None
-    ) -> Optional[str]:
+    def get_embedding_model(self, collection_name: str) -> str | None:
         """
         Get the embedding model used for a collection.
 
@@ -260,11 +259,12 @@ class VectorDBConnection(ABC):
                     return metadata["_embedding_model"]
 
             # Finally, check user settings (for collections we can't modify)
-            if connection_id:
+            profile_name = getattr(self, "profile_name", None)
+            if profile_name:
                 from vector_inspector.services.settings_service import SettingsService
 
                 settings = SettingsService()
-                model_info = settings.get_embedding_model(connection_id, collection_name)
+                model_info = settings.get_embedding_model(profile_name, collection_name)
                 if model_info:
                     return model_info["model"]
 
@@ -274,7 +274,7 @@ class VectorDBConnection(ABC):
             return None
 
     def load_embedding_model_for_collection(
-        self, collection_name: str, connection_id: Optional[str] = None
+        self, collection_name: str, profile_name_override: str | None = None
     ):
         """
         Resolve and load an embedding model for a collection.
@@ -289,17 +289,18 @@ class VectorDBConnection(ABC):
             (loaded_model, model_name, model_type)
         """
         try:
-            from vector_inspector.services.settings_service import SettingsService
             from vector_inspector.core.embedding_utils import (
-                load_embedding_model,
-                get_embedding_model_for_dimension,
                 DEFAULT_MODEL,
+                get_embedding_model_for_dimension,
+                load_embedding_model,
             )
+            from vector_inspector.services.settings_service import SettingsService
 
             # 1) settings
-            if connection_id:
+            profile_name = profile_name_override or getattr(self, "profile_name", None)
+            if profile_name:
                 settings = SettingsService()
-                cfg = settings.get_embedding_model(connection_id, collection_name)
+                cfg = settings.get_embedding_model(profile_name, collection_name)
                 if cfg and cfg.get("model"):
                     model_name = cfg.get("model")
                     model_type = cfg.get("type", "sentence-transformer")
@@ -336,8 +337,8 @@ class VectorDBConnection(ABC):
             raise
 
     def compute_embeddings_for_documents(
-        self, collection_name: str, documents: List[str], connection_id: Optional[str] = None
-    ) -> List[List[float]]:
+        self, collection_name: str, documents: list[str], profile_name_override: str | None = None
+    ) -> list[list[float]]:
         """
         Compute embeddings for a list of documents using the resolved model for the collection.
 
@@ -345,15 +346,14 @@ class VectorDBConnection(ABC):
         raises an exception.
         """
         model, model_name, model_type = self.load_embedding_model_for_collection(
-            collection_name, connection_id
+            collection_name, profile_name_override
         )
 
         # Use batch encoding when available (sentence-transformer), otherwise per-doc
         if model_type != "clip":
             # sentence-transformer-like models support batch encode
             return model.encode(documents, show_progress_bar=False).tolist()
-        else:
-            # CLIP - use encode_text helper for each document
-            from vector_inspector.core.embedding_utils import encode_text
+        # CLIP - use encode_text helper for each document
+        from vector_inspector.core.embedding_utils import encode_text
 
-            return [encode_text(d, model, model_type) for d in documents]
+        return [encode_text(d, model, model_type) for d in documents]

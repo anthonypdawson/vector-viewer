@@ -1,26 +1,27 @@
 """Updated main window with multi-database support."""
 
+from typing import Optional
+
+from PySide6.QtCore import QByteArray, Qt, QTimer
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QMessageBox,
-    QLabel,
     QApplication,
     QDialog,
-    QToolBar,
+    QLabel,
+    QMessageBox,
     QStatusBar,
+    QToolBar,
 )
-from PySide6.QtCore import Qt, QTimer, QByteArray
-from PySide6.QtGui import QAction
 
-from vector_inspector.core.connection_manager import ConnectionManager
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionInstance, ConnectionManager
 from vector_inspector.services.profile_service import ProfileService
 from vector_inspector.services.settings_service import SettingsService
-from vector_inspector.ui.main_window_shell import InspectorShell
 from vector_inspector.ui.components.connection_manager_panel import ConnectionManagerPanel
 from vector_inspector.ui.components.profile_manager_panel import ProfileManagerPanel
-from vector_inspector.ui.tabs import InspectorTabs
 from vector_inspector.ui.controllers.connection_controller import ConnectionController
+from vector_inspector.ui.main_window_shell import InspectorShell
 from vector_inspector.ui.services.dialog_service import DialogService
+from vector_inspector.ui.tabs import InspectorTabs
 
 
 class MainWindow(InspectorShell):
@@ -199,9 +200,10 @@ class MainWindow(InspectorShell):
         help_menu.addAction(check_update_action)
 
     def _check_for_update_from_menu(self):
+        from PySide6.QtWidgets import QMessageBox
+
         from vector_inspector.services.update_service import UpdateService
         from vector_inspector.utils.version import get_app_version
-        from PySide6.QtWidgets import QMessageBox
 
         latest = UpdateService.get_latest_release(force_refresh=True)
         if latest:
@@ -255,11 +257,12 @@ class MainWindow(InspectorShell):
         self.update_indicator.mousePressEvent = self._on_update_indicator_clicked
 
         # Check for updates on launch
-        from vector_inspector.services.update_service import UpdateService
-        from vector_inspector.utils.version import get_app_version
         import threading
 
         from PySide6.QtCore import QTimer
+
+        from vector_inspector.services.update_service import UpdateService
+        from vector_inspector.utils.version import get_app_version
 
         def check_updates():
             latest = UpdateService.get_latest_release()
@@ -382,9 +385,8 @@ class MainWindow(InspectorShell):
 
             # Get active connection
             active = self.connection_manager.get_active_connection()
-            conn = active.connection if active else None
 
-            self.visualization_view = VisualizationView(conn)
+            self.visualization_view = VisualizationView(active)
             # Replace placeholder with actual view
             self.remove_main_tab(InspectorTabs.VISUALIZATION_TAB)
             self.add_main_tab(
@@ -405,7 +407,7 @@ class MainWindow(InspectorShell):
                 self.breadcrumb_label.setText(instance.get_breadcrumb())
 
                 # Update all views with new connection
-                self._update_views_with_connection(instance.connection)
+                self._update_views_with_connection(instance)
 
                 # If there's an active collection, update views with it
                 if instance.active_collection:
@@ -455,7 +457,7 @@ class MainWindow(InspectorShell):
         # If this is the active connection, refresh the info panel
         if connection_id == self.connection_manager.get_active_connection_id():
             instance = self.connection_manager.get_connection(connection_id)
-            if instance and instance.connection:
+            if instance and instance.is_connected:
                 self.info_panel.refresh_database_info()
 
     def _on_collection_selected_from_panel(self, connection_id: str, collection_name: str):
@@ -473,7 +475,7 @@ class MainWindow(InspectorShell):
         finally:
             self.connection_controller.loading_dialog.hide_loading()
 
-    def _update_views_with_connection(self, connection: VectorDBConnection):
+    def _update_views_with_connection(self, connection: Optional[ConnectionInstance]):
         """Update all views with a new connection."""
         # Clear current collection when switching connections
         self.info_panel.current_collection = None
@@ -528,12 +530,12 @@ class MainWindow(InspectorShell):
     def _refresh_active_connection(self):
         """Refresh collections for the active connection."""
         active = self.connection_manager.get_active_connection()
-        if not active or not active.connection.is_connected:
+        if not active or not active.is_connected:
             QMessageBox.information(self, "No Connection", "No active connection to refresh.")
             return
 
         try:
-            collections = active.connection.list_collections()
+            collections = active.list_collections()
             self.connection_manager.update_collections(active.id, collections)
             self.statusBar().showMessage(f"Refreshed collections ({len(collections)} found)", 3000)
 

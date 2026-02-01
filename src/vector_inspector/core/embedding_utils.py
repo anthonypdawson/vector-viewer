@@ -1,7 +1,9 @@
 """Utilities for managing embedding models and vector dimensions."""
 
-from typing import Optional, Union, Tuple
-from sentence_transformers import SentenceTransformer
+from __future__ import annotations  # Allows us to use class names in typehints while lazyloading
+from typing import Optional, Tuple, Any
+
+# Lazy import: see below
 from vector_inspector.core.logging import log_info
 
 from vector_inspector.core.model_registry import get_model_registry
@@ -101,7 +103,7 @@ def get_available_models_for_dimension(dimension: int) -> list:
     return models
 
 
-def load_embedding_model(model_name: str, model_type: str) -> Union[SentenceTransformer, any]:
+def load_embedding_model(model_name: str, model_type: str) -> SentenceTransformer | Any:
     """
     Load an embedding model (sentence-transformer or CLIP).
 
@@ -117,12 +119,16 @@ def load_embedding_model(model_name: str, model_type: str) -> Union[SentenceTran
 
         model = CLIPModel.from_pretrained(model_name)
         processor = CLIPProcessor.from_pretrained(model_name)
+        # Returns a tuple: (CLIPModel, CLIPProcessor)
         return (model, processor)
     else:
+        from sentence_transformers import SentenceTransformer
+
+        # Returns a SentenceTransformer instance
         return SentenceTransformer(model_name)
 
 
-def encode_text(text: str, model: Union[SentenceTransformer, Tuple], model_type: str) -> list:
+def encode_text(text: str, model: "SentenceTransformer" | Tuple, model_type: str) -> list:
     """
     Encode text using the appropriate model.
 
@@ -146,13 +152,15 @@ def encode_text(text: str, model: Union[SentenceTransformer, Tuple], model_type:
         return text_features[0].cpu().numpy().tolist()
     else:
         # sentence-transformer
+        # Lazy import for type hint only
+        # from sentence_transformers import SentenceTransformer
         embedding = model.encode(text)
         return embedding.tolist()
 
 
 def get_embedding_model_for_dimension(
     dimension: int,
-) -> Tuple[Union[SentenceTransformer, Tuple], str, str]:
+) -> Tuple["SentenceTransformer" | Tuple, str, str]:
     """
     Get a loaded embedding model for a specific dimension.
 
@@ -164,4 +172,5 @@ def get_embedding_model_for_dimension(
     """
     model_name, model_type = get_model_for_dimension(dimension)
     model = load_embedding_model(model_name, model_type)
+    # Returns a tuple: (loaded_model, model_name, model_type)
     return (model, model_name, model_type)

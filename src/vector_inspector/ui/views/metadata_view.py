@@ -1,38 +1,36 @@
 """Metadata browsing and data view."""
 
-from typing import Optional, Dict, Any, List
+import math
+from typing import Any, Optional
+
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTableWidget,
-    QTableWidgetItem,
-    QPushButton,
+    QApplication,
     QCheckBox,
-    QLabel,
-    QSpinBox,
-    QLineEdit,
-    QComboBox,
-    QGroupBox,
-    QHeaderView,
-    QMessageBox,
     QDialog,
     QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
     QMenu,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QTimer, QThread, Signal
-import math
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.cache_manager import CacheEntry, get_cache_manager
+from vector_inspector.core.connection_manager import ConnectionInstance
+from vector_inspector.core.logging import log_info
+from vector_inspector.services.filter_service import apply_client_side_filters
+from vector_inspector.services.import_export_service import ImportExportService
+from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.item_dialog import ItemDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
-from vector_inspector.ui.components.filter_builder import FilterBuilder
-from vector_inspector.services.import_export_service import ImportExportService
-from vector_inspector.services.filter_service import apply_client_side_filters
-from vector_inspector.services.settings_service import SettingsService
-from vector_inspector.core.cache_manager import get_cache_manager, CacheEntry
-from PySide6.QtWidgets import QApplication
-from vector_inspector.core.logging import log_info
 
 
 class DataLoadThread(QThread):
@@ -66,12 +64,13 @@ class DataLoadThread(QThread):
 class MetadataView(QWidget):
     """View for browsing collection data and metadata."""
 
-    def __init__(self, connection: VectorDBConnection, parent=None):
+    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
+        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self.current_collection: str = ""
         self.current_database: str = ""
-        self.current_data: Optional[Dict[str, Any]] = None
+        self.current_data: Optional[dict[str, Any]] = None
         self.page_size = 50
         self.current_page = 0
         self.loading_dialog = LoadingDialog("Loading data...", self)
@@ -308,7 +307,7 @@ class MetadataView(QWidget):
         self.load_thread.error.connect(self._on_load_error)
         self.load_thread.start()
 
-    def _on_data_loaded(self, data: Dict[str, Any]):
+    def _on_data_loaded(self, data: dict[str, Any]):
         """Handle data loaded from background thread."""
         # If no data returned
         if not data:
@@ -358,7 +357,7 @@ class MetadataView(QWidget):
                     data=full_data,
                     scroll_position=self.table.verticalScrollBar().value(),
                     search_query=(
-                        getattr(self.filter_builder, "to_dict")()
+                        self.filter_builder.to_dict()
                         if callable(getattr(self.filter_builder, "to_dict", None))
                         else ""
                     ),
@@ -401,7 +400,7 @@ class MetadataView(QWidget):
                 data=data,
                 scroll_position=self.table.verticalScrollBar().value(),
                 search_query=(
-                    getattr(self.filter_builder, "to_dict")()
+                    self.filter_builder.to_dict()
                     if callable(getattr(self.filter_builder, "to_dict", None))
                     else ""
                 ),
@@ -422,7 +421,7 @@ class MetadataView(QWidget):
         self.status_label.setText(f"Failed to load data: {error_msg}")
         self.table.setRowCount(0)
 
-    def _update_filter_fields(self, data: Dict[str, Any]):
+    def _update_filter_fields(self, data: dict[str, Any]):
         """Update filter builder with available metadata field names."""
         field_names = []
 
@@ -441,7 +440,7 @@ class MetadataView(QWidget):
         if field_names:
             self.filter_builder.set_available_fields(field_names)
 
-    def _populate_table(self, data: Dict[str, Any]):
+    def _populate_table(self, data: dict[str, Any]):
         """Populate table with data."""
         ids = data.get("ids", [])
         documents = data.get("documents", [])

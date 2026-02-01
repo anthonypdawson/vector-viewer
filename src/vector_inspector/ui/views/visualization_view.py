@@ -1,28 +1,30 @@
 """Vector visualization view with dimensionality reduction."""
 
 from __future__ import annotations
-from typing import Any
+
 import traceback
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
-    QLabel,
-    QComboBox,
-    QSpinBox,
-    QGroupBox,
-    QMessageBox,
-    QApplication,
-)
+from typing import Any, Optional
+
+import numpy as np
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
-import numpy as np
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionInstance
+from vector_inspector.core.logging import log_error
 from vector_inspector.services.visualization_service import VisualizationService
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
-from vector_inspector.core.logging import log_error
 
 
 class VisualizationThread(QThread):
@@ -55,8 +57,9 @@ class VisualizationThread(QThread):
 class VisualizationView(QWidget):
     """View for visualizing vectors in 2D/3D."""
 
-    def __init__(self, connection: VectorDBConnection, parent=None):
+    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
+        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self.current_collection: str = ""
         self.current_data: dict[str, Any] | None = None
@@ -296,8 +299,8 @@ class VisualizationView(QWidget):
             webbrowser.open(f"file://{self._last_temp_html}")
 
     def cleanup_temp_html(self):
-        import os
         import contextlib
+        import os
 
         for f in getattr(self, "temp_html_files", []):
             with contextlib.suppress(Exception):

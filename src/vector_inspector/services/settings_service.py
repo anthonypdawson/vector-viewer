@@ -1,19 +1,37 @@
 """Service for persisting application settings."""
 
-import json
 import base64
-from PySide6.QtCore import QObject, Signal
+import json
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Optional
+
+from PySide6.QtCore import QObject, Signal
+
 from vector_inspector.core.cache_manager import invalidate_cache_on_settings_change
 from vector_inspector.core.logging import log_error
 
 
 class SettingsService:
-    """Handles loading and saving application settings."""
+    """Handles loading and saving application settings.
+
+    This is a singleton - all instances share the same settings data.
+    """
+
+    _instance = None
+    _initialized = False
+
+    def __new__(cls):
+        """Ensure only one instance exists (singleton pattern)."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
         """Initialize settings service."""
+        # Only initialize once
+        if SettingsService._initialized:
+            return
+        SettingsService._initialized = True
 
         # Expose a shared QObject-based signal emitter so UI can react to
         # settings changes without polling.
@@ -28,14 +46,14 @@ class SettingsService:
 
         self.settings_dir = Path.home() / ".vector-inspector"
         self.settings_file = self.settings_dir / "settings.json"
-        self.settings: Dict[str, Any] = {}
+        self.settings: dict[str, Any] = {}
         self._load_settings()
 
     def _load_settings(self):
         """Load settings from file."""
         try:
             if self.settings_file.exists():
-                with open(self.settings_file, "r", encoding="utf-8") as f:
+                with open(self.settings_file, encoding="utf-8") as f:
                     self.settings = json.load(f)
         except Exception as e:
             log_error("Failed to load settings: %s", e)
@@ -52,11 +70,11 @@ class SettingsService:
         except Exception as e:
             log_error("Failed to save settings: %s", e)
 
-    def get_last_connection(self) -> Optional[Dict[str, Any]]:
+    def get_last_connection(self) -> Optional[dict[str, Any]]:
         """Get the last connection configuration."""
         return self.settings.get("last_connection")
 
-    def save_last_connection(self, config: Dict[str, Any]):
+    def save_last_connection(self, config: dict[str, Any]):
         """Save the last connection configuration."""
         self.settings["last_connection"] = config
         self._save_settings()
@@ -166,7 +184,7 @@ class SettingsService:
 
     def save_embedding_model(
         self,
-        connection_id: str,
+        profile_name: str,
         collection_name: str,
         model_name: str,
         model_type: str = "user-configured",
@@ -174,7 +192,7 @@ class SettingsService:
         """Save embedding model mapping for a collection.
 
         Args:
-            connection_id: Connection identifier
+            profile_name: Profile/connection name
             collection_name: Collection name
             model_name: Embedding model name (e.g., 'sentence-transformers/all-MiniLM-L6-v2')
             model_type: Type of configuration ('user-configured', 'auto-detected', 'stored')
@@ -182,7 +200,7 @@ class SettingsService:
         if "collection_embedding_models" not in self.settings:
             self.settings["collection_embedding_models"] = {}
 
-        collection_key = f"{connection_id}:{collection_name}"
+        collection_key = f"{profile_name}:{collection_name}"
         self.settings["collection_embedding_models"][collection_key] = {
             "model": model_name,
             "type": model_type,
@@ -191,34 +209,68 @@ class SettingsService:
         self._save_settings()
 
     def get_embedding_model(
-        self, connection_id: str, collection_name: str
-    ) -> Optional[Dict[str, Any]]:
+        self,
+        profile_name: str,
+        collection_name: str,
+    ) -> Optional[dict[str, Any]]:
         """Get embedding model mapping for a collection.
 
         Args:
-            connection_id: Connection identifier
+            profile_name: Profile/connection name
             collection_name: Collection name
 
         Returns:
             Dictionary with 'model', 'type', and 'timestamp' or None
         """
         collection_models = self.settings.get("collection_embedding_models", {})
-        collection_key = f"{connection_id}:{collection_name}"
+        collection_key = f"{profile_name}:{collection_name}"
         return collection_models.get(collection_key)
 
-    def remove_embedding_model(self, connection_id: str, collection_name: str):
+    def remove_embedding_model(
+        self,
+        profile_name: str,
+        collection_name: str,
+    ):
         """Remove embedding model mapping for a collection.
 
         Args:
-            connection_id: Connection identifier
+            profile_name: Profile/connection name
             collection_name: Collection name
         """
         if "collection_embedding_models" not in self.settings:
             return
 
-        collection_key = f"{connection_id}:{collection_name}"
+        collection_key = f"{profile_name}:{collection_name}"
         self.settings["collection_embedding_models"].pop(collection_key, None)
         self._save_settings()
+
+    def remove_profile_settings(self, profile_name: str):
+        """Remove all settings for a profile (e.g., when profile is deleted).
+
+        Args:
+            profile_name: Profile/connection name
+        """
+        if "collection_embedding_models" not in self.settings:
+            return
+
+        # Remove all keys that start with profile_name:
+        prefix = f"{profile_name}:"
+        keys_to_remove = [
+            key for key in self.settings["collection_embedding_models"] if key.startswith(prefix)
+        ]
+
+        for key in keys_to_remove:
+            self.settings["collection_embedding_models"].pop(key, None)
+
+        if keys_to_remove:
+            self._save_settings()
+            from vector_inspector.core.logging import log_info
+
+            log_info(
+                "Removed %d embedding model settings for profile: %s",
+                len(keys_to_remove),
+                profile_name,
+            )
 
     def _get_timestamp(self) -> str:
         """Get current timestamp as ISO string."""
@@ -267,7 +319,7 @@ class SettingsService:
         )
         self._save_settings()
 
-    def get_custom_embedding_models(self, dimension: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_custom_embedding_models(self, dimension: Optional[int] = None) -> list[dict[str, Any]]:
         """Get list of custom embedding models.
 
         Args:
