@@ -1,7 +1,7 @@
 """Vector visualization view with dimensionality reduction."""
 
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 import traceback
 from PySide6.QtWidgets import (
     QWidget,
@@ -19,7 +19,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 import numpy as np
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.services.visualization_service import VisualizationService
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.core.logging import log_error
@@ -55,10 +55,9 @@ class VisualizationThread(QThread):
 class VisualizationView(QWidget):
     """View for visualizing vectors in 2D/3D."""
 
-    def __init__(self, connection: VectorDBConnection, parent=None):
+    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Accepts a raw VectorDBConnection (or any wrapper exposing the same interface).
-        self._raw_connection = connection
+        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self.current_collection: str = ""
         self.current_data: dict[str, Any] | None = None

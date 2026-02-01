@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QAction
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionInstance
 
 
 class CollectionBrowser(QWidget):
@@ -20,10 +20,9 @@ class CollectionBrowser(QWidget):
 
     collection_selected = Signal(str)
 
-    def __init__(self, connection: VectorDBConnection, parent=None):
+    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Store the provided connection object (raw or wrapped) exposing the VectorDBConnection interface.
-        self._raw_connection = connection
+        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self._setup_ui()
 

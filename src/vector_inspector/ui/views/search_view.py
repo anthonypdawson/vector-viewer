@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.services.filter_service import apply_client_side_filters
@@ -32,7 +32,7 @@ from vector_inspector.core.logging import log_info
 class SearchView(QWidget):
     """View for performing similarity searches."""
 
-    def __init__(self, connection: VectorDBConnection, parent=None):
+    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
         # Initialize all UI attributes to None to avoid AttributeError
         self.breadcrumb_label = None
@@ -47,8 +47,7 @@ class SearchView(QWidget):
         self.loading_dialog = None
         self.cache_manager = None
 
-        # Store the provided VectorDBConnection (or compatible wrapper) directly.
-        self._raw_connection = connection
+        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self.current_collection: str = ""
         self.current_database: str = ""

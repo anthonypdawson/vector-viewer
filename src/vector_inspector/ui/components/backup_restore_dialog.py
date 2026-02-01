@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from pathlib import Path
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.services.backup_restore_service import BackupRestoreService
 from vector_inspector.services.settings_service import SettingsService
@@ -34,8 +33,8 @@ class BackupRestoreDialog(QDialog):
 
     def __init__(self, connection: ConnectionInstance, collection_name: str = "", parent=None):
         super().__init__(parent)
-        # Expect a ConnectionInstance wrapper; use `.connection` when a low-level
-        # VectorDBConnection is required by services.
+        # Expects a ConnectionInstance wrapper; services access the underlying
+        # raw database connection via `.database` when needed.
         self.connection = connection
         self.collection_name = collection_name
         self.backup_service = BackupRestoreService()
@@ -212,7 +211,7 @@ class BackupRestoreDialog(QDialog):
 
         try:
             backup_path = self.backup_service.backup_collection(
-                self.connection.connection,
+                self.connection.database,
                 self.collection_name,
                 self.backup_dir,
                 include_embeddings=include_embeddings,
@@ -297,8 +296,8 @@ class BackupRestoreDialog(QDialog):
             msg = f"Restore backup to ORIGINAL collection: '{final_name}'"
 
         # Check if collection exists
-        # `self.connection` may be a ConnectionInstance or a direct VectorDBConnection.
-        actual_conn = getattr(self.connection, "connection", self.connection)
+        # Extract the underlying database connection from the ConnectionInstance wrapper.
+        actual_conn = getattr(self.connection, "database", self.connection)
         if hasattr(actual_conn, "list_collections"):
             try:
                 existing_collections = actual_conn.list_collections()
@@ -370,7 +369,7 @@ class BackupRestoreDialog(QDialog):
         try:
             # Restore (pass low-level connection to service)
             success = self.backup_service.restore_collection(
-                self.connection.connection,
+                self.connection.database,
                 backup_file,
                 collection_name=restore_name if restore_name else None,
                 overwrite=overwrite,

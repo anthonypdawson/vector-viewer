@@ -11,8 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QByteArray
 from PySide6.QtGui import QAction
 
-from vector_inspector.core.connection_manager import ConnectionManager
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionManager, ConnectionInstance
 from vector_inspector.services.profile_service import ProfileService
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.ui.main_window_shell import InspectorShell
@@ -382,9 +381,8 @@ class MainWindow(InspectorShell):
 
             # Get active connection
             active = self.connection_manager.get_active_connection()
-            conn = active.connection if active else None
 
-            self.visualization_view = VisualizationView(conn)
+            self.visualization_view = VisualizationView(active)
             # Replace placeholder with actual view
             self.remove_main_tab(InspectorTabs.VISUALIZATION_TAB)
             self.add_main_tab(
@@ -405,7 +403,7 @@ class MainWindow(InspectorShell):
                 self.breadcrumb_label.setText(instance.get_breadcrumb())
 
                 # Update all views with new connection
-                self._update_views_with_connection(instance.connection)
+                self._update_views_with_connection(instance)
 
                 # If there's an active collection, update views with it
                 if instance.active_collection:
@@ -473,8 +471,8 @@ class MainWindow(InspectorShell):
         finally:
             self.connection_controller.loading_dialog.hide_loading()
 
-    def _update_views_with_connection(self, connection: VectorDBConnection):
-        """Update all views with a new connection."""
+    def _update_views_with_connection(self, connection: Optional[ConnectionInstance]):
+        """Update all views with a new connection.\"\"\"
         # Clear current collection when switching connections
         self.info_panel.current_collection = None
         self.metadata_view.current_collection = None

@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, QObject
 from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QApplication
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 from vector_inspector.core.connections.pinecone_connection import PineconeConnection
@@ -26,10 +26,9 @@ from vector_inspector.core.logging import log_info
 class InfoPanel(QWidget):
     """Panel for displaying database and collection information."""
 
-    def __init__(self, connection: VectorDBConnection, parent=None):
+    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Expect a ConnectionInstance (wrapper). Keep raw backend available.
-        self._raw_connection = connection
+        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self.connection_id: str = ""  # Will be set when collection is set
         self.current_collection: str = ""
@@ -215,8 +214,8 @@ class InfoPanel(QWidget):
             return
 
         # Get provider name
-        # Support both wrapper connections (with .connection) and raw VectorDBConnection instances.
-        backend = getattr(self.connection, "connection", self.connection)
+        # Extract the underlying database connection from ConnectionInstance wrapper.
+        backend = getattr(self.connection, "database", self.connection)
         provider_name = (
             backend.__class__.__name__.replace("Connection", "") if backend else "Unknown"
         )

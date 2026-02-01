@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 import math
 
-from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.ui.components.item_dialog import ItemDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.ui.components.filter_builder import FilterBuilder
@@ -66,10 +66,9 @@ class DataLoadThread(QThread):
 class MetadataView(QWidget):
     """View for browsing collection data and metadata."""
 
-    def __init__(self, connection: VectorDBConnection, parent=None):
+    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Currently expects a raw VectorDBConnection instance.
-        self._raw_connection = connection
+        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self.current_collection: str = ""
         self.current_database: str = ""
