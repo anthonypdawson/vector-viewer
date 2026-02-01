@@ -1,13 +1,12 @@
 """Service for backing up and restoring collections."""
 
-import json
-from typing import Dict, Any, Optional
-from pathlib import Path
 from datetime import datetime, timezone
-import shutil
+from pathlib import Path
+from typing import Optional
 
-from vector_inspector.core.logging import log_info, log_error, log_debug
-from .backup_helpers import write_backup_zip, read_backup_zip, normalize_embeddings
+from vector_inspector.core.logging import log_debug, log_error, log_info
+
+from .backup_helpers import normalize_embeddings, read_backup_zip, write_backup_zip
 
 
 class BackupRestoreService:
@@ -15,7 +14,11 @@ class BackupRestoreService:
 
     @staticmethod
     def backup_collection(
-        connection, collection_name: str, backup_dir: str, include_embeddings: bool = True
+        connection,
+        collection_name: str,
+        backup_dir: str,
+        include_embeddings: bool = True,
+        connection_id: Optional[str] = None,
     ) -> Optional[str]:
         """
         Backup a collection to a directory.
@@ -25,6 +28,7 @@ class BackupRestoreService:
             collection_name: Name of collection to backup
             backup_dir: Directory to store backups
             include_embeddings: Whether to include embedding vectors
+            connection_id: Optional connection ID for retrieving model config from settings
 
         Returns:
             Path to backup file or None if failed
@@ -70,6 +74,19 @@ class BackupRestoreService:
                     except Exception:
                         embed_model = None
 
+                # If not found yet, check app settings as a fallback
+                if not embed_model and connection_id:
+                    try:
+                        from vector_inspector.services.settings_service import SettingsService
+
+                        settings = SettingsService()
+                        model_info = settings.get_embedding_model(connection_id, collection_name)
+                        if model_info:
+                            embed_model = model_info.get("model")
+                            embed_model_type = model_info.get("type", "sentence-transformer")
+                    except Exception:
+                        pass
+
                 if embed_model:
                     backup_metadata["embedding_model"] = embed_model
                 if embed_model_type:
@@ -96,6 +113,7 @@ class BackupRestoreService:
         collection_name: Optional[str] = None,
         overwrite: bool = False,
         recompute_embeddings: Optional[bool] = None,
+        connection_id: Optional[str] = None,
     ) -> bool:
         """
         Restore a collection from a backup file.
@@ -110,6 +128,7 @@ class BackupRestoreService:
                 - False: Never recompute, use embeddings from backup as-is
                 - None (default): Auto mode - only recompute if backup contains embeddings
                   and model metadata is available
+            connection_id: Optional connection ID for saving model config to app settings
 
         Returns:
             True if successful, False otherwise
@@ -207,8 +226,8 @@ class BackupRestoreService:
                 if should_recompute:
                     try:
                         from vector_inspector.core.embedding_utils import (
-                            load_embedding_model,
                             encode_text,
+                            load_embedding_model,
                         )
 
                         model_name = metadata.get("embedding_model") if metadata else None
@@ -221,13 +240,13 @@ class BackupRestoreService:
                             )
                             embeddings_to_use = None
                         elif not docs:
-                            log_info(
-                                "No documents available in backup to recompute embeddings"
-                            )
+                            log_info("No documents available in backup to recompute embeddings")
                             embeddings_to_use = None
                         else:
                             # We have both model metadata and documents, proceed with recomputation
-                            model_type = metadata.get("embedding_model_type", "sentence-transformer")
+                            model_type = metadata.get(
+                                "embedding_model_type", "sentence-transformer"
+                            )
                             model = load_embedding_model(model_name, model_type)
                             new_embeddings = []
                             if model_type == "clip":
@@ -261,6 +280,32 @@ class BackupRestoreService:
             if success:
                 log_info("Collection '%s' restored from backup", restore_collection_name)
                 log_info("Restored %d items", len(data.get("ids", [])))
+
+                # Save model config to app settings if available
+                if connection_id and restore_collection_name and metadata:
+                    try:
+                        embed_model = metadata.get("embedding_model")
+                        embed_model_type = metadata.get(
+                            "embedding_model_type", "sentence-transformer"
+                        )
+                        if embed_model:
+                            from vector_inspector.services.settings_service import SettingsService
+
+                            settings = SettingsService()
+                            settings.save_embedding_model(
+                                connection_id,
+                                restore_collection_name,
+                                embed_model,
+                                embed_model_type,
+                            )
+                            log_info(
+                                "Saved model config to settings: %s (%s)",
+                                embed_model,
+                                embed_model_type,
+                            )
+                    except Exception as e:
+                        log_error("Failed to save model config to settings: %s", e)
+
                 return True
 
             # Failure: attempt cleanup

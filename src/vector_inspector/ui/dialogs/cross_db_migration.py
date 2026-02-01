@@ -80,6 +80,7 @@ class MigrationThread(QThread):
                 self.source_collection,
                 temp_dir,
                 include_embeddings=self.include_embeddings,
+                connection_id=self.source_conn.id,
             )
 
             if not temp_backup_path:
@@ -108,6 +109,7 @@ class MigrationThread(QThread):
                 temp_backup_path,
                 collection_name=self.target_collection,
                 overwrite=target_exists,
+                connection_id=self.target_conn.id,
             )
 
             if self._cancelled:

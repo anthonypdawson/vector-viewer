@@ -216,6 +216,7 @@ class BackupRestoreDialog(QDialog):
                 self.collection_name,
                 self.backup_dir,
                 include_embeddings=include_embeddings,
+                connection_id=self.connection.id,
             )
         finally:
             self.loading_dialog.hide_loading()
@@ -374,6 +375,7 @@ class BackupRestoreDialog(QDialog):
                 collection_name=restore_name if restore_name else None,
                 overwrite=overwrite,
                 recompute_embeddings=recompute_choice,
+                connection_id=self.connection.id,
             )
         finally:
             self.loading_dialog.hide_loading()
