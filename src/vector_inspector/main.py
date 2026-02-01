@@ -7,8 +7,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from vector_inspector import get_version
-from vector_inspector.ui.loading_screen import LoadingScreen
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.ui.loading_screen import LoadingScreen
 
 # Ensures the app looks in its own folder for the raw libraries
 sys.path.append(os.path.dirname(sys.executable))
@@ -22,7 +22,7 @@ def main():
 
     # Get version once for all uses
     app_version = get_version()
-    
+
     # Check if user wants to skip loading screen
     settings = SettingsService()
     show_loading = not settings.get("hide_loading_screen", False)
@@ -40,16 +40,16 @@ def main():
             loading_text="Initializing providers…",
         )
         loading.show()
-        
+
         # Force the loading screen to render before continuing
         app.processEvents()
-        
+
         # NOW do the heavy imports after loading screen is visible
         loading.set_loading_text("Loading main window...")
         app.processEvents()
-    
-    from vector_inspector.ui.main_window import MainWindow
+
     from vector_inspector.core.logging import log_error
+    from vector_inspector.ui.main_window import MainWindow
 
     def send_ping():
         # Telemetry: send launch ping if enabled
@@ -64,7 +64,7 @@ def main():
     if loading:
         loading.set_loading_text("Preparing interface...")
         app.processEvents()
-    
+
     window = MainWindow()
     window.show()
 

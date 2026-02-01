@@ -11,7 +11,7 @@ class LoadingScreen(QWidget):
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        
+
         # Main layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 32, 32, 32)
@@ -19,9 +19,7 @@ class LoadingScreen(QWidget):
 
         # Container with background
         container = QWidget()
-        container.setStyleSheet(
-            "background-color: #222; border-radius: 10px; color: #fff;"
-        )
+        container.setStyleSheet("background-color: #222; border-radius: 10px; color: #fff;")
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(32, 32, 32, 32)
         container_layout.setSpacing(12)
@@ -56,7 +54,7 @@ class LoadingScreen(QWidget):
         self.loading_label.setAlignment(Qt.AlignCenter)
         self.loading_label.setStyleSheet("color: #6cf;")
         container_layout.addWidget(self.loading_label)
-        
+
         # Skip loading screen checkbox
         self.skip_loading_checkbox = QCheckBox("Don't show this again")
         self.skip_loading_checkbox.setFont(QFont("Segoe UI", 9))
@@ -67,26 +65,25 @@ class LoadingScreen(QWidget):
         layout.addWidget(container)
         self.setLayout(layout)
         self.resize(400, 400)
-        
+
         # Center on screen
         self._center_on_screen()
-    
+
     def _center_on_screen(self):
         """Center the loading screen on the primary screen."""
         from PySide6.QtWidgets import QApplication
+
         screen = QApplication.primaryScreen().geometry()
         size = self.geometry()
-        self.move(
-            (screen.width() - size.width()) // 2,
-            (screen.height() - size.height()) // 2
-        )
+        self.move((screen.width() - size.width()) // 2, (screen.height() - size.height()) // 2)
 
     def set_loading_text(self, text):
         self.loading_label.setText(text)
-    
+
     def _on_skip_changed(self, state):
         """Save the skip loading screen preference."""
         from vector_inspector.services.settings_service import SettingsService
+
         settings = SettingsService()
         settings.set("hide_loading_screen", state == Qt.CheckState.Checked.value)
 

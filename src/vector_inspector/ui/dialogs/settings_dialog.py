@@ -1,17 +1,15 @@
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QCheckBox,
-    QComboBox,
-    QSpinBox,
     QPushButton,
+    QSpinBox,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Qt
 
-from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.extensions import settings_panel_hook
+from vector_inspector.services.settings_service import SettingsService
 
 
 class SettingsDialog(QDialog):
@@ -46,7 +44,7 @@ class SettingsDialog(QDialog):
         # Window geometry
         self.restore_geometry_checkbox = QCheckBox("Restore window size/position on startup")
         layout.addWidget(self.restore_geometry_checkbox)
-        
+
         # Loading screen
         self.hide_splash_checkbox = QCheckBox("Hide loading screen on startup")
         layout.addWidget(self.hide_splash_checkbox)
