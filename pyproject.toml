@@ -54,6 +54,7 @@ dev = [
     "ipython>=8.18.0",
     "briefcase>=0.3.26",
     "pyarmor>=9.2.3",
+    "bumpver>=2025.1131",
 ]
 
 [tool.ruff]
@@ -84,7 +85,7 @@ select = [
     "ARG",
     "RUF",
 ]
-ignore = ["E501", "I001"]
+ignore = ["E501", "I001", "UP045"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true

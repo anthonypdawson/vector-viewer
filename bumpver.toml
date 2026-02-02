@@ -1,0 +1,12 @@
+[bumpver]
+current_version = "0.3.11"
+version_pattern = "MAJOR.MINOR.PATCH"
+
+[bumpver.file_patterns]
+"src/vector_inspector/__init__.py" = [
+    '__version__ = "{version}"'
+]
+"pyproject.toml" = [
+    'version = "{version}"',
+    'tool.briefcase.version = "{version}"'
+]
