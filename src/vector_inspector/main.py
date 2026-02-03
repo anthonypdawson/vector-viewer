@@ -7,8 +7,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from vector_inspector import get_version
-from vector_inspector.services.settings_service import SettingsService
-from vector_inspector.ui.loading_screen import LoadingScreen
+from vector_inspector.ui.loading_screen import show_loading_screen
 
 # Ensures the app looks in its own folder for the raw libraries
 sys.path.append(os.path.dirname(sys.executable))
@@ -23,28 +22,16 @@ def main():
     # Get version once for all uses
     app_version = get_version()
 
-    # Check if user wants to skip loading screen
-    settings = SettingsService()
-    show_loading = not settings.get("hide_loading_screen", False)
+    # Show loading screen (if not disabled in settings)
+    loading = show_loading_screen(
+        app_name="Vector Inspector",
+        version=f"v{app_version}",
+        tagline="The missing toolset for your vector data",
+        loading_text="Initializing providers…"
+    )
 
-    # Get the logo path relative to this module
-    module_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    logo_path = os.path.join(module_dir, "assets", "logo.png")
-
-    loading = None
-    if show_loading:
-        loading = LoadingScreen(
-            logo_path=logo_path,
-            version=f"v{app_version}",
-            tagline="Vector-Inspector\nThe missing toolset for your vector data",
-            loading_text="Initializing providers…",
-        )
-        loading.show()
-
-        # Force the loading screen to render before continuing
-        app.processEvents()
-
-        # NOW do the heavy imports after loading screen is visible
+    # Heavy imports after loading screen is visible
+    if loading:
         loading.set_loading_text("Loading main window...")
         app.processEvents()
 

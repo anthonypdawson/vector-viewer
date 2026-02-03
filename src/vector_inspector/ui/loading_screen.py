@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QCheckBox, QLabel, QVBoxLayout, QWidget
 
 
 class LoadingScreen(QWidget):
-    def __init__(self, logo_path, version, tagline, loading_text):
+    def __init__(self, logo_path, version, app_name, tagline, loading_text):
         super().__init__()
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setWindowFlag(Qt.WindowStaysOnTopHint)
@@ -34,11 +34,18 @@ class LoadingScreen(QWidget):
             logo_label.setAlignment(Qt.AlignCenter)
             container_layout.addWidget(logo_label)
 
+        # App name
+        app_name_label = QLabel(app_name)
+        app_name_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        app_name_label.setAlignment(Qt.AlignCenter)
+        app_name_label.setStyleSheet("color: #fff;")
+        container_layout.addWidget(app_name_label)
+
         # Tagline
         tagline_label = QLabel(tagline)
-        tagline_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        tagline_label.setFont(QFont("Segoe UI", 10))
         tagline_label.setAlignment(Qt.AlignCenter)
-        tagline_label.setStyleSheet("color: #fff;")
+        tagline_label.setStyleSheet("color: #aaa;")
         container_layout.addWidget(tagline_label)
 
         # Version
@@ -98,13 +105,65 @@ class LoadingScreen(QWidget):
         self._fade_animation = animation  # Prevent garbage collection
 
 
+def show_loading_screen(app_name, version, tagline, loading_text="Initializing providers…", logo_path=None):
+    """Show the loading screen if not disabled in settings.
+    
+    This is a convenience function that handles checking settings, finding the logo,
+    creating the loading screen, and showing it. Both vector-inspector and vector-studio
+    should use this function to avoid code duplication.
+    
+    Args:
+        app_name: Name of the application (e.g., "Vector Inspector", "Vector Studio")
+        version: Version string (e.g., "v0.3.11")
+        tagline: Tagline to display under app name
+        loading_text: Initial loading message
+        logo_path: Optional explicit path to logo. If None, will look for vector-inspector's logo.
+    
+    Returns:
+        LoadingScreen instance if shown, None otherwise.
+    """
+    from vector_inspector.services.settings_service import SettingsService
+    
+    # Check if user wants to skip loading screen
+    settings = SettingsService()
+    show_loading = not settings.get("hide_loading_screen", False)
+    
+    if not show_loading:
+        return None
+    
+    # Find logo path if not provided
+    if logo_path is None:
+        # Default to vector-inspector's logo
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        # Navigate from ui/loading_screen.py to vector_inspector/assets/logo.png
+        logo_path = os.path.join(os.path.dirname(module_dir), "assets", "logo.png")
+    
+    # Create and show loading screen
+    loading = LoadingScreen(
+        logo_path=logo_path,
+        version=version,
+        app_name=app_name,
+        tagline=tagline,
+        loading_text=loading_text,
+    )
+    loading.show()
+    
+    # Force the loading screen to render
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance().processEvents()
+    
+    return loading
+
+
 # Example usage (to be called from main.py):
-# loading = LoadingScreen(
-#     logo_path="assets/logo.png",
+# from vector_inspector.ui.loading_screen import show_loading_screen
+#
+# loading = show_loading_screen(
+#     app_name="Vector Inspector",
 #     version="v0.3.11",
-#     tagline="Vector-Inspector\nThe missing toolset for your vector data",
-#     loading_text="Initializing providers…"
+#     tagline="The missing toolset for your vector data"
 # )
-# loading.show()
-# ... initialize app ...
-# loading.fade_out()  # Instead of loading.close()
+# if loading:
+#     loading.set_loading_text("Loading main window...")
+#     # ... do initialization ...
+#     loading.fade_out()
