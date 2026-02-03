@@ -55,6 +55,7 @@ dev = [
     "briefcase>=0.3.26",
     "pyarmor>=9.2.3",
     "bumpver>=2025.1131",
+    "pyside6-stubs>=6.7.3.0",
 ]
 
 [tool.ruff]

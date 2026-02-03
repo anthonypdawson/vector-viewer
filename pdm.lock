@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:040b24f75b76e73af91ca5d314565eb124e4bd707c597f82414e1216d7e038d4"
+content_hash = "sha256:8d13d9f389bd7206def0c266ab36b42d004cd0608e004372096604e7d10f8aca"
 
 [[metadata.targets]]
 requires_python = ">=3.10,<3.14"
@@ -3389,7 +3389,7 @@ name = "pyside6"
 version = "6.10.2"
 requires_python = "<3.15,>=3.9"
 summary = "Python bindings for the Qt cross-platform application and UI framework"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version >= \"3.10\" and python_version < \"3.14\""
 dependencies = [
     "PySide6-Addons==6.10.2",
@@ -3409,7 +3409,7 @@ name = "pyside6-addons"
 version = "6.10.2"
 requires_python = "<3.15,>=3.9"
 summary = "Python bindings for the Qt cross-platform application and UI framework (Addons)"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version >= \"3.10\" and python_version < \"3.14\""
 dependencies = [
     "PySide6-Essentials==6.10.2",
@@ -3428,7 +3428,7 @@ name = "pyside6-essentials"
 version = "6.10.2"
 requires_python = "<3.15,>=3.9"
 summary = "Python bindings for the Qt cross-platform application and UI framework (Essentials)"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version >= \"3.10\" and python_version < \"3.14\""
 dependencies = [
     "shiboken6==6.10.2",
@@ -3439,6 +3439,22 @@ files = [
     {file = "pyside6_essentials-6.10.2-cp39-abi3-manylinux_2_39_aarch64.whl", hash = "sha256:c2b028e4c6f8047a02c31f373408e23b4eedfd405f56c6aba8d0525c29472835"},
     {file = "pyside6_essentials-6.10.2-cp39-abi3-win_amd64.whl", hash = "sha256:0741018c2b6395038cad4c41775cfae3f13a409e87995ac9f7d89e5b1fb6b22a"},
     {file = "pyside6_essentials-6.10.2-cp39-abi3-win_arm64.whl", hash = "sha256:db5f4913648bb6afddb8b347edae151ee2378f12bceb03c8b2515a530a4b38d9"},
+]
+
+[[package]]
+name = "pyside6-stubs"
+version = "6.7.3.0"
+requires_python = ">=3.7"
+summary = "PEP561 stub files for the *Qt for Python/PySide6* framework"
+groups = ["dev"]
+marker = "python_version >= \"3.10\" and python_version < \"3.14\""
+dependencies = [
+    "PySide6>=6.0",
+    "mypy>=1.0",
+]
+files = [
+    {file = "pyside6_stubs-6.7.3.0-py3-none-any.whl", hash = "sha256:7a2ef0d7486939f240e745829f80887ec3eab280e52c9930d64b48b3de95042a"},
+    {file = "pyside6_stubs-6.7.3.0.tar.gz", hash = "sha256:db8def2bb9c74091bfa2a4df7610d3ea344ecd00ebd4283995eeb5fda8383603"},
 ]
 
 [[package]]
@@ -4152,7 +4168,7 @@ name = "shiboken6"
 version = "6.10.2"
 requires_python = "<3.15,>=3.9"
 summary = "Python/C++ bindings helper module"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version >= \"3.10\" and python_version < \"3.14\""
 files = [
     {file = "shiboken6-6.10.2-cp39-abi3-macosx_13_0_universal2.whl", hash = "sha256:3bd4e94e9a3c8c1fa8362fd752d399ef39265d5264e4e37bae61cdaa2a00c8c7"},
