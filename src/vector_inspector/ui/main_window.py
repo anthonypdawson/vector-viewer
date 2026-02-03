@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from vector_inspector.core.connection_manager import ConnectionInstance, ConnectionManager
+from vector_inspector.core.logging import log_error
 from vector_inspector.services.profile_service import ProfileService
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.ui.components.connection_manager_panel import ConnectionManagerPanel
@@ -342,6 +343,28 @@ class MainWindow(InspectorShell):
         # Show update details dialog
         if not hasattr(self, "_latest_release"):
             return
+
+        # Track that user clicked on update available
+        try:
+            from vector_inspector.services.telemetry_service import TelemetryService
+            from vector_inspector.utils.version import get_app_version
+
+            telemetry = TelemetryService(self.settings_service)
+            if telemetry.is_enabled():
+                latest_version = self._latest_release.get("tag_name", "unknown")
+                event_data = {
+                    "hwid": telemetry.get_hwid(),
+                    "event_name": "update_clicked",
+                    "app_version": get_app_version(),
+                    "client_type": "vector-inspector",
+                    "metadata": {"latest_version": latest_version},
+                }
+                telemetry.queue_event(event_data)
+                telemetry.send_batch()
+        except Exception as e:
+            # Don't let telemetry errors break the update flow
+            log_error(f"Telemetry error: {e}")
+
         DialogService.show_update_details(self._latest_release, self)
 
     def _connect_signals(self):
