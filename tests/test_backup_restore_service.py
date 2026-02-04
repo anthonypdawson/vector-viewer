@@ -1,6 +1,5 @@
-from pathlib import Path
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from vector_inspector.services.backup_helpers import write_backup_zip
 from vector_inspector.services.backup_restore_service import BackupRestoreService
@@ -142,7 +141,7 @@ def test_backup_includes_model_from_settings(tmp_path):
     }
 
     with patch(
-        "vector_inspector.services.backup_restore_service.SettingsService",
+        "vector_inspector.services.settings_service.SettingsService",
         return_value=mock_settings,
     ):
         backup_path = svc.backup_collection(
@@ -150,7 +149,7 @@ def test_backup_includes_model_from_settings(tmp_path):
             "test_collection",
             str(tmp_path),
             include_embeddings=True,
-            connection_id="test_conn_id",
+            profile_name="test_conn_id",
         )
 
     assert backup_path is not None
@@ -193,13 +192,13 @@ def test_restore_persists_model_to_settings(tmp_path):
     mock_settings = MagicMock()
 
     with patch(
-        "vector_inspector.services.backup_restore_service.SettingsService",
+        "vector_inspector.services.settings_service.SettingsService",
         return_value=mock_settings,
     ):
         ok = svc.restore_collection(
             conn,
             str(backup_file),
-            connection_id="restored_conn_id",
+            profile_name="restored_conn_id",
         )
 
     assert ok is True
