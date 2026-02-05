@@ -35,7 +35,7 @@
             padding: 2em;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-            max-width: 600px;
+            max-width: 900px;
             margin: auto;
         }
 
@@ -123,6 +123,38 @@
             z-index: 1001;
             text-shadow: 0 2px 8px #000;
         }
+
+        .code-block-wrapper {
+            position: relative;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5em;
+            right: 0.5em;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 0.3em 0.7em;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            opacity: 0.8;
+            transition: opacity 0.2s, background 0.2s;
+        }
+
+        .copy-btn:hover {
+            opacity: 1;
+            background: #0056b3;
+        }
+
+        .copy-btn:active {
+            background: #004494;
+        }
+
+        .copy-btn.copied {
+            background: #28a745;
+        }
     </style>
 </head>
 
@@ -164,12 +196,35 @@
             <div style="color:#555; font-size:1em; margin-top:0.5em;">Click to view full demo</div>
         </div>
 
-        <div style="margin-top:1.5em; text-align:left; max-width:420px;">
-            <strong>Quick start:</strong>
-            <pre
-                style="background:#f4f4f4; color:#222; padding:0.8em 1em; border-radius:6px; font-size:1.1em; margin:0.7em 0 0.2em 0; text-align:left;">pip install vector-inspector</pre>
-            <pre
-                style="background:#f4f4f4; color:#222; padding:0.8em 1em; border-radius:6px; font-size:1.1em; margin:0.2em 0 0.2em 0; text-align:left;">vector-inspector</pre>
+        <div style="margin-top:1.5em; text-align:left;">
+            <strong>Quick Install:</strong>
+            <div style="margin-top:0.7em;">
+                <div style="font-weight:600; color:#555; margin-bottom:0.3em;">macOS / Linux:</div>
+                <div class="code-block-wrapper">
+                    <pre
+                        style="background:#f4f4f4; color:#222; padding:0.8em 2.5em 0.8em 1em; border-radius:6px; font-size:0.95em; margin:0 0 0.8em 0; text-align:left; overflow-x:auto;">curl -fsSL https://vector-inspector.divinedevops.com/install.sh | bash</pre>
+                    <button class="copy-btn" onclick="copyToClipboard('curl -fsSL https://vector-inspector.divinedevops.com/install.sh | bash', this)">Copy</button>
+                </div>
+                
+                <div style="font-weight:600; color:#555; margin-bottom:0.3em;">Windows:</div>
+                <div class="code-block-wrapper">
+                    <pre
+                        style="background:#f4f4f4; color:#222; padding:0.8em 2.5em 0.8em 1em; border-radius:6px; font-size:0.95em; margin:0 0 0.8em 0; text-align:left; overflow-x:auto;">powershell -c "iwr https://vector-inspector.divinedevops.com/install.ps1 -UseBasicParsing | iex"</pre>
+                    <button class="copy-btn" onclick="copyToClipboard('powershell -c \"iwr https://vector-inspector.divinedevops.com/install.ps1 -UseBasicParsing | iex\"', this)">Copy</button>
+                </div>
+                
+                <div style="font-weight:600; color:#555; margin-bottom:0.3em; margin-top:1.5em;">Or install with pip:</div>
+                <div class="code-block-wrapper">
+                    <pre
+                        style="background:#f4f4f4; color:#222; padding:0.8em 2.5em 0.8em 1em; border-radius:6px; font-size:0.95em; margin:0 0 0.2em 0; text-align:left;">pip install vector-inspector</pre>
+                    <button class="copy-btn" onclick="copyToClipboard('pip install vector-inspector', this)">Copy</button>
+                </div>
+                <div class="code-block-wrapper">
+                    <pre
+                        style="background:#f4f4f4; color:#222; padding:0.8em 2.5em 0.8em 1em; border-radius:6px; font-size:0.95em; margin:0 0 0.2em 0; text-align:left;">vector-inspector</pre>
+                    <button class="copy-btn" onclick="copyToClipboard('vector-inspector', this)">Copy</button>
+                </div>
+            </div>
         </div>
 
         <div
@@ -216,6 +271,28 @@
 </body>
 
 <script>
+    // Copy to clipboard function
+    function copyToClipboard(text, button) {
+        navigator.clipboard.writeText(text).then(function() {
+            // Show success feedback
+            var originalText = button.textContent;
+            button.textContent = 'Copied!';
+            button.classList.add('copied');
+            
+            // Reset after 2 seconds
+            setTimeout(function() {
+                button.textContent = originalText;
+                button.classList.remove('copied');
+            }, 2000);
+        }).catch(function(err) {
+            console.error('Failed to copy: ', err);
+            button.textContent = 'Failed';
+            setTimeout(function() {
+                button.textContent = 'Copy';
+            }, 2000);
+        });
+    }
+
     // Key handler to close modal with Escape
     function _modalKeyHandler(e) {
         if (e.key === 'Escape') {
