@@ -20,6 +20,48 @@ A comprehensive desktop application for visualizing, querying, and managing vect
 
 **Quick Demo:** See Vector Inspector in action!
 
+# 🟦 Quick Install (recommended)
+
+These installers work on **macOS, Linux, and Windows (PowerShell or Git Bash)**.
+
+### macOS & Linux
+```
+curl -fsSL https://vector-inspector.divinedevops.com/install.sh | bash
+```
+
+### Windows (PowerShell)
+```
+powershell -c "iwr https://vector-inspector.divinedevops.com/install.ps1 -UseBasicParsing | iex"
+```
+
+### Windows (Git Bash)
+```
+curl -fsSL https://vector-inspector.divinedevops.com/install.sh | bash
+```
+
+These scripts:
+
+- install Vector Inspector  
+- create a desktop shortcut  
+- launch the app immediately  
+
+This is the easiest and most reliable way to get started.
+
+---
+
+# 🟩 Run the App
+
+If you installed via pip or prefer manual launch:
+
+```
+vector-inspector
+```
+
+This opens the full desktop application.
+
+---
+
+
 ## Overview
 
 Vector Inspector bridges the gap between vector databases and user-friendly data exploration tools. While vector databases are powerful for semantic search and AI applications, they often lack the intuitive inspection and management tools that traditional SQL databases have. This project aims to provide that missing layer.
@@ -172,6 +214,8 @@ After installation, run the application with:
 ```bash
 vector-inspector
 ```
+Note: pip install does **not** create a desktop shortcut.  
+Use the bootstrap installer for the full experience.
 
 ### From Source
 
