@@ -1,8 +1,9 @@
 """Service for secure credential storage using system keychains."""
 
-from typing import Optional
 import json
-from vector_inspector.core.logging import log_info, log_error
+from typing import Optional
+
+from vector_inspector.core.logging import log_error, log_info
 
 
 class CredentialService:
@@ -44,7 +45,7 @@ class CredentialService:
             credential_key = f"profile:{profile_id}"
             credential_json = json.dumps(credentials)
 
-            if self._use_keyring:
+            if self._use_keyring and self._keyring:
                 self._keyring.set_password(self.SERVICE_NAME, credential_key, credential_json)
             else:
                 # Fallback to in-memory (not persistent)
@@ -68,7 +69,7 @@ class CredentialService:
         try:
             credential_key = f"profile:{profile_id}"
 
-            if self._use_keyring:
+            if self._use_keyring and self._keyring:
                 credential_json = self._keyring.get_password(self.SERVICE_NAME, credential_key)
             else:
                 # Fallback to in-memory
