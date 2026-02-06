@@ -1,30 +1,31 @@
 """Profile management UI for saved connection profiles."""
 
+import contextlib
 from typing import Optional
+
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QButtonGroup,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
     QMenu,
     QMessageBox,
-    QLabel,
-    QDialog,
-    QFormLayout,
-    QLineEdit,
-    QComboBox,
-    QRadioButton,
-    QButtonGroup,
-    QGroupBox,
-    QFileDialog,
-    QCheckBox,
     QProgressDialog,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, QThread
 
-from vector_inspector.services.profile_service import ProfileService, ConnectionProfile
+from vector_inspector.services.profile_service import ConnectionProfile, ProfileService
 
 
 class ProfileManagerPanel(QWidget):
@@ -74,7 +75,7 @@ class ProfileManagerPanel(QWidget):
 
         # Profile list
         self.profile_list = QListWidget()
-        self.profile_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.profile_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.profile_list.customContextMenuRequested.connect(self._show_context_menu)
         self.profile_list.itemDoubleClicked.connect(self._on_profile_double_clicked)
         layout.addWidget(self.profile_list)
@@ -83,24 +84,34 @@ class ProfileManagerPanel(QWidget):
         button_layout = QHBoxLayout()
 
         self.connect_btn = QPushButton("Connect")
+        self.connect_btn.setEnabled(False)
         self.connect_btn.clicked.connect(self._connect_selected_profile)
         button_layout.addWidget(self.connect_btn)
 
         self.edit_btn = QPushButton("Edit")
+        self.edit_btn.setEnabled(False)
         self.edit_btn.clicked.connect(self._edit_selected_profile)
         button_layout.addWidget(self.edit_btn)
 
         self.delete_btn = QPushButton("Delete")
+        self.delete_btn.setEnabled(False)
         self.delete_btn.clicked.connect(self._delete_selected_profile)
         button_layout.addWidget(self.delete_btn)
 
         layout.addLayout(button_layout)
 
     def _connect_signals(self):
-        """Connect to profile service signals."""
+        """Connect to profile service signals and UI events."""
         self.profile_service.profile_added.connect(self._refresh_profiles)
         self.profile_service.profile_updated.connect(self._refresh_profiles)
         self.profile_service.profile_deleted.connect(self._refresh_profiles)
+        self.profile_list.currentItemChanged.connect(self._on_profile_selection_changed)
+
+    def _on_profile_selection_changed(self, current, _):
+        has_selection = current is not None
+        self.connect_btn.setEnabled(has_selection)
+        self.edit_btn.setEnabled(has_selection)
+        self.delete_btn.setEnabled(has_selection)
 
     def _refresh_profiles(self):
         """Refresh the profile list."""
@@ -109,12 +120,16 @@ class ProfileManagerPanel(QWidget):
         profiles = self.profile_service.get_all_profiles()
         for profile in profiles:
             item = QListWidgetItem(f"{profile.name} ({profile.provider})")
-            item.setData(Qt.UserRole, profile.id)
+            item.setData(Qt.ItemDataRole.UserRole, profile.id)
             self.profile_list.addItem(item)
+        if self.profile_list.currentItem() is None:
+            self.connect_btn.setEnabled(False)
+            self.edit_btn.setEnabled(False)
+            self.delete_btn.setEnabled(False)
 
     def _on_profile_double_clicked(self, item: QListWidgetItem):
         """Handle profile double-click to connect."""
-        profile_id = item.data(Qt.UserRole)
+        profile_id = item.data(Qt.ItemDataRole.UserRole)
         if profile_id:
             self.connect_profile.emit(profile_id)
 
@@ -125,7 +140,7 @@ class ProfileManagerPanel(QWidget):
             QMessageBox.warning(self, "No Selection", "Please select a profile to connect.")
             return
 
-        profile_id = current_item.data(Qt.UserRole)
+        profile_id = current_item.data(Qt.ItemDataRole.UserRole)
         self.connect_profile.emit(profile_id)
 
     def _edit_selected_profile(self):
@@ -135,7 +150,7 @@ class ProfileManagerPanel(QWidget):
             QMessageBox.warning(self, "No Selection", "Please select a profile to edit.")
             return
 
-        profile_id = current_item.data(Qt.UserRole)
+        profile_id = current_item.data(Qt.ItemDataRole.UserRole)
         profile = self.profile_service.get_profile(profile_id)
         if not profile:
             return
@@ -150,7 +165,7 @@ class ProfileManagerPanel(QWidget):
             QMessageBox.warning(self, "No Selection", "Please select a profile to delete.")
             return
 
-        profile_id = current_item.data(Qt.UserRole)
+        profile_id = current_item.data(Qt.ItemDataRole.UserRole)
         profile = self.profile_service.get_profile(profile_id)
         if not profile:
             return
@@ -159,10 +174,10 @@ class ProfileManagerPanel(QWidget):
             self,
             "Delete Profile",
             f"Delete profile '{profile.name}'?\n\nThis will also delete any saved credentials.",
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.profile_service.delete_profile(profile_id)
 
     def _create_profile(self):
@@ -176,7 +191,7 @@ class ProfileManagerPanel(QWidget):
         if not item:
             return
 
-        profile_id = item.data(Qt.UserRole)
+        profile_id = item.data(Qt.ItemDataRole.UserRole)
         profile = self.profile_service.get_profile(profile_id)
         if not profile:
             return
@@ -236,10 +251,10 @@ class ProfileManagerPanel(QWidget):
             self,
             "Delete Profile",
             f"Delete profile '{profile.name}'?",
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.profile_service.delete_profile(profile_id)
 
 
@@ -374,7 +389,7 @@ class ProfileEditorDialog(QDialog):
         details_layout.addRow("Port:", self.port_input)
 
         self.api_key_input = QLineEdit()
-        self.api_key_input.setEchoMode(QLineEdit.Password)
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         details_layout.addRow("API Key:", self.api_key_input)
 
         # (Database field moved to end of form)
@@ -383,7 +398,7 @@ class ProfileEditorDialog(QDialog):
         details_layout.addRow("User:", self.user_input)
 
         self.password_input = QLineEdit()
-        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         details_layout.addRow("Password:", self.password_input)
 
         # PgVector/Postgres specific: editable combo + refresh (placed last)
@@ -444,9 +459,8 @@ class ProfileEditorDialog(QDialog):
         elif provider == "chromadb":
             if self.port_input.text() == "6333":
                 self.port_input.setText("8000")
-        elif provider == "pgvector":
-            if self.port_input.text() in ("8000", "6333"):
-                self.port_input.setText("5432")
+        elif provider == "pgvector" and self.port_input.text() in ("8000", "6333"):
+            self.port_input.setText("5432")
 
         # For Pinecone, disable persistent/ephemeral modes and only show API key
         if provider == "pinecone":
@@ -576,9 +590,9 @@ class ProfileEditorDialog(QDialog):
 
         # Create connection
         from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
-        from vector_inspector.core.connections.qdrant_connection import QdrantConnection
-        from vector_inspector.core.connections.pinecone_connection import PineconeConnection
         from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
+        from vector_inspector.core.connections.pinecone_connection import PineconeConnection
+        from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 
         try:
             if provider == "pinecone":
@@ -601,8 +615,8 @@ class ProfileEditorDialog(QDialog):
                 conn = QdrantConnection(**self._get_connection_kwargs(config))
 
             # Test connection
-            progress = QProgressDialog("Testing connection...", None, 0, 0, self)
-            progress.setWindowModality(Qt.WindowModal)
+            progress = QProgressDialog("Testing connection...", "Cancel", 0, 0, self)
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
             progress.show()
 
             success = conn.connect()
@@ -613,10 +627,8 @@ class ProfileEditorDialog(QDialog):
                 conn.disconnect()
                 # For pgvector, populate database suggestions after a successful connect
                 if provider == "pgvector":
-                    try:
+                    with contextlib.suppress(Exception):
                         self._fetch_databases()
-                    except Exception:
-                        pass
             else:
                 QMessageBox.warning(self, "Failed", "Connection test failed.")
         except Exception as e:
@@ -722,21 +734,17 @@ class ProfileEditorDialog(QDialog):
         password = self.password_input.text()
 
         # Disable refresh while fetching
-        try:
+        with contextlib.suppress(Exception):
             self.db_refresh_btn.setEnabled(False)
             self.db_status_label.setText("Fetching…")
-        except Exception:
-            pass
 
         self._db_thread = DatabaseFetchThread(host=host, port=port, user=user, password=password)
         self._db_thread.finished.connect(self._on_databases_fetched)
         self._db_thread.start()
 
     def _on_databases_fetched(self, dbs: list, error: str):
-        try:
+        with contextlib.suppress(Exception):
             self.db_refresh_btn.setEnabled(True)
-        except Exception:
-            pass
 
         if dbs:
             # Preserve current text if set

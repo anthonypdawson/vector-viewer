@@ -313,12 +313,11 @@ class ConnectionManagerPanel(QWidget):
             self, "Rename Connection", "Enter new name:", text=instance.name
         )
 
-        if ok and new_name:
-            if self.connection_manager.rename_connection(connection_id, new_name):
-                # Update tree item
-                item = self._connection_items.get(connection_id)
-                if item:
-                    self._update_connection_indicator(item, instance.state)
+        if ok and new_name and self.connection_manager.rename_connection(connection_id, new_name):
+            # Update tree item
+            item = self._connection_items.get(connection_id)
+            if item:
+                self._update_connection_indicator(item, instance.state)
 
     def _refresh_collections(self, connection_id: str):
         """Refresh collections for a connection."""
