@@ -69,4 +69,8 @@ def get_sklearn_model(model_name: str) -> Any:
             from sklearn.cluster import DBSCAN
 
             _sklearn_cache["DBSCAN"] = DBSCAN
+        elif model_name == "OPTICS":
+            from sklearn.cluster import OPTICS
+
+            _sklearn_cache["OPTICS"] = OPTICS
     return _sklearn_cache[model_name]
