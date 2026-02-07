@@ -11,7 +11,6 @@
 ### Bug Fixes & Improvements
 - Fixed syntax errors and API misuse in collection_service.py and connection_controller.py
 - Improved error handling and logging for collection creation
-- Loading dialog now appears instantly, even before model loading
 - UI feedback for success/failure is more informative
 
 ### Technical Notes
