@@ -1,11 +1,12 @@
 """Factory for creating vector database connections from provider configs."""
 
-from typing import Dict, Any
+from typing import Any
+
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
-from vector_inspector.core.connections.qdrant_connection import QdrantConnection
-from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
+from vector_inspector.core.connections.pinecone_connection import PineconeConnection
+from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 
 
 class ProviderFactory:
@@ -13,7 +14,7 @@ class ProviderFactory:
 
     @staticmethod
     def create(
-        provider: str, config: Dict[str, Any], credentials: Dict[str, Any] = None
+        provider: str, config: dict[str, Any], credentials: dict[str, Any] = None
     ) -> VectorDBConnection:
         """Create a connection object for the specified provider.
 
@@ -32,44 +33,53 @@ class ProviderFactory:
 
         if provider == "chromadb":
             return ProviderFactory._create_chroma(config, credentials)
-        elif provider == "qdrant":
+        if provider == "qdrant":
             return ProviderFactory._create_qdrant(config, credentials)
-        elif provider == "pinecone":
+        if provider == "pinecone":
             return ProviderFactory._create_pinecone(config, credentials)
-        elif provider == "pgvector":
+        if provider == "pgvector":
             return ProviderFactory._create_pgvector(config, credentials)
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
+        if provider == "lancedb":
+            return ProviderFactory._create_lancedb(config, credentials)
+        raise ValueError(f"Unsupported provider: {provider}")
 
     @staticmethod
-    def _create_chroma(config: Dict[str, Any], credentials: Dict[str, Any]) -> ChromaDBConnection:
+    def _create_lancedb(config: dict[str, Any], credentials: dict[str, Any]):
+        """Create a LanceDB connection."""
+        from vector_inspector.core.connections.lancedb_connection import LanceDBConnection
+
+        uri = config.get("path", "./lancedb")
+        return LanceDBConnection(uri=uri)
+
+    @staticmethod
+    def _create_chroma(config: dict[str, Any], credentials: dict[str, Any]) -> ChromaDBConnection:
         """Create a ChromaDB connection."""
         conn_type = config.get("type")
 
         if conn_type == "persistent":
             return ChromaDBConnection(path=config.get("path"))
-        elif conn_type == "http":
+        if conn_type == "http":
             return ChromaDBConnection(host=config.get("host"), port=config.get("port"))
-        else:  # ephemeral
-            return ChromaDBConnection()
+        # ephemeral
+        return ChromaDBConnection()
 
     @staticmethod
-    def _create_qdrant(config: Dict[str, Any], credentials: Dict[str, Any]) -> QdrantConnection:
+    def _create_qdrant(config: dict[str, Any], credentials: dict[str, Any]) -> QdrantConnection:
         """Create a Qdrant connection."""
         conn_type = config.get("type")
         api_key = credentials.get("api_key")
 
         if conn_type == "persistent":
             return QdrantConnection(path=config.get("path"))
-        elif conn_type == "http":
+        if conn_type == "http":
             return QdrantConnection(
                 host=config.get("host"), port=config.get("port"), api_key=api_key
             )
-        else:  # ephemeral
-            return QdrantConnection()
+        # ephemeral
+        return QdrantConnection()
 
     @staticmethod
-    def _create_pinecone(config: Dict[str, Any], credentials: Dict[str, Any]) -> PineconeConnection:
+    def _create_pinecone(config: dict[str, Any], credentials: dict[str, Any]) -> PineconeConnection:
         """Create a Pinecone connection."""
         api_key = credentials.get("api_key")
         if not api_key:
@@ -78,7 +88,7 @@ class ProviderFactory:
         return PineconeConnection(api_key=api_key)
 
     @staticmethod
-    def _create_pgvector(config: Dict[str, Any], credentials: Dict[str, Any]) -> PgVectorConnection:
+    def _create_pgvector(config: dict[str, Any], credentials: dict[str, Any]) -> PgVectorConnection:
         """Create a PgVector/Postgres connection."""
         conn_type = config.get("type")
 
