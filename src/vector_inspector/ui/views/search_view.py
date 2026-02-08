@@ -32,29 +32,30 @@ from vector_inspector.ui.components.loading_dialog import LoadingDialog
 class SearchView(QWidget):
     """View for performing similarity searches."""
 
+    breadcrumb_label: QLabel
+    query_input: QTextEdit
+    results_table: QTableWidget
+    results_status: QLabel
+    refresh_button: QPushButton
+    n_results_spin: QSpinBox
+    filter_builder: FilterBuilder
+    filter_group: QGroupBox
+    search_button: QPushButton
+    loading_dialog: LoadingDialog
+    cache_manager: Any
+    connection: Optional[ConnectionInstance]
+    current_collection: str
+    current_database: str
+    search_results: Optional[dict[str, Any]]
+
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Initialize all UI attributes to None to avoid AttributeError
-        self.breadcrumb_label = None
-        self.query_input = None
-        self.results_table = None
-        self.results_status = None
-        self.refresh_button = None
-        self.n_results_spin = None
-        self.filter_builder = None
-        self.filter_group = None
-        self.search_button = None
-        self.loading_dialog = None
-        self.cache_manager = None
-
-        # Expects a ConnectionInstance wrapper.
         self.connection = connection
-        self.current_collection: str = ""
-        self.current_database: str = ""
-        self.search_results: Optional[dict[str, Any]] = None
+        self.current_collection = ""
+        self.current_database = ""
+        self.search_results = None
         self.loading_dialog = LoadingDialog("Searching...", self)
         self.cache_manager = get_cache_manager()
-
         self._setup_ui()
 
     def _setup_ui(self):

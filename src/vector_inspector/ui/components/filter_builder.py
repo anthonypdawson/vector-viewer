@@ -21,6 +21,9 @@ class FilterRule(QWidget):
 
     remove_requested = Signal(object)  # Signal to remove this rule
     apply_requested = Signal()  # Signal to apply filters
+    field_input: QComboBox
+    operator_combo: QComboBox
+    value_input: QLineEdit
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -180,12 +183,16 @@ class FilterBuilder(QWidget):
 
     filter_changed = Signal()  # Signal when filter changes
     apply_filters = Signal()  # Signal when user wants to apply filters
+    rules: list
+    available_fields: list
+    operators: list
+    logic_combo: QComboBox
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.rules: list[FilterRule] = []
-        self.available_fields: list[str] = []  # Store available field names
-        self.operators: list[dict[str, Any]] = []  # Store operators from connection
+        self.rules = []
+        self.available_fields = []
+        self.operators = []
         self._setup_ui()
 
     def _setup_ui(self):

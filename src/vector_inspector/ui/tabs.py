@@ -1,19 +1,26 @@
 """Tab registry for Inspector applications."""
 
-from typing import List, Tuple, Type
 from PySide6.QtWidgets import QWidget
 
 
 class TabDefinition:
     """Definition for a tab in the main content area."""
 
-    def __init__(self, title: str, widget_class: Type[QWidget], lazy_load: bool = False):
+    title: str
+    widget_class: type
+    lazy_load: bool
+
+    def __init__(self, title: str, widget_class: type[QWidget], lazy_load: bool = False):
         self.title = title
         self.widget_class = widget_class
         self.lazy_load = lazy_load
 
 
 class InspectorTabs:
+    INFO_TAB: int
+    DATA_TAB: int
+    SEARCH_TAB: int
+    VISUALIZATION_TAB: int
     """Registry of standard Inspector tabs.
 
     This allows both Vector Inspector and Vector Fusion Studio to use
@@ -27,7 +34,7 @@ class InspectorTabs:
     VISUALIZATION_TAB = 3
 
     @staticmethod
-    def get_standard_tabs() -> List[TabDefinition]:
+    def get_standard_tabs() -> list[TabDefinition]:
         """Get list of standard Inspector tabs.
 
         Returns:
@@ -59,6 +66,5 @@ class InspectorTabs:
         if tab_def.lazy_load:
             # Return placeholder for lazy-loaded tabs
             return QWidget()
-        else:
-            # Create widget with connection
-            return tab_def.widget_class(connection)
+        # Create widget with connection
+        return tab_def.widget_class(connection)

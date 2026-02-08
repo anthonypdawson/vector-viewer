@@ -37,6 +37,13 @@ class ProfileManagerPanel(QWidget):
 
     connect_profile = Signal(str)  # profile_id
 
+    profile_service: ProfileService
+    profile_list: QListWidget
+    new_profile_btn: QPushButton
+    connect_btn: QPushButton
+    edit_btn: QPushButton
+    delete_btn: QPushButton
+
     def __init__(self, profile_service: ProfileService, parent=None):
         """
         Initialize profile manager panel.

@@ -2,32 +2,32 @@
 
 from typing import Optional
 
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QApplication,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QDialog,
-    QFormLayout,
     QLineEdit,
+    QPushButton,
     QRadioButton,
-    QButtonGroup,
-    QGroupBox,
-    QFileDialog,
-    QComboBox,
-    QApplication,
-    QCheckBox,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Signal, QThread
 
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
-from vector_inspector.core.connections.qdrant_connection import QdrantConnection
-from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
-from vector_inspector.ui.components.loading_dialog import LoadingDialog
+from vector_inspector.core.connections.pinecone_connection import PineconeConnection
+from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
 
 class ConnectionThread(QThread):
@@ -439,19 +439,20 @@ class ConnectionView(QWidget):
     connection_changed = Signal(bool)
     connection_created = Signal(VectorDBConnection)  # Signal when new connection is created
 
+    _raw_connection: Any
+    connection: Optional[VectorDBConnection]
+    loading_dialog: LoadingDialog
+    settings_service: SettingsService
+    connection_thread: Any
+
     def __init__(self, connection: Optional[VectorDBConnection] = None, parent=None):
         super().__init__(parent)
-        # This view may be constructed without an active connection; it manages
-        # creation of `VectorDBConnection` instances. Keep `self.connection` as
-        # the low-level `VectorDBConnection` when present.
         self._raw_connection = None
         self.connection = connection
         self.loading_dialog = LoadingDialog("Connecting to database...", self)
         self.settings_service = SettingsService()
         self.connection_thread = None
         self._setup_ui()
-
-        # Try to auto-connect if enabled in settings
         self._try_auto_connect()
 
     def _setup_ui(self):

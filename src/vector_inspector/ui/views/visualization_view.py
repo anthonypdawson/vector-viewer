@@ -33,6 +33,9 @@ class VisualizationThread(QThread):
 
     finished = Signal(np.ndarray)
     error = Signal(str)
+    embeddings: Any
+    method: Any
+    n_components: Any
 
     def __init__(self, embeddings, method, n_components):
         super().__init__()
@@ -58,14 +61,20 @@ class VisualizationThread(QThread):
 class VisualizationView(QWidget):
     """View for visualizing vectors in 2D/3D."""
 
+    connection: Optional[ConnectionInstance]
+    current_collection: str
+    current_data: dict[str, Any] | None
+    reduced_data: Any
+    visualization_thread: Any
+    temp_html_files: list
+
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Expects a ConnectionInstance wrapper.
         self.connection = connection
-        self.current_collection: str = ""
-        self.current_data: dict[str, Any] | None = None
-        self.reduced_data: np.ndarray | None = None
-        self.visualization_thread: VisualizationThread | None = None
+        self.current_collection = ""
+        self.current_data = None
+        self.reduced_data = None
+        self.visualization_thread = None
         self.temp_html_files = []
         self._setup_ui()
 

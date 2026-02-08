@@ -22,11 +22,14 @@ from vector_inspector.core.sample_data import SampleDataType
 class CreateCollectionDialog(QDialog):
     """Dialog for creating a new collection with optional sample data."""
 
+    name_input: QLineEdit
+    add_sample_check: QCheckBox
+    count_spin: QSpinBox
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Create Collection")
         self.setMinimumWidth(450)
-
         self._setup_ui()
         self._connect_signals()
 

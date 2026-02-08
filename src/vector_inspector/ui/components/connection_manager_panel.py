@@ -39,6 +39,11 @@ class ConnectionManagerPanel(QWidget):
     connection_selected = Signal(str)  # connection_id
     collection_selected = Signal(str, str)  # connection_id, collection_name
 
+    connection_manager: ConnectionManager
+    connection_tree: QTreeWidget
+    add_connection_btn: QPushButton
+    _connection_items: dict
+
     def __init__(self, connection_manager: ConnectionManager, parent=None):
         """
         Initialize connection manager panel.

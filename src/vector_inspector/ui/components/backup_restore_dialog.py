@@ -31,24 +31,24 @@ from vector_inspector.ui.components.loading_dialog import LoadingDialog
 class BackupRestoreDialog(QDialog):
     """Dialog for managing backups and restores."""
 
+    connection: ConnectionInstance
+    collection_name: str
+    backup_service: BackupRestoreService
+    settings_service: SettingsService
+    backup_dir: str
+    loading_dialog: LoadingDialog
+
     def __init__(self, connection: ConnectionInstance, collection_name: str = "", parent=None):
         super().__init__(parent)
-        # Expects a ConnectionInstance wrapper; services access the underlying
-        # raw database connection via `.database` when needed.
         self.connection = connection
         self.collection_name = collection_name
         self.backup_service = BackupRestoreService()
         self.settings_service = SettingsService()
-
-        # Load backup directory from settings or use default
         default_backup_dir = str(Path.home() / "vector-viewer-backups")
         self.backup_dir = self.settings_service.get("backup_directory", default_backup_dir)
-
         self.loading_dialog = LoadingDialog("Processing...", self)
-
         self.setWindowTitle("Backup & Restore")
         self.setMinimumSize(600, 500)
-
         self._setup_ui()
         self._refresh_backups_list()
 

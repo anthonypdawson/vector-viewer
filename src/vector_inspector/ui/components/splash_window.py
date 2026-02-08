@@ -1,22 +1,19 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QCheckBox, QPushButton, QTextBrowser
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QDialog, QLabel, QPushButton, QTextBrowser, QVBoxLayout
 
 
 class SplashWindow(QDialog):
+    hide_checkbox: QCheckBox
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Welcome to Vector Inspector!")
         self.setModal(True)
         self.setMinimumWidth(420)
-
         layout = QVBoxLayout(self)
-
-        # Welcome message
         label = QLabel("<h2>Thanks for trying <b>Vector Inspector</b>!</h2>")
         label.setAlignment(Qt.AlignCenter)
         layout.addWidget(label)
-
-        # Feedback prompt
         feedback = QLabel(
             "If you have thoughts, feature requests, or run into anything confusing,<br>"
             "I’d really appreciate hearing from you. Feedback helps shape the roadmap."
@@ -24,16 +21,12 @@ class SplashWindow(QDialog):
         feedback.setTextFormat(Qt.RichText)
         feedback.setWordWrap(True)
         layout.addWidget(feedback)
-
-        # GitHub link
         github = QLabel(
             '<a href="https://github.com/anthonypdawson/vector-inspector/issues">Submit feedback or issues on GitHub</a>'
         )
         github.setOpenExternalLinks(True)
         github.setAlignment(Qt.AlignCenter)
         layout.addWidget(github)
-
-        # About info (reuse About dialog text)
         from vector_inspector.utils.version import get_app_version
 
         about = QTextBrowser()
@@ -53,8 +46,6 @@ class SplashWindow(QDialog):
         about.setOpenExternalLinks(True)
         about.setMaximumHeight(160)
         layout.addWidget(about)
-
-        # Do not show again checkbox
         self.hide_checkbox = QCheckBox("Do not show this again")
         layout.addWidget(self.hide_checkbox)
 
