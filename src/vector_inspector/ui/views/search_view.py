@@ -417,10 +417,25 @@ class SearchView(QWidget):
 
     def _display_results(self, results: dict[str, Any]):
         """Display search results in table."""
-        ids = results.get("ids", [[]])[0]
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
+
+        # Safely unwrap nested result lists (providers may return [] or [[]])
+        def _unwrap(key: str) -> list:
+            val = results.get(key)
+            if not val:
+                return []
+            # If provider returned a list-of-lists (per-query), take first inner list
+            if isinstance(val, list) and len(val) > 0:
+                first = val[0]
+                if isinstance(first, (list, tuple)):
+                    return list(first)
+                # If it's already a flat list, return it
+                return val
+            return []
+
+        ids = _unwrap("ids")
+        documents = _unwrap("documents")
+        metadatas = _unwrap("metadatas")
+        distances = _unwrap("distances")
 
         if not ids:
             self.results_table.setRowCount(0)
@@ -429,6 +444,7 @@ class SearchView(QWidget):
 
         # Determine columns
         columns = ["Rank", "Distance", "ID", "Document"]
+        metadata_keys = []
         if metadatas and metadatas[0]:
             metadata_keys = list(metadatas[0].keys())
             columns.extend(metadata_keys)

@@ -338,6 +338,7 @@ class ProfileEditorDialog(QDialog):
         self.provider_combo.addItem("Qdrant", "qdrant")
         self.provider_combo.addItem("PgVector/PostgreSQL", "pgvector")
         self.provider_combo.addItem("Pinecone", "pinecone")
+        self.provider_combo.addItem("LanceDB", "lancedb")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         form_layout.addRow("Provider:", self.provider_combo)
 
@@ -462,8 +463,20 @@ class ProfileEditorDialog(QDialog):
         elif provider == "pgvector" and self.port_input.text() in ("8000", "6333"):
             self.port_input.setText("5432")
 
-        # For Pinecone, disable persistent/ephemeral modes and only show API key
-        if provider == "pinecone":
+        if provider == "lancedb":
+            self.persistent_radio.setEnabled(True)
+            self.persistent_radio.setChecked(True)
+            self.http_radio.setEnabled(False)
+            self.ephemeral_radio.setEnabled(False)
+            self.path_input.setEnabled(True)
+            self.path_browse_btn.setEnabled(True)
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+            self.api_key_input.setEnabled(False)
+            self.database_input.setEnabled(False)
+            self.user_input.setEnabled(False)
+            self.password_input.setEnabled(False)
+        elif provider == "pinecone":
             self.persistent_radio.setEnabled(False)
             self.http_radio.setEnabled(True)
             self.http_radio.setChecked(True)
@@ -474,7 +487,6 @@ class ProfileEditorDialog(QDialog):
             self.port_input.setEnabled(False)
             self.api_key_input.setEnabled(True)
         elif provider == "pgvector":
-            # PgVector uses host/port/database/user/password; prefer HTTP type
             self.persistent_radio.setEnabled(False)
             self.http_radio.setEnabled(True)
             self.http_radio.setChecked(True)
@@ -491,10 +503,8 @@ class ProfileEditorDialog(QDialog):
             self.persistent_radio.setEnabled(True)
             self.http_radio.setEnabled(True)
             self.ephemeral_radio.setEnabled(True)
-            # Show/hide API key field
             is_http = self.http_radio.isChecked()
             self.api_key_input.setEnabled(is_http and provider == "qdrant")
-            # Update other fields based on connection type
             self._on_type_changed()
 
     def _on_type_changed(self):
@@ -504,15 +514,22 @@ class ProfileEditorDialog(QDialog):
 
         provider = self.provider_combo.currentData()
 
-        # Pinecone always uses API key, no path/host/port
-        if provider == "pinecone":
+        if provider == "lancedb":
+            self.path_input.setEnabled(True)
+            self.path_browse_btn.setEnabled(True)
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+            self.api_key_input.setEnabled(False)
+            self.database_input.setEnabled(False)
+            self.user_input.setEnabled(False)
+            self.password_input.setEnabled(False)
+        elif provider == "pinecone":
             self.path_input.setEnabled(False)
             self.path_browse_btn.setEnabled(False)
             self.host_input.setEnabled(False)
             self.port_input.setEnabled(False)
             self.api_key_input.setEnabled(True)
         elif provider == "pgvector":
-            # PgVector uses HTTP-like host/port + DB credentials
             self.path_input.setEnabled(False)
             self.path_browse_btn.setEnabled(False)
             self.host_input.setEnabled(is_http)
@@ -522,7 +539,6 @@ class ProfileEditorDialog(QDialog):
             self.user_input.setEnabled(is_http)
             self.password_input.setEnabled(is_http)
         else:
-            # Show/hide relevant fields
             self.path_input.setEnabled(is_persistent)
             self.path_browse_btn.setEnabled(is_persistent)
             self.host_input.setEnabled(is_http)
@@ -590,6 +606,7 @@ class ProfileEditorDialog(QDialog):
 
         # Create connection
         from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
+        from vector_inspector.core.connections.lancedb_connection import LanceDBConnection
         from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
         from vector_inspector.core.connections.pinecone_connection import PineconeConnection
         from vector_inspector.core.connections.qdrant_connection import QdrantConnection
@@ -611,6 +628,8 @@ class ProfileEditorDialog(QDialog):
                     user=self.user_input.text(),
                     password=self.password_input.text(),
                 )
+            elif provider == "lancedb":
+                conn = LanceDBConnection(uri=self.path_input.text())
             else:
                 conn = QdrantConnection(**self._get_connection_kwargs(config))
 
@@ -642,14 +661,13 @@ class ProfileEditorDialog(QDialog):
         # Pinecone uses cloud connection type
         if provider == "pinecone":
             config["type"] = "cloud"
-        elif self.persistent_radio.isChecked():
+        elif provider == "lancedb" or self.persistent_radio.isChecked():
             config["type"] = "persistent"
             config["path"] = self.path_input.text()
         elif self.http_radio.isChecked():
             config["type"] = "http"
             config["host"] = self.host_input.text()
             config["port"] = int(self.port_input.text())
-            # Include DB credentials for providers like pgvector
             if self.database_input.currentText():
                 config["database"] = self.database_input.currentText()
             if self.user_input.text():
