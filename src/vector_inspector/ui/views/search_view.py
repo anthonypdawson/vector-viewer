@@ -444,6 +444,7 @@ class SearchView(QWidget):
 
         # Determine columns
         columns = ["Rank", "Distance", "ID", "Document"]
+        metadata_keys = []
         if metadatas and metadatas[0]:
             metadata_keys = list(metadatas[0].keys())
             columns.extend(metadata_keys)
