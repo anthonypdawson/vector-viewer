@@ -181,13 +181,13 @@ Vector Inspector follows a user-friendly monetization model:
 - **Core workflows remain free** — Connect, browse, search, visualize, and manage your data
 - **Pro adds power tools** — Advanced analytics, enterprise formats, workflow automation, and collaboration
 
-**Nothing currently in Free will ever move to Pro.** See [FEATURES.md](FEATURES.md) for a detailed comparison.
+**Nothing currently in Free will ever move to Pro.** See [FEATURES.md](docs/FEATURES.md) for a detailed comparison.
 
 ## Roadmap
 
 **Current Status**: ✅ Phase 2 Complete
 
-See [ROADMAP.md](ROADMAP.md) for the complete development roadmap and planned features.
+See [ROADMAP.md](docs/ROADMAP.md) for the complete development roadmap and planned features.
 
 
 ## Installation

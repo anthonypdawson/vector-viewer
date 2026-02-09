@@ -33,7 +33,7 @@ All Phase 1 and Phase 2 objectives have been implemented and validated. Phase 3 
 
 **Provider Support**
 - Supported: ChromaDB, Qdrant (experimental), Pinecone.
-- Planned (future phases): Weaviate, Milvus, FAISS (local), pgvector, Elasticsearch. See ROADMAP.md for details.
+- Planned (future phases): Weaviate, Milvus, FAISS (local), pgvector, Elasticsearch. See docs/ROADMAP.md for details.
 
 ### Completed Features (Highlights)
 - Connection management (persistent, HTTP, ephemeral)
