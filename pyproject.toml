@@ -86,7 +86,7 @@ select = [
     "ARG",
     "RUF",
 ]
-ignore = ["E501", "I001", "UP045"]
+ignore = ["E501", "I001", "UP045", "SIM105]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
