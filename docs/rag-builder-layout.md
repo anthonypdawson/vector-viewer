@@ -1,6 +1,6 @@
 # RAG Builder — Complete Module Layout for Vector Inspector (Python)
 # With detailed context for what each file is responsible for
-
+```
 vector_inspector/
 │
 ├── rag/
@@ -225,3 +225,4 @@ vector_inspector/
             # Extra validation helpers for configs and templates.
         rag_textnorm.py
             # Optional text normalization utilities (strip whitespace, normalize unicode).
+```
