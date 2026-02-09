@@ -346,6 +346,7 @@ class ProfileEditorDialog(QDialog):
         self.provider_combo.addItem("PgVector/PostgreSQL", "pgvector")
         self.provider_combo.addItem("Pinecone", "pinecone")
         self.provider_combo.addItem("LanceDB", "lancedb")
+        self.provider_combo.addItem("Milvus", "milvus")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         form_layout.addRow("Provider:", self.provider_combo)
 
@@ -467,6 +468,9 @@ class ProfileEditorDialog(QDialog):
         elif provider == "chromadb":
             if self.port_input.text() == "6333":
                 self.port_input.setText("8000")
+        elif provider == "milvus":
+            if self.port_input.text() in ("8000", "6333", "5432"):
+                self.port_input.setText("19530")
         elif provider == "pgvector" and self.port_input.text() in ("8000", "6333"):
             self.port_input.setText("5432")
 
@@ -614,6 +618,7 @@ class ProfileEditorDialog(QDialog):
         # Create connection
         from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
         from vector_inspector.core.connections.lancedb_connection import LanceDBConnection
+        from vector_inspector.core.connections.milvus_connection import MilvusConnection
         from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
         from vector_inspector.core.connections.pinecone_connection import PineconeConnection
         from vector_inspector.core.connections.qdrant_connection import QdrantConnection
@@ -637,6 +642,19 @@ class ProfileEditorDialog(QDialog):
                 )
             elif provider == "lancedb":
                 conn = LanceDBConnection(uri=self.path_input.text())
+            elif provider == "milvus":
+                conn_type = config.get("type")
+                if conn_type == "http":
+                    conn = MilvusConnection(
+                        host=self.host_input.text(),
+                        port=int(self.port_input.text()),
+                        user=self.user_input.text() if self.user_input.text() else None,
+                        password=self.password_input.text() if self.password_input.text() else None,
+                    )
+                else:
+                    # File-based (Milvus Lite) or default
+                    path = self.path_input.text() if conn_type == "persistent" else None
+                    conn = MilvusConnection(uri=path)
             else:
                 conn = QdrantConnection(**self._get_connection_kwargs(config))
 

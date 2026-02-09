@@ -4,6 +4,7 @@ from typing import Any
 
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
+from vector_inspector.core.connections.milvus_connection import MilvusConnection
 from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
 from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
@@ -19,7 +20,7 @@ class ProviderFactory:
         """Create a connection object for the specified provider.
 
         Args:
-            provider: Provider type (chromadb, qdrant, pinecone, pgvector)
+            provider: Provider type (chromadb, qdrant, pinecone, pgvector, milvus, lancedb)
             config: Provider-specific configuration
             credentials: Optional credentials (API keys, passwords, etc.)
 
@@ -41,6 +42,8 @@ class ProviderFactory:
             return ProviderFactory._create_pgvector(config, credentials)
         if provider == "lancedb":
             return ProviderFactory._create_lancedb(config, credentials)
+        if provider == "milvus":
+            return ProviderFactory._create_milvus(config, credentials)
         raise ValueError(f"Unsupported provider: {provider}")
 
     @staticmethod
@@ -105,3 +108,38 @@ class ProviderFactory:
             )
 
         raise ValueError("Unsupported connection type for PgVector profile")
+
+    @staticmethod
+    def _create_milvus(config: dict[str, Any], credentials: dict[str, Any]) -> MilvusConnection:
+        """Create a Milvus connection."""
+        conn_type = config.get("type")
+        user = credentials.get("user")
+        password = credentials.get("password")
+        token = credentials.get("token")
+
+        if conn_type == "http":
+            # Remote Milvus server
+            host = config.get("host", "localhost")
+            port = int(config.get("port", 19530))
+            db_name = config.get("db_name", "default")
+            return MilvusConnection(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                token=token,
+                db_name=db_name,
+            )
+        if conn_type == "uri":
+            # URI-based connection (supports Milvus Lite with file paths)
+            uri = config.get("uri")
+            db_name = config.get("db_name", "default")
+            return MilvusConnection(
+                uri=uri,
+                user=user,
+                password=password,
+                token=token,
+                db_name=db_name,
+            )
+        # Default to local connection
+        return MilvusConnection()
