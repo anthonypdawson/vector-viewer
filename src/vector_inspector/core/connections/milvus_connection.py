@@ -167,16 +167,16 @@ class MilvusConnection(VectorDBConnection):
         try:
             # Get collection stats
             stats = self._client.get_collection_stats(collection_name=name)
-            
+
             # Get collection schema using utility
             collection = Collection(name, using=self.alias)
             schema = collection.schema
-            
+
             # Extract vector field info
             vector_field = None
             vector_dimension = "Unknown"
             metadata_fields = []
-            
+
             for field in schema.fields:
                 if field.dtype == DataType.FLOAT_VECTOR:
                     vector_field = field.name
@@ -184,10 +184,10 @@ class MilvusConnection(VectorDBConnection):
                 elif field.name not in ["id", "pk"]:
                     # Track other fields as metadata fields
                     metadata_fields.append(field.name)
-            
+
             # Get count
             count = int(stats.get("row_count", 0))
-            
+
             # Get index info if available
             index_info = {}
             try:
@@ -201,7 +201,7 @@ class MilvusConnection(VectorDBConnection):
                             }
             except Exception:
                 pass
-            
+
             return {
                 "name": name,
                 "count": count,
@@ -214,9 +214,7 @@ class MilvusConnection(VectorDBConnection):
             log_error("Failed to get collection info for %s: %s", name, e)
             return None
 
-    def create_collection(
-        self, name: str, vector_size: int, distance: str = "Cosine"
-    ) -> bool:
+    def create_collection(self, name: str, vector_size: int, distance: str = "Cosine") -> bool:
         """
         Create a collection with a given vector size and distance metric.
 
@@ -251,9 +249,7 @@ class MilvusConnection(VectorDBConnection):
                     auto_id=False,
                     max_length=65535,
                 ),
-                FieldSchema(
-                    name="document", dtype=DataType.VARCHAR, max_length=65535
-                ),
+                FieldSchema(name="document", dtype=DataType.VARCHAR, max_length=65535),
                 FieldSchema(
                     name="embedding",
                     dtype=DataType.FLOAT_VECTOR,
@@ -396,7 +392,9 @@ class MilvusConnection(VectorDBConnection):
 
             # Add metadata fields if provided
             if metadatas:
-                schema_fields = {f.name: f for f in Collection(collection_name, using=self.alias).schema.fields}
+                schema_fields = {
+                    f.name: f for f in Collection(collection_name, using=self.alias).schema.fields
+                }
 
                 for i, metadata in enumerate(metadatas):
                     if metadata:
@@ -427,10 +425,9 @@ class MilvusConnection(VectorDBConnection):
             return {"documents": [], "metadatas": []}
 
         try:
-
             results = self._client.query(
                 collection_name=name,
-                filter=f'id in {ids}',
+                filter=f"id in {ids}",
                 output_fields=["*"],
             )
 
@@ -441,9 +438,7 @@ class MilvusConnection(VectorDBConnection):
                 documents.append(item.get("document", ""))
                 # Extract metadata (exclude id, document, embedding)
                 metadata = {
-                    k: v
-                    for k, v in item.items()
-                    if k not in ["id", "document", "embedding"]
+                    k: v for k, v in item.items() if k not in ["id", "document", "embedding"]
                 }
                 metadatas.append(metadata)
 
@@ -506,9 +501,7 @@ class MilvusConnection(VectorDBConnection):
                 embeddings.append(item.get("embedding", []))
                 # Extract metadata
                 metadata = {
-                    k: v
-                    for k, v in item.items()
-                    if k not in ["id", "document", "embedding"]
+                    k: v for k, v in item.items() if k not in ["id", "document", "embedding"]
                 }
                 metadatas.append(metadata)
 
@@ -554,7 +547,7 @@ class MilvusConnection(VectorDBConnection):
                 if query_texts is None:
                     log_error("Either query_texts or query_embeddings must be provided")
                     return None
-                
+
                 # Compute embeddings for query texts
                 query_embeddings = self.compute_embeddings_for_documents(
                     collection_name,
@@ -589,7 +582,7 @@ class MilvusConnection(VectorDBConnection):
 
                 if results and len(results) > 0:
                     result_set = results[0]
-                    
+
                     ids = []
                     distances = []
                     documents = []
@@ -601,7 +594,7 @@ class MilvusConnection(VectorDBConnection):
                         distances.append(hit.get("distance", 0.0))
                         documents.append(hit.get("document", ""))
                         embeddings.append(hit.get("embedding", []))
-                        
+
                         # Extract metadata
                         metadata = {
                             k: v
@@ -703,7 +696,7 @@ class MilvusConnection(VectorDBConnection):
         try:
             if ids:
                 # Delete by IDs
-                filter_expr = f'id in {ids}'
+                filter_expr = f"id in {ids}"
             elif where:
                 # Delete by filter
                 filter_expr = self._build_filter_expression(where)
