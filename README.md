@@ -228,8 +228,8 @@ cd vector-inspector
 pdm install
 
 # Launch application
-./run.sh     # Linux/macOS
-./run.bat    # Windows
+scripts/run.sh     # Linux/macOS
+scripts/run.bat    # Windows
 ```
 
 ## Configuration

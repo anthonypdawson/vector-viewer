@@ -44,13 +44,13 @@ The scripts create collections named `sample_documents`.
 
 On Windows:
 ```bash
-./run.bat
+scripts/run.bat
 ```
 
 On Linux/Mac:
 ```bash
 chmod +x run.sh
-./run.sh
+./scripts/run.sh
 ```
 
 **Option 2: Direct command**

@@ -4,12 +4,12 @@
 
 **Windows:**
 ```bash
-./run.bat
+scripts/run.bat
 ```
 
 **Linux/Mac:**
 ```bash
-./run.sh
+scripts/run.sh
 ```
 
 ## Keyboard Shortcuts
