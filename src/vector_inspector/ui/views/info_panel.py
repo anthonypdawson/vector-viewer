@@ -26,13 +26,33 @@ from vector_inspector.core.logging import log_info
 class InfoPanel(QWidget):
     """Panel for displaying database and collection information."""
 
+    connection: Optional[ConnectionInstance]
+    connection_id: str
+    current_collection: str
+    current_database: str
+    cache_manager: Any
+    db_group: QGroupBox
+    provider_label: QLabel
+    connection_type_label: QLabel
+    endpoint_label: QLabel
+    api_key_label: QLabel
+    status_label: QLabel
+    collections_count_label: QLabel
+    collection_group: QGroupBox
+    collection_name_label: QLabel
+    vector_dim_label: QLabel
+    distance_metric_label: QLabel
+    total_points_label: QLabel
+    embedding_model_label: QLabel
+    configure_embedding_btn: QPushButton
+    clear_embedding_btn: QPushButton
+
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Expects a ConnectionInstance wrapper.
         self.connection = connection
-        self.connection_id: str = ""  # Will be set when collection is set
-        self.current_collection: str = ""
-        self.current_database: str = ""
+        self.connection_id = ""
+        self.current_collection = ""
+        self.current_database = ""
         self.cache_manager = get_cache_manager()
         self._setup_ui()
 

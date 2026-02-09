@@ -28,6 +28,17 @@ from vector_inspector.ui.tabs import InspectorTabs
 class MainWindow(InspectorShell):
     """Main application window with multi-database support."""
 
+    connection_manager: ConnectionManager
+    profile_service: ProfileService
+    settings_service: SettingsService
+    connection_controller: ConnectionController
+    visualization_view: object
+    info_panel: object
+    metadata_view: object
+    search_view: object
+    connection_panel: ConnectionManagerPanel
+    profile_panel: ProfileManagerPanel
+
     def __init__(self):
         super().__init__()
 

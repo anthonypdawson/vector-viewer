@@ -21,6 +21,9 @@ class FilterRule(QWidget):
 
     remove_requested = Signal(object)  # Signal to remove this rule
     apply_requested = Signal()  # Signal to apply filters
+    field_input: QComboBox
+    operator_combo: QComboBox
+    value_input: QLineEdit
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -117,7 +120,12 @@ class FilterRule(QWidget):
         # Handle client-side operators
         if is_client_side:
             if operator == "contains":
-                return {"__client_side__": True, "field": field, "op": "contains", "value": value}
+                return {
+                    "__client_side__": True,
+                    "field": field,
+                    "op": "contains",
+                    "value": value,
+                }
             if operator == "not contains":
                 return {
                     "__client_side__": True,
@@ -180,12 +188,16 @@ class FilterBuilder(QWidget):
 
     filter_changed = Signal()  # Signal when filter changes
     apply_filters = Signal()  # Signal when user wants to apply filters
+    rules: list[FilterRule]
+    available_fields: list[str]
+    operators: list[dict[str, Any]]
+    logic_combo: QComboBox
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.rules: list[FilterRule] = []
-        self.available_fields: list[str] = []  # Store available field names
-        self.operators: list[dict[str, Any]] = []  # Store operators from connection
+        self.rules = []
+        self.available_fields = []
+        self.operators = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -234,8 +246,12 @@ class FilterBuilder(QWidget):
         self.rules_layout.setContentsMargins(0, 5, 0, 5)
 
         # Placeholder label
-        self.placeholder_label = QLabel("No filters applied. Click '+ Add Filter Rule' to start.")
-        self.placeholder_label.setStyleSheet("color: gray; font-style: italic; padding: 20px;")
+        self.placeholder_label = QLabel(
+            "No filters applied. Click '+ Add Filter Rule' to start."
+        )
+        self.placeholder_label.setStyleSheet(
+            "color: gray; font-style: italic; padding: 20px;"
+        )
         self.placeholder_label.setAlignment(Qt.AlignCenter)
         self.rules_layout.addWidget(self.placeholder_label)
 
@@ -248,7 +264,9 @@ class FilterBuilder(QWidget):
         rule.remove_requested.connect(self._remove_rule)
         rule.apply_requested.connect(self.apply_filters.emit)
         rule.field_input.editTextChanged.connect(lambda: self.filter_changed.emit())
-        rule.operator_combo.currentTextChanged.connect(lambda: self.filter_changed.emit())
+        rule.operator_combo.currentTextChanged.connect(
+            lambda: self.filter_changed.emit()
+        )
         rule.value_input.textChanged.connect(lambda: self.filter_changed.emit())
 
         # Apply available fields if we have them
@@ -314,7 +332,9 @@ class FilterBuilder(QWidget):
         # Combine multiple filters
         return {f"${logic}": rule_filters}
 
-    def get_filters_split(self) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
+    def get_filters_split(
+        self,
+    ) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
         """
         Get filters split into server-side and client-side filters.
 

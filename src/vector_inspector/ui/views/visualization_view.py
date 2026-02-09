@@ -33,6 +33,9 @@ class VisualizationThread(QThread):
 
     finished = Signal(np.ndarray)
     error = Signal(str)
+    embeddings: Any
+    method: Any
+    n_components: Any
 
     def __init__(self, embeddings, method, n_components):
         super().__init__()
@@ -58,14 +61,29 @@ class VisualizationThread(QThread):
 class VisualizationView(QWidget):
     """View for visualizing vectors in 2D/3D."""
 
+    connection: Optional[ConnectionInstance]
+    current_collection: str
+    current_data: dict[str, Any] | None
+    reduced_data: Any
+    visualization_thread: Any
+    temp_html_files: list
+    sample_spin: QSpinBox
+    use_all_checkbox: QCheckBox
+    method_combo: QComboBox
+    dimensions_combo: QComboBox
+    generate_button: QPushButton
+    open_browser_button: QPushButton
+    web_view: QWebEngineView
+    status_label: QLabel
+    loading_dialog: LoadingDialog
+
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Expects a ConnectionInstance wrapper.
         self.connection = connection
-        self.current_collection: str = ""
-        self.current_data: dict[str, Any] | None = None
-        self.reduced_data: np.ndarray | None = None
-        self.visualization_thread: VisualizationThread | None = None
+        self.current_collection = ""
+        self.current_data = None
+        self.reduced_data = None
+        self.visualization_thread = None
         self.temp_html_files = []
         self._setup_ui()
 
@@ -149,7 +167,9 @@ class VisualizationView(QWidget):
         self.open_browser_button.setEnabled(False)
         """Generate visualization of vectors."""
         if not self.current_collection:
-            QMessageBox.warning(self, "No Collection", "Please select a collection first.")
+            QMessageBox.warning(
+                self, "No Collection", "Please select a collection first."
+            )
             return
 
         # Load data with embeddings (show loading immediately)
@@ -163,7 +183,9 @@ class VisualizationView(QWidget):
             if sample_size is None:
                 data = self.connection.get_all_items(self.current_collection)
             else:
-                data = self.connection.get_all_items(self.current_collection, limit=sample_size)
+                data = self.connection.get_all_items(
+                    self.current_collection, limit=sample_size
+                )
         finally:
             self.loading_dialog.hide_loading()
 
@@ -192,7 +214,9 @@ class VisualizationView(QWidget):
         n_components = 2 if self.dimensions_combo.currentText() == "2D" else 3
 
         # Run dimensionality reduction in background thread
-        self.visualization_thread = VisualizationThread(data["embeddings"], method, n_components)
+        self.visualization_thread = VisualizationThread(
+            data["embeddings"], method, n_components
+        )
         self.visualization_thread.finished.connect(self._on_reduction_finished)
         self.visualization_thread.error.connect(self._on_reduction_error)
         # Show loading during reduction

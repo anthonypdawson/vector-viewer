@@ -1,5 +1,7 @@
 """Collection browser for listing and selecting collections."""
 
+from typing import Optional
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
@@ -19,10 +21,12 @@ class CollectionBrowser(QWidget):
     """Widget for browsing and selecting collections."""
 
     collection_selected = Signal(str)
+    connection: Optional[ConnectionInstance]
+    collection_list: QListWidget
+    info_label: QLabel
 
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Expects a ConnectionInstance wrapper.
         self.connection = connection
         self._setup_ui()
 

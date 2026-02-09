@@ -1,5 +1,6 @@
-from PySide6.QtWidgets import QProgressDialog, QApplication
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QProgressDialog
+
 
 class LoadingDialog(QProgressDialog):
     def __init__(self, message="Loading...", parent=None):

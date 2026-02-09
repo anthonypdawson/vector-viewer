@@ -18,6 +18,10 @@ class InspectorShell(QMainWindow):
     and Vector Fusion Studio. Subclasses customize behavior and add domain logic.
     """
 
+    left_tabs: QTabWidget
+    tab_widget: QTabWidget
+    main_splitter: QSplitter
+
     def __init__(self):
         super().__init__()
 

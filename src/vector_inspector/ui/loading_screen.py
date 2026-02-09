@@ -105,39 +105,41 @@ class LoadingScreen(QWidget):
         self._fade_animation = animation  # Prevent garbage collection
 
 
-def show_loading_screen(app_name, version, tagline, loading_text="Initializing providers…", logo_path=None):
+def show_loading_screen(
+    app_name, version, tagline, loading_text="Initializing providers…", logo_path=None
+):
     """Show the loading screen if not disabled in settings.
-    
+
     This is a convenience function that handles checking settings, finding the logo,
     creating the loading screen, and showing it. Both vector-inspector and vector-studio
     should use this function to avoid code duplication.
-    
+
     Args:
         app_name: Name of the application (e.g., "Vector Inspector", "Vector Studio")
         version: Version string (e.g., "v0.3.11")
         tagline: Tagline to display under app name
         loading_text: Initial loading message
         logo_path: Optional explicit path to logo. If None, will look for vector-inspector's logo.
-    
+
     Returns:
         LoadingScreen instance if shown, None otherwise.
     """
     from vector_inspector.services.settings_service import SettingsService
-    
+
     # Check if user wants to skip loading screen
     settings = SettingsService()
     show_loading = not settings.get("hide_loading_screen", False)
-    
+
     if not show_loading:
         return None
-    
+
     # Find logo path if not provided
     if logo_path is None:
         # Default to vector-inspector's logo
         module_dir = os.path.dirname(os.path.abspath(__file__))
         # Navigate from ui/loading_screen.py to vector_inspector/assets/logo.png
         logo_path = os.path.join(os.path.dirname(module_dir), "assets", "logo.png")
-    
+
     # Create and show loading screen
     loading = LoadingScreen(
         logo_path=logo_path,
@@ -147,11 +149,12 @@ def show_loading_screen(app_name, version, tagline, loading_text="Initializing p
         loading_text=loading_text,
     )
     loading.show()
-    
+
     # Force the loading screen to render
     from PySide6.QtWidgets import QApplication
+
     QApplication.instance().processEvents()
-    
+
     return loading
 
 

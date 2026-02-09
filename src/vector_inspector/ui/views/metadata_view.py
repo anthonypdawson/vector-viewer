@@ -39,6 +39,11 @@ class DataLoadThread(QThread):
 
     finished = Signal(dict)
     error = Signal(str)
+    connection: Any
+    collection: Any
+    page_size: int
+    offset: int
+    server_filter: Any
 
     def __init__(self, connection, collection, page_size, offset, server_filter):
         super().__init__()
@@ -65,27 +70,35 @@ class DataLoadThread(QThread):
 class MetadataView(QWidget):
     """View for browsing collection data and metadata."""
 
+    connection: Optional[ConnectionInstance]
+    current_collection: str
+    current_database: str
+    current_data: Optional[dict[str, Any]]
+    page_size: int
+    current_page: int
+    loading_dialog: LoadingDialog
+    settings_service: SettingsService
+    load_thread: Optional[DataLoadThread]
+    cache_manager: Any
+    _select_id_after_load: Optional[str]
+    filter_reload_timer: QTimer
+
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
-        # Expects a ConnectionInstance wrapper.
         self.connection = connection
-        self.current_collection: str = ""
-        self.current_database: str = ""
-        self.current_data: Optional[dict[str, Any]] = None
+        self.current_collection = ""
+        self.current_database = ""
+        self.current_data = None
         self.page_size = 50
         self.current_page = 0
         self.loading_dialog = LoadingDialog("Loading data...", self)
         self.settings_service = SettingsService()
-        self.load_thread: Optional[DataLoadThread] = None
+        self.load_thread = None
         self.cache_manager = get_cache_manager()
-        # used to select a specific ID after an async load
-        self._select_id_after_load: Optional[str] = None
-
-        # Debounce timer for filter changes
+        self._select_id_after_load = None
         self.filter_reload_timer = QTimer()
         self.filter_reload_timer.setSingleShot(True)
         self.filter_reload_timer.timeout.connect(self._reload_with_filters)
-
         self._setup_ui()
 
     def _setup_ui(self):
