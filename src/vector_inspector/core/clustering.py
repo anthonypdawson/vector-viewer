@@ -10,31 +10,6 @@ from typing import Any
 import numpy as np
 
 
-class ClusteringAlgorithm:
-    """Base class for clustering algorithms."""
-
-    def __init__(self, name: str, params: dict[str, Any]):
-        """Initialize clustering algorithm.
-
-        Args:
-            name: Name of the algorithm.
-            params: Parameters for the algorithm.
-        """
-        self.name = name
-        self.params = params
-
-    def fit_predict(self, embeddings: np.ndarray) -> np.ndarray:
-        """Fit the algorithm and return cluster labels.
-
-        Args:
-            embeddings: Array of embeddings to cluster.
-
-        Returns:
-            Array of cluster labels.
-        """
-        raise NotImplementedError
-
-
 def run_clustering(
     embeddings: np.ndarray, algorithm: str, params: dict[str, Any]
 ) -> tuple[np.ndarray, str]:
