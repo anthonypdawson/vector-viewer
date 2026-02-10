@@ -27,3 +27,53 @@ Keep this checklist in the file so it's always visible when contributors read th
 ## Import Style
 
 - Prefer absolute imports within the project (for example: `from vector_inspector.core.embedding_utils import ...`) over relative imports. Absolute paths make code easier to edit across repositories and work better with editors and static analysis tools. Use relative imports only for very small, tightly-coupled internal modules when clearly justified.
+
+# UI OWNERSHIP MODEL
+
+Vector Inspector (VI) owns ALL UI elements:
+- All QActions, QMenus, QMenuItems, QToolButtons, QDockWidgets, and QWidget controls
+- All right‑click menu entries
+- All toolbar and panel controls
+- All disabled “Premium / Requires Vector Studio” stubs
+
+Vector Studio (VS) MUST NOT create or duplicate UI controls.
+VS only injects behavior into existing VI controls.
+
+# DISABLED STUBS IN INSPECTOR
+
+When a feature is Premium:
+- VI creates the UI control
+- VI sets it disabled
+- VI attaches a tooltip explaining it requires Vector Studio
+- VI connects the signal to a no‑op stub function
+
+Example pattern:
+actionViewSimilar->setEnabled(false);
+actionViewSimilar->setToolTip("Requires Vector Studio");
+connect(actionViewSimilar, &QAction::triggered, this, &MainWindow::premiumStub);
+
+premiumStub() MUST do nothing except optionally show a simple “Requires Vector Studio” message.
+
+# STUDIO BEHAVIOR INJECTION
+
+VS activates Premium features by:
+- Locating the existing VI control (never creating a new one)
+- Enabling it
+- Disconnecting the stub slot
+- Connecting the real implementation slot
+
+VS MUST NOT modify VI UI layout, create new controls, or duplicate menu entries.
+
+# NO CROSS-LAYER LOGIC LEAKAGE
+
+VI contains no Premium logic.
+VS contains no UI definitions.
+
+All advanced workflows, algorithms, and implementations live in VS.
+All UI surfaces live in VI.
+
+# ABSOLUTE RULE
+
+Never duplicate a control.
+Never move UI creation into VS.
+Never place implementation logic in VI.
