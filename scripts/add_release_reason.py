@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Append a structured entry to RELEASE_REASON.md for release notes.
+"""Append a structured entry to docs/RELEASE_REASON.md for release notes.
 
 Usage:
   scripts/add_release_reason.py --message "Short summary" [--type fix|feat|chore] [--detail-file details.md]
@@ -42,7 +42,7 @@ def load_detail(detail_file: Path | None) -> str:
         return ""
 
 
-def prepend_release_reason(entry: str, file: Path = Path("RELEASE_REASON.md")) -> None:
+def prepend_release_reason(entry: str, file: Path = Path("docs/RELEASE_REASON.md")) -> None:
     # Ensure file exists
     if not file.exists():
         file.write_text("", encoding="utf-8")
@@ -116,7 +116,7 @@ def main():
     author = git_user()
 
     entry = build_entry(msg, args.type, detail, commit, author)
-    prepend_release_reason(entry, Path("RELEASE_REASON.md"))
+    prepend_release_reason(entry, Path("docs/RELEASE_REASON.md"))
     print("Appended release reason.")
 
 

@@ -19,6 +19,10 @@ def main():
     app.setApplicationName("Vector Inspector")
     app.setApplicationDisplayName("Vector Inspector")  # For some dialogs and OS integrations
     app.setOrganizationName("Vector Inspector")
+    # Set application icon
+    from PySide6.QtGui import QIcon
+
+    app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "assets", "logo.ico")))
 
     # Get version once for all uses
     app_version = get_version()

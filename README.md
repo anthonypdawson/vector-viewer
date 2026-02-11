@@ -90,6 +90,9 @@ Vector Inspector bridges the gap between vector databases and user-friendly data
   - ChromaDB (persistent local storage)
   - Qdrant (remote server or embedded local)
   - Pinecone (cloud-hosted)
+  - Milvus (remote server or Milvus Lite) (Only on MacOs/Linux, experimental)
+  - LanceDB (persistent local storage)
+  - PgVector/PostgreSQL (remote server)
 - Unified interface regardless of backend provider
 - Automatically saves last connection configuration
 - Secure API key storage for cloud providers

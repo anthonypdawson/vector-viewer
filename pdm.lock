@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:8e28bc89e9e98e2035ebf9c48e0ac653549a425213a8becde736f3526c55e479"
+content_hash = "sha256:ef67faae16d4ba31e9ed737f0b4a0975749a4b598141bc4a7ad05daa62cae374"
 
 [[metadata.targets]]
 requires_python = ">=3.11,<3.14"
@@ -438,7 +438,7 @@ files = [
 
 [[package]]
 name = "chromadb"
-version = "1.4.1"
+version = "1.5.0"
 requires_python = ">=3.9"
 summary = "Chroma."
 groups = ["default"]
@@ -474,12 +474,12 @@ dependencies = [
     "uvicorn[standard]>=0.18.3",
 ]
 files = [
-    {file = "chromadb-1.4.1-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:05d98ffe4a9a5549c9a78eee7624277f9d99c53200a01f1176ecb1d31ea3c819"},
-    {file = "chromadb-1.4.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:38336431c01562cffdb3ef693f22f7a88df5304f942e01ed66ee0bbaf08f35da"},
-    {file = "chromadb-1.4.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ffaaf9c7d4ddbbdc74bd7cac45d9729032020cc6e65a2b8f313257e6c949beed"},
-    {file = "chromadb-1.4.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ad50fbb5799dcaef5ae7613be583a06b44b637283db066396490863266f48623"},
-    {file = "chromadb-1.4.1-cp39-abi3-win_amd64.whl", hash = "sha256:cedc9941dad1081eb9be89a7f5f66374715d4f99f731f1eb9da900636c501330"},
-    {file = "chromadb-1.4.1.tar.gz", hash = "sha256:3cceb83e0a7a3c2db0752ebf62e9cfe652da657594c093fe07e74022581a58eb"},
+    {file = "chromadb-1.5.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:4dc035ed075ddf80dfcdcd6bbedf6cd7c81052132333f03e6a71cdeac5ea0899"},
+    {file = "chromadb-1.5.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:3ae46c642c0bf3b86319b3883456ce8bb4a097a1d0552e7ce8cd4836a0cd1f22"},
+    {file = "chromadb-1.5.0-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:20dbfcd178cb93159891e3a0ff085659b8b3e4cbeef3dae311091c325791f4cc"},
+    {file = "chromadb-1.5.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4f5258d5b578c48b7c78effb6b582050ee13b1ac2e9eade4c83cd66de1a78c33"},
+    {file = "chromadb-1.5.0-cp39-abi3-win_amd64.whl", hash = "sha256:8298cde5ffe448ca5a9794450c8b9700393e824ef8951be425ba2691330e78e6"},
+    {file = "chromadb-1.5.0.tar.gz", hash = "sha256:357c5516ede08305db65f078d1dd4e001b8ecca80a13fd0db0b45bc473554ecb"},
 ]
 
 [[package]]
@@ -891,6 +891,28 @@ dependencies = [
 files = [
     {file = "h2-4.3.0-py3-none-any.whl", hash = "sha256:c438f029a25f7945c69e0ccf0fb951dc3f73a5f6412981daee861431b70e2bdd"},
     {file = "h2-4.3.0.tar.gz", hash = "sha256:6c59efe4323fa18b47a632221a1888bd7fde6249819beda254aeca909f221bf1"},
+]
+
+[[package]]
+name = "hdbscan"
+version = "0.8.41"
+summary = "Clustering based on density with variable density clusters"
+groups = ["default"]
+marker = "python_version >= \"3.11\" and python_version < \"3.14\""
+dependencies = [
+    "joblib>=1.0",
+    "numpy<3,>=1.20",
+    "scikit-learn>=1.6",
+    "scipy>=1.0",
+]
+files = [
+    {file = "hdbscan-0.8.41-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:be948fc76d0035d93d309920f14ab6a0185580a63c5a63b05739f08b45dc6c03"},
+    {file = "hdbscan-0.8.41-cp311-cp311-win_amd64.whl", hash = "sha256:0af3e3bab1eb6b07ea497afc4d2db1b58122974fb052bd21f0ea4b42fcf8d535"},
+    {file = "hdbscan-0.8.41-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:07ae4c44098449bd9de12145ad17e92ef699754a43988cbea2dd1a95b89bf142"},
+    {file = "hdbscan-0.8.41-cp312-cp312-win_amd64.whl", hash = "sha256:dce39272d2d4f1dde50dde9cc428cadb84ed16326de872b01761f7ec4f690419"},
+    {file = "hdbscan-0.8.41-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:8c2f0111395bd1beba1c095edf6b123ec529c8ebd7f4ccd02aaabd6b016454de"},
+    {file = "hdbscan-0.8.41-cp313-cp313-win_amd64.whl", hash = "sha256:e90f6b9e2fcc94f9ac09d537f8b414191d1a837d62a355edd78e12820b63f0e2"},
+    {file = "hdbscan-0.8.41.tar.gz", hash = "sha256:e41e823e5bb21ff2173f252d226266b1dda82bdbba5d89106eafb251429dff3d"},
 ]
 
 [[package]]
@@ -1354,7 +1376,7 @@ files = [
 
 [[package]]
 name = "lancedb"
-version = "0.29.1"
+version = "0.29.2"
 requires_python = ">=3.10"
 summary = "lancedb"
 groups = ["default"]
@@ -1370,12 +1392,12 @@ dependencies = [
     "tqdm>=4.27.0",
 ]
 files = [
-    {file = "lancedb-0.29.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:4a9f8f4d03ca2127d6e0b72728b2cc09ae7bfc8ea7b14ab37fc09bfdd1f03f73"},
-    {file = "lancedb-0.29.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7c2477e898762324314a6a3be902c64ea5a3f7457720d4ec235e65e6ab3170f7"},
-    {file = "lancedb-0.29.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6ba3d4fa4d7f0e9b00861349dcce13fb437d9e40462c48679df91dd587d13919"},
-    {file = "lancedb-0.29.1-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:a60143bdeef2390e5c07cb5335c1888cf322102540108e1281b8b6444b8eb7d1"},
-    {file = "lancedb-0.29.1-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:1208a4c825ba51fd61e285b0fd179976fb035f0a0838acde1022d45b2c171b30"},
-    {file = "lancedb-0.29.1-cp39-abi3-win_amd64.whl", hash = "sha256:f122263c074c12cc4e716423a29fe2bc7bf574ee958c4df6099b1ed6b47a35ea"},
+    {file = "lancedb-0.29.2-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:bc1faf2e12addb9585569d0fb114ecc25ec3867e4e1aa6934e9343cfb5265ee4"},
+    {file = "lancedb-0.29.2-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0fec19cfc52a5b9d98e060bd2f02a1c9df6a0bfd15b36021b6017327a41893a3"},
+    {file = "lancedb-0.29.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:636939ab9225d435020ba17c231f5eaba15312a07813bcebcd71128204cc039f"},
+    {file = "lancedb-0.29.2-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:f79b32083fcab139009db521d2f7fcd6afe4cca98a78c06c5940ff00a170cc1a"},
+    {file = "lancedb-0.29.2-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:991043a28c1f49f14df2479b554a95c759a85666dc58573cc86c1b9df05db794"},
+    {file = "lancedb-0.29.2-cp39-abi3-win_amd64.whl", hash = "sha256:101eb0ac018bb0b643dd9ea22065f6f2102e9d44c9ac58a197477ccbfbc0b9fa"},
 ]
 
 [[package]]
@@ -2318,14 +2340,14 @@ files = [
 
 [[package]]
 name = "parso"
-version = "0.8.5"
+version = "0.8.6"
 requires_python = ">=3.6"
 summary = "A Python Parser"
 groups = ["dev"]
 marker = "python_version >= \"3.11\" and python_version < \"3.14\""
 files = [
-    {file = "parso-0.8.5-py2.py3-none-any.whl", hash = "sha256:646204b5ee239c396d040b90f9e272e9a8017c630092bf59980beb62fd033887"},
-    {file = "parso-0.8.5.tar.gz", hash = "sha256:034d7354a9a018bdce352f48b2a8a450f05e9d6ee85db84764e9b6bd96dafe5a"},
+    {file = "parso-0.8.6-py2.py3-none-any.whl", hash = "sha256:2c549f800b70a5c4952197248825584cb00f033b29c692671d3bf08bf380baff"},
+    {file = "parso-0.8.6.tar.gz", hash = "sha256:2b9a0332696df97d454fa67b81618fd69c35a7b90327cbe6ba5c92d2c68a7bfd"},
 ]
 
 [[package]]

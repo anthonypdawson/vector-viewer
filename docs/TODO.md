@@ -17,10 +17,26 @@ Add new items below as needed. When an item is scheduled for a phase or release,
 - Refactor UI MainWindow as suggested here https://copilot.microsoft.com/shares/2657KN5vHbc1qNwLHQMc3
 - Continue testing search similar feature and fix any bugs found
 - Allow create collections
+  - Precreate sample data that can be used for quick collection creation and testing
+- Add right click menu in Data browser "Go to cluster" that takes you to the cluster view for that item
 - Allow adding test data from the UI for demo purposes (leverage code in create_test_data.py)
   - Allow types of data: text, images, audio, mixed
   - Allow specifying number of items, metadata fields, embedding dimensions
   - Use the data from create_test_data.py if the user wants just demo data quickly
+  - See sample_data.md for more details
+- Move basic clustering to vector-inspector (non-paid)
+  - Keep advanced options in Vector Studio (paid)
+  - Additional clustering features outlined in the clustering doc will be in Vector Studio only, but basic clustering (e.g., KMeans with default settings) can be in the free version to provide a taste of the feature and support basic use cases.
+- Expand telemetry
+  - Examples:
+  EVENTS = {
+    'db.connected': {'db_type', 'connection_time_ms'},
+    'collection.loaded': {'db_type', 'vector_count', 'dimension'},
+    'search.performed': {'db_type', 'result_count', 'has_filters'},
+    'feature.used': {'feature_name', 'session_duration'},
+    'upgrade.shown': {'trigger', 'feature_blocked'},
+    'upgrade.clicked': {'plan', 'source'}
+}
 - Implement cluster visualization with HDBSCAN (Premium) — moved to: ../vector-studio/docs/CLUSTER_VISUALIZATION_HDBSCAN.md
 - When catching an exception on connecting to a database, classify the error and show a more specific message to the user (e.g., authentication failure, network unreachable, timeout, problem with database etc.). Remove the loading dialog when an error occurs.
   - Example of a database failure
