@@ -113,9 +113,11 @@ jobs:
       if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
       run: |
         cp README.md README.md.bak
-        reason="${{ steps.release_reason.outputs.reason }}"
-        if [ -n "$reason" ]; then
-          echo -e "$reason" | cat - README.md.bak > README.md
+        # Safely write multiline release reason to a temp file, then prepend
+        if [ -n "${{ steps.release_reason.outputs.reason }}" ]; then
+          printf '%s\n' "${{ steps.release_reason.outputs.reason }}" > /tmp/release_reason.txt
+          cat /tmp/release_reason.txt README.md.bak > README.md
+          rm -f /tmp/release_reason.txt
         else
           cp README.md.bak README.md
         fi
