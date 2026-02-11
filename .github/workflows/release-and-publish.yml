@@ -99,8 +99,8 @@ jobs:
       run: |
         if [ -n "${{ github.event.inputs.reason }}" ]; then
           reason="${{ github.event.inputs.reason }}"
-        elif [ -f RELEASE_REASON.md ]; then
-          reason="$(cat RELEASE_REASON.md)"
+        elif [ -f docs/RELEASE_REASON.md ]; then
+          reason="$(cat docs/RELEASE_REASON.md)"
         else
           reason=""
         fi
