@@ -95,7 +95,6 @@ def update_pagination_controls(
     if not ctx.current_data:
         return
 
-
     current_page = ctx.current_page
     page_size = ctx.page_size
 

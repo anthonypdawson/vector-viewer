@@ -441,7 +441,9 @@ class MetadataView(QWidget):
                         else ""
                     ),
                 )
-                self.ctx.cache_manager.set(self.ctx.current_database, self.ctx.current_collection, cache_entry)
+                self.ctx.cache_manager.set(
+                    self.ctx.current_database, self.ctx.current_collection, cache_entry
+                )
             return
 
         # After normal server-paginated load, if we were instructed to select
@@ -519,9 +521,12 @@ class MetadataView(QWidget):
                     else ""
                 ),
             )
-            self.ctx.cache_manager.set(self.ctx.current_database, self.ctx.current_collection, cache_entry)
+            self.ctx.cache_manager.set(
+                self.ctx.current_database, self.ctx.current_collection, cache_entry
+            )
             log_info(
-                "[MetadataView] ✓ Saved to cache. Total entries: %d", len(self.ctx.cache_manager._cache)
+                "[MetadataView] ✓ Saved to cache. Total entries: %d",
+                len(self.ctx.cache_manager._cache),
             )
         else:
             log_info(
@@ -580,7 +585,9 @@ class MetadataView(QWidget):
             if success:
                 # Invalidate cache after adding item
                 if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
+                    self.ctx.cache_manager.invalidate(
+                        self.ctx.current_database, self.ctx.current_collection
+                    )
                 QMessageBox.information(self, "Success", "Item added successfully.")
                 # Fallback to full reload (row index is not available here)
                 self._load_data()
@@ -618,11 +625,15 @@ class MetadataView(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            success = self.ctx.connection.delete_items(self.ctx.current_collection, ids=ids_to_delete)
+            success = self.ctx.connection.delete_items(
+                self.ctx.current_collection, ids=ids_to_delete
+            )
             if success:
                 # Invalidate cache after deletion
                 if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
+                    self.ctx.cache_manager.invalidate(
+                        self.ctx.current_database, self.ctx.current_collection
+                    )
                 QMessageBox.information(self, "Success", "Items deleted successfully.")
                 self._load_data()
             else:
@@ -662,7 +673,9 @@ class MetadataView(QWidget):
     def _refresh_data(self) -> None:
         """Refresh data and invalidate cache."""
         if self.ctx.current_database and self.ctx.current_collection:
-            self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
+            self.ctx.cache_manager.invalidate(
+                self.ctx.current_database, self.ctx.current_collection
+            )
         self.ctx.current_page = 0
         self._load_data()
 
@@ -710,7 +723,9 @@ class MetadataView(QWidget):
 
             if not generate_on_edit:
                 # Try to preserve existing embedding for this row if present
-                existing_embs = self.ctx.current_data.get("embeddings", []) if self.ctx.current_data else []
+                existing_embs = (
+                    self.ctx.current_data.get("embeddings", []) if self.ctx.current_data else []
+                )
                 if row < len(existing_embs):
                     existing = existing_embs[row]
                     if existing:
@@ -738,7 +753,9 @@ class MetadataView(QWidget):
             if success:
                 # Invalidate cache after updating item
                 if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
+                    self.ctx.cache_manager.invalidate(
+                        self.ctx.current_database, self.ctx.current_collection
+                    )
 
                 # Show info about embedding regeneration/preservation when applicable
                 try:
@@ -748,7 +765,9 @@ class MetadataView(QWidget):
 
                 regen_count = 0
                 try:
-                    regen_count = int(getattr(self.ctx.connection, "_last_regenerated_count", 0) or 0)
+                    regen_count = int(
+                        getattr(self.ctx.connection, "_last_regenerated_count", 0) or 0
+                    )
                 except Exception:
                     regen_count = 0
 
@@ -841,5 +860,7 @@ class MetadataView(QWidget):
         if imported_data:
             # Invalidate cache after import
             if self.ctx.current_database and self.ctx.current_collection:
-                self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
+                self.ctx.cache_manager.invalidate(
+                    self.ctx.current_database, self.ctx.current_collection
+                )
             self._load_data()
