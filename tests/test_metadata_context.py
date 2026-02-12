@@ -1,5 +1,3 @@
-import pytest
-
 from vector_inspector.ui.views.metadata.context import MetadataContext
 
 
