@@ -1,15 +1,20 @@
 """Controller for managing connection lifecycle and threading."""
 
+import hashlib
+import time
+import uuid
 from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog, QWidget
 
+from vector_inspector import get_version
 from vector_inspector.core.connection_manager import ConnectionManager, ConnectionState
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.provider_factory import ProviderFactory
 from vector_inspector.services.collection_service import CollectionService
 from vector_inspector.services.profile_service import ProfileService
+from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.ui.components.create_collection_dialog import CreateCollectionDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.ui.workers.collection_worker import CollectionCreationWorker
@@ -18,23 +23,30 @@ from vector_inspector.ui.workers.collection_worker import CollectionCreationWork
 class ConnectionThread(QThread):
     """Background thread for connecting to database."""
 
-    finished = Signal(bool, list, str)  # success, collections, error_message
+    finished = Signal(
+        bool, list, str, float, str
+    )  # success, collections, error_message, duration_ms, correlation_id
 
-    def __init__(self, connection: VectorDBConnection):
+    def __init__(self, connection: VectorDBConnection, correlation_id: str, provider: str):
         super().__init__()
         self.connection = connection
+        self.correlation_id = correlation_id
+        self.provider = provider
 
     def run(self):
         """Connect to database and get collections."""
+        start_time = time.time()
         try:
             success = self.connection.connect()
+            duration_ms = int((time.time() - start_time) * 1000)
             if success:
                 collections = self.connection.list_collections()
-                self.finished.emit(True, collections, "")
+                self.finished.emit(True, collections, "", duration_ms, self.correlation_id)
             else:
-                self.finished.emit(False, [], "Connection failed")
+                self.finished.emit(False, [], "Connection failed", duration_ms, self.correlation_id)
         except Exception as e:
-            self.finished.emit(False, [], str(e))
+            duration_ms = int((time.time() - start_time) * 1000)
+            self.finished.emit(False, [], str(e), duration_ms, self.correlation_id)
 
 
 class ConnectionController(QObject):
@@ -116,11 +128,37 @@ class ConnectionController(QObject):
                 connection_id, ConnectionState.CONNECTING
             )
 
+            # Generate correlation ID for telemetry
+            correlation_id = str(uuid.uuid4())
+
+            # Send connection attempt telemetry
+            try:
+                telemetry = TelemetryService()
+                # Hash host/path for privacy
+                host_value = config.get("host") or config.get("path") or "unknown"
+                host_hash = hashlib.sha256(host_value.encode()).hexdigest()[:16]
+                telemetry.queue_event(
+                    {
+                        "event_name": "db.connection_attempt",
+                        "app_version": get_version(),
+                        "metadata": {
+                            "db_type": provider,
+                            "host_hash": host_hash,
+                            "connection_id": connection_id,
+                            "correlation_id": correlation_id,
+                        },
+                    }
+                )
+            except Exception:
+                pass  # Best effort telemetry
+
             # Connect in background thread
-            thread = ConnectionThread(connection)
+            thread = ConnectionThread(connection, correlation_id, provider)
             thread.finished.connect(
-                lambda success, collections, error: self._on_connection_finished(
-                    connection_id, success, collections, error
+                lambda success, collections, error, duration_ms, corr_id: (
+                    self._on_connection_finished(
+                        connection_id, provider, success, collections, error, duration_ms, corr_id
+                    )
                 )
             )
             self._connection_threads[connection_id] = thread
@@ -137,10 +175,34 @@ class ConnectionController(QObject):
             return False
 
     def _on_connection_finished(
-        self, connection_id: str, success: bool, collections: list, error: str
+        self,
+        connection_id: str,
+        provider: str,
+        success: bool,
+        collections: list,
+        error: str,
+        duration_ms: float,
+        correlation_id: str,
     ):
         """Handle connection thread completion."""
         self.loading_dialog.hide_loading()
+
+        # Send connection result telemetry
+        try:
+            telemetry = TelemetryService()
+            metadata = {
+                "success": success,
+                "db_type": provider,
+                "duration_ms": duration_ms,
+                "correlation_id": correlation_id,
+            }
+            if not success:
+                metadata["error_code"] = "CONNECTION_FAILED"
+                metadata["error_class"] = type(error).__name__ if error else "Unknown"
+            telemetry.queue_event({"event_name": "db.connection_result", "metadata": metadata})
+            telemetry.send_batch()
+        except Exception:
+            pass  # Best effort telemetry
 
         # Clean up thread
         thread = self._connection_threads.pop(connection_id, None)

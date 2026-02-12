@@ -1,9 +1,12 @@
 """Abstract base class for vector database connections."""
 
+import time
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
 from vector_inspector.core.logging import log_error
+from vector_inspector.services.telemetry_service import TelemetryService
 
 
 class VectorDBConnection(ABC):
@@ -345,15 +348,54 @@ class VectorDBConnection(ABC):
         Returns a list of embedding vectors (one per document). If encoding fails,
         raises an exception.
         """
-        model, model_name, model_type = self.load_embedding_model_for_collection(
-            collection_name, profile_name_override
-        )
+        # Generate correlation ID and start timing
+        correlation_id = str(uuid.uuid4())
+        start_time = time.time()
+        batch_size = len(documents)
+        embedding_count = 0
+        success = False
 
-        # Use batch encoding when available (sentence-transformer), otherwise per-doc
-        if model_type != "clip":
-            # sentence-transformer-like models support batch encode
-            return model.encode(documents, show_progress_bar=False).tolist()
-        # CLIP - use encode_text helper for each document
-        from vector_inspector.core.embedding_utils import encode_text
+        try:
+            model, model_name, model_type = self.load_embedding_model_for_collection(
+                collection_name, profile_name_override
+            )
 
-        return [encode_text(d, model, model_type) for d in documents]
+            # Use batch encoding when available (sentence-transformer), otherwise per-doc
+            if model_type != "clip":
+                # sentence-transformer-like models support batch encode
+                result = model.encode(documents, show_progress_bar=False).tolist()
+            else:
+                # CLIP - use encode_text helper for each document
+                from vector_inspector.core.embedding_utils import encode_text
+
+                result = [encode_text(d, model, model_type) for d in documents]
+
+            embedding_count = len(result)
+            success = True
+            return result
+
+        finally:
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Send embedding telemetry
+            try:
+                provider_type = type(self).__name__.replace("Connection", "").lower()
+                telemetry = TelemetryService()
+                telemetry.queue_event(
+                    {
+                        "event_name": "embedding.request",
+                        "metadata": {
+                            "provider": model_type if "model_type" in locals() else "unknown",
+                            "model_id": model_name if "model_name" in locals() else "unknown",
+                            "batch_size": batch_size,
+                            "latency_ms": duration_ms,
+                            "correlation_id": correlation_id,
+                            "db_type": provider_type,
+                            "success": success,
+                            "embedding_count": embedding_count,
+                        },
+                    }
+                )
+                telemetry.send_batch()
+            except Exception:
+                pass  # Best effort telemetry

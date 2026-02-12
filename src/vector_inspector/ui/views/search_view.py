@@ -1,5 +1,7 @@
 """Search interface for similarity queries."""
 
+import time
+import uuid
 from typing import Any, Optional
 
 from PySide6.QtCore import Qt
@@ -25,6 +27,7 @@ from vector_inspector.core.cache_manager import get_cache_manager
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.logging import log_info
 from vector_inspector.services.filter_service import apply_client_side_filters
+from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
@@ -81,9 +84,7 @@ class SearchView(QWidget):
         )
         # Configure breadcrumb label sizing
         self.breadcrumb_label.setWordWrap(False)
-        self.breadcrumb_label.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Preferred
-        )
+        self.breadcrumb_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         # Store full breadcrumb text for tooltip and eliding
         self._full_breadcrumb = ""
         # Elide mode: 'left' or 'middle'
@@ -103,9 +104,7 @@ class SearchView(QWidget):
         # Query input
         query_group_layout.addWidget(QLabel("Enter search text:"))
         self.query_input.setMaximumHeight(100)
-        self.query_input.setPlaceholderText(
-            "Enter text to search for similar vectors..."
-        )
+        self.query_input.setPlaceholderText("Enter text to search for similar vectors...")
         query_group_layout.addWidget(self.query_input)
 
         # Search controls
@@ -280,9 +279,7 @@ class SearchView(QWidget):
 
         try:
             # Get a small sample to extract field names
-            sample_data = self.connection.get_all_items(
-                self.current_collection, limit=1
-            )
+            sample_data = self.connection.get_all_items(self.current_collection, limit=1)
 
             if sample_data and sample_data.get("metadatas"):
                 metadatas = sample_data["metadatas"]
@@ -319,6 +316,12 @@ class SearchView(QWidget):
         self.loading_dialog.show_loading("Searching for similar vectors...")
         QApplication.processEvents()
 
+        # Generate correlation ID and start timing
+        correlation_id = str(uuid.uuid4())
+        start_time = time.time()
+        result_count = 0
+        query_success = False
+
         try:
             # Always pass query_texts; provider handles embedding if needed
             results = self.connection.query_collection(
@@ -327,8 +330,39 @@ class SearchView(QWidget):
                 n_results=n_results,
                 where=server_filter,
             )
+            query_success = bool(results)
         finally:
             self.loading_dialog.hide_loading()
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Send query telemetry
+            try:
+                provider_type = (
+                    type(self.connection._connection).__name__.replace("Connection", "").lower()
+                    if hasattr(self.connection, "_connection")
+                    else "unknown"
+                )
+                if results and results.get("ids") and len(results["ids"]) > 0:
+                    result_count = len(results["ids"][0])
+
+                telemetry = TelemetryService()
+                telemetry.queue_event(
+                    {
+                        "event_name": "query.executed",
+                        "metadata": {
+                            "query_type": "similarity",
+                            "db_type": provider_type,
+                            "result_count": result_count,
+                            "latency_ms": duration_ms,
+                            "correlation_id": correlation_id,
+                            "has_filters": bool(server_filter or client_filters),
+                            "success": query_success,
+                        },
+                    }
+                )
+                telemetry.send_batch()
+            except Exception:
+                pass  # Best effort telemetry
 
         if not results:
             self.results_status.setText("Search failed")
@@ -463,9 +497,7 @@ class SearchView(QWidget):
         self.results_table.setRowCount(len(ids))
 
         # Populate rows
-        for row, (id_val, doc, meta, dist) in enumerate(
-            zip(ids, documents, metadatas, distances)
-        ):
+        for row, (id_val, doc, meta, dist) in enumerate(zip(ids, documents, metadatas, distances)):
             # Rank
             self.results_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
 
@@ -485,9 +517,7 @@ class SearchView(QWidget):
             if meta:
                 for col_idx, key in enumerate(metadata_keys, start=4):
                     value = meta.get(key, "")
-                    self.results_table.setItem(
-                        row, col_idx, QTableWidgetItem(str(value))
-                    )
+                    self.results_table.setItem(row, col_idx, QTableWidgetItem(str(value)))
 
         self.results_table.resizeColumnsToContents()
         self.results_status.setText(f"Found {len(ids)} results")

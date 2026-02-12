@@ -1,9 +1,12 @@
 """Visualization service for dimensionality reduction."""
 
+import time
+import uuid
 import warnings
 from typing import Any, Optional
 
 from vector_inspector.core.logging import log_error
+from vector_inspector.services.telemetry_service import TelemetryService
 
 
 class VisualizationService:
@@ -28,6 +31,13 @@ class VisualizationService:
         if embeddings is None or len(embeddings) == 0:
             return None
 
+        # Generate correlation ID and start timing
+        correlation_id = str(uuid.uuid4())
+        start_time = time.time()
+        points_rendered = len(embeddings)
+        success = False
+        method_normalized = method.lower().replace("-", "")
+
         try:
             # Lazy import numpy and models
             from vector_inspector.utils.lazy_imports import get_numpy, get_sklearn_model
@@ -36,18 +46,18 @@ class VisualizationService:
 
             X = np.array(embeddings)
 
-            if method.lower() == "pca":
+            if method_normalized == "pca":
                 PCA = get_sklearn_model("PCA")
                 reducer = PCA(n_components=n_components)
                 reduced = reducer.fit_transform(X)
 
-            elif method.lower() in ["t-sne", "tsne"]:
+            elif method_normalized in ["tsne"]:
                 TSNE = get_sklearn_model("TSNE")
                 perplexity = kwargs.get("perplexity", min(30, len(embeddings) - 1))
                 reducer = TSNE(n_components=n_components, perplexity=perplexity, random_state=42)
                 reduced = reducer.fit_transform(X)
 
-            elif method.lower() == "umap":
+            elif method_normalized == "umap":
                 UMAP = get_sklearn_model("UMAP")
                 n_neighbors = kwargs.get("n_neighbors", min(15, len(embeddings) - 1))
                 # Suppress n_jobs warning when using random_state
@@ -62,11 +72,35 @@ class VisualizationService:
                 log_error("Unknown method: %s", method)
                 return None
 
+            success = True
             return reduced
 
         except Exception as e:
             log_error("Dimensionality reduction failed: %s", e)
             return None
+
+        finally:
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Send visualization telemetry
+            try:
+                telemetry = TelemetryService()
+                telemetry.queue_event(
+                    {
+                        "event_name": "visualization.generated",
+                        "metadata": {
+                            "method": method_normalized,
+                            "dims": n_components,
+                            "points_rendered": points_rendered,
+                            "duration_ms": duration_ms,
+                            "correlation_id": correlation_id,
+                            "success": success,
+                        },
+                    }
+                )
+                telemetry.send_batch()
+            except Exception:
+                pass  # Best effort telemetry
 
     @staticmethod
     def prepare_plot_data(
