@@ -349,3 +349,40 @@ class SettingsService:
             if not (m["name"] == model_name and m["dimension"] == dimension)
         ]
         self._save_settings()
+
+    def get_embedding_cache_enabled(self) -> bool:
+        """Get whether embedding model disk caching is enabled.
+
+        Returns:
+            True if caching is enabled (default), False otherwise
+        """
+        return self.settings.get("embedding_cache_enabled", True)
+
+    def set_embedding_cache_enabled(self, enabled: bool):
+        """Set whether embedding model disk caching is enabled.
+
+        Args:
+            enabled: True to enable caching, False to disable
+        """
+        self.set("embedding_cache_enabled", enabled)
+
+    def get_embedding_cache_dir(self) -> Optional[str]:
+        """Get custom embedding cache directory path.
+
+        Returns:
+            Custom cache directory path, or None for default
+        """
+        return self.settings.get("embedding_cache_dir")
+
+    def set_embedding_cache_dir(self, path: Optional[str]):
+        """Set custom embedding cache directory path.
+
+        Args:
+            path: Directory path, or None to use default
+        """
+        if path:
+            self.set("embedding_cache_dir", str(path))
+        else:
+            # Remove the key to use default
+            self.settings.pop("embedding_cache_dir", None)
+            self._save_settings()

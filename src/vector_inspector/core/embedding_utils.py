@@ -1,13 +1,12 @@
 """Utilities for managing embedding models and vector dimensions."""
 
 from __future__ import annotations  # Allows us to use class names in typehints while lazyloading
-from typing import Optional, Tuple, Any
+
+from typing import Any
 
 # Lazy import: see below
 from vector_inspector.core.logging import log_info
-
 from vector_inspector.core.model_registry import get_model_registry
-
 
 # Default model to use when dimension is unknown or not mapped
 DEFAULT_MODEL = ("all-MiniLM-L6-v2", "sentence-transformer")
@@ -33,7 +32,7 @@ def _get_dimension_to_model_dict():
 DIMENSION_TO_MODEL = _get_dimension_to_model_dict()
 
 
-def get_model_for_dimension(dimension: int, prefer_multimodal: bool = True) -> Tuple[str, str]:
+def get_model_for_dimension(dimension: int, prefer_multimodal: bool = True) -> tuple[str, str]:
     """
     Get the appropriate embedding model name and type for a given vector dimension.
 
@@ -107,6 +106,8 @@ def load_embedding_model(model_name: str, model_type: str) -> SentenceTransforme
     """
     Load an embedding model (sentence-transformer or CLIP).
 
+    Uses disk cache when available to speed up repeated loads.
+
     Args:
         model_name: Name of the model to load
         model_type: Type of model ("sentence-transformer" or "clip")
@@ -114,21 +115,66 @@ def load_embedding_model(model_name: str, model_type: str) -> SentenceTransforme
     Returns:
         Loaded model (SentenceTransformer or CLIP model)
     """
+    from vector_inspector.core.model_cache import (
+        is_cache_enabled,
+        load_cached_path,
+        save_model_to_cache,
+    )
+
+    # Try to load from cache first
+    cached_path = load_cached_path(model_name)
+
     if model_type == "clip":
         from transformers import CLIPModel, CLIPProcessor
 
+        if cached_path:
+            try:
+                # Load from cache
+                model = CLIPModel.from_pretrained(str(cached_path))
+                processor_path = cached_path / "processor"
+                if processor_path.exists():
+                    processor = CLIPProcessor.from_pretrained(str(processor_path))
+                else:
+                    # Fallback: load processor from original model name
+                    processor = CLIPProcessor.from_pretrained(model_name)
+                log_info(f"Loaded CLIP model from cache: {model_name}")
+                return (model, processor)
+            except Exception as e:
+                log_info(f"Failed to load from cache, downloading: {e}")
+
+        # Load from HuggingFace
         model = CLIPModel.from_pretrained(model_name)
         processor = CLIPProcessor.from_pretrained(model_name)
+
+        # Cache for future use
+        if is_cache_enabled():
+            save_model_to_cache((model, processor), model_name, model_type)
+
         # Returns a tuple: (CLIPModel, CLIPProcessor)
         return (model, processor)
-    else:
-        from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer
 
-        # Returns a SentenceTransformer instance
-        return SentenceTransformer(model_name)
+    if cached_path:
+        try:
+            # Load from cache
+            model = SentenceTransformer(str(cached_path))
+            log_info(f"Loaded sentence-transformer from cache: {model_name}")
+            return model
+        except Exception as e:
+            log_info(f"Failed to load from cache, downloading: {e}")
+
+    # Load from HuggingFace
+    model = SentenceTransformer(model_name)
+
+    # Cache for future use
+    if is_cache_enabled():
+        save_model_to_cache(model, model_name, model_type)
+
+    # Returns a SentenceTransformer instance
+    return model
 
 
-def encode_text(text: str, model: "SentenceTransformer" | Tuple, model_type: str) -> list:
+def encode_text(text: str, model: SentenceTransformer | tuple, model_type: str) -> list:
     """
     Encode text using the appropriate model.
 
@@ -150,17 +196,16 @@ def encode_text(text: str, model: "SentenceTransformer" | Tuple, model_type: str
         # Normalize the features (CLIP embeddings are typically normalized)
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         return text_features[0].cpu().numpy().tolist()
-    else:
-        # sentence-transformer
-        # Lazy import for type hint only
-        # from sentence_transformers import SentenceTransformer
-        embedding = model.encode(text)
-        return embedding.tolist()
+    # sentence-transformer
+    # Lazy import for type hint only
+    # from sentence_transformers import SentenceTransformer
+    embedding = model.encode(text)
+    return embedding.tolist()
 
 
 def get_embedding_model_for_dimension(
     dimension: int,
-) -> Tuple["SentenceTransformer" | Tuple, str, str]:
+) -> tuple[SentenceTransformer | tuple, str, str]:
     """
     Get a loaded embedding model for a specific dimension.
 

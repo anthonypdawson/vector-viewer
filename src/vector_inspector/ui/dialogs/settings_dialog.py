@@ -1,8 +1,10 @@
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -49,6 +51,32 @@ class SettingsDialog(QDialog):
         self.hide_splash_checkbox = QCheckBox("Hide loading screen on startup")
         layout.addWidget(self.hide_splash_checkbox)
 
+        # Model cache section
+        cache_group = QGroupBox("Embedding Model Cache")
+        cache_layout = QVBoxLayout()
+
+        self.cache_enabled_checkbox = QCheckBox("Enable disk caching for embedding models")
+        cache_layout.addWidget(self.cache_enabled_checkbox)
+
+        # Cache info display
+        self.cache_info_label = QLabel("Cache info loading...")
+        self.cache_info_label.setWordWrap(True)
+        cache_layout.addWidget(self.cache_info_label)
+
+        # Cache controls
+        cache_btn_layout = QHBoxLayout()
+        self.clear_cache_btn = QPushButton("Clear Cache")
+        self.clear_cache_btn.clicked.connect(self._clear_cache)
+        self.refresh_cache_info_btn = QPushButton("Refresh Info")
+        self.refresh_cache_info_btn.clicked.connect(self._update_cache_info)
+        cache_btn_layout.addWidget(self.clear_cache_btn)
+        cache_btn_layout.addWidget(self.refresh_cache_info_btn)
+        cache_btn_layout.addStretch()
+        cache_layout.addLayout(cache_btn_layout)
+
+        cache_group.setLayout(cache_layout)
+        layout.addWidget(cache_group)
+
         # Buttons
         btn_layout = QHBoxLayout()
         self.apply_btn = QPushButton("Apply")
@@ -86,6 +114,9 @@ class SettingsDialog(QDialog):
         self.hide_splash_checkbox.stateChanged.connect(
             lambda s: self.settings.set("hide_loading_screen", bool(s))
         )
+        self.cache_enabled_checkbox.stateChanged.connect(
+            lambda s: self.settings.set_embedding_cache_enabled(bool(s))
+        )
 
         # Container for programmatic sections
         self._extra_sections = []
@@ -113,6 +144,8 @@ class SettingsDialog(QDialog):
         self.auto_embed_checkbox.setChecked(self.settings.get_auto_generate_embeddings())
         self.restore_geometry_checkbox.setChecked(self.settings.get_window_restore_geometry())
         self.hide_splash_checkbox.setChecked(self.settings.get("hide_loading_screen", False))
+        self.cache_enabled_checkbox.setChecked(self.settings.get_embedding_cache_enabled())
+        self._update_cache_info()
 
     def _apply(self):
         # Values are already applied on change; ensure persistence and close
@@ -129,3 +162,53 @@ class SettingsDialog(QDialog):
         self.restore_geometry_checkbox.setChecked(True)
         self.hide_splash_checkbox.setChecked(False)
         self._apply()
+
+    def _update_cache_info(self):
+        """Update the cache information display."""
+        try:
+            from vector_inspector.core.model_cache import get_cache_info
+
+            info = get_cache_info()
+
+            if not info["enabled"]:
+                self.cache_info_label.setText("Cache is disabled")
+                return
+
+            if not info["exists"]:
+                self.cache_info_label.setText(f"Location: {info['location']}\nNo cached models yet")
+                return
+
+            self.cache_info_label.setText(
+                f"Location: {info['location']}\n"
+                f"Cached models: {info['model_count']}\n"
+                f"Total size: {info['total_size_mb']} MB"
+            )
+        except Exception as e:
+            self.cache_info_label.setText(f"Error getting cache info: {e}")
+
+    def _clear_cache(self):
+        """Clear the embedding model cache."""
+        reply = QMessageBox.question(
+            self,
+            "Clear Cache",
+            "Are you sure you want to clear all cached embedding models?\n"
+            "This will free up disk space but models will need to be re-downloaded on next use.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                from vector_inspector.core.model_cache import clear_cache
+
+                if clear_cache():
+                    QMessageBox.information(
+                        self, "Cache Cleared", "Successfully cleared embedding model cache."
+                    )
+                    self._update_cache_info()
+                else:
+                    QMessageBox.warning(
+                        self, "Clear Failed", "Failed to clear cache. See logs for details."
+                    )
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error clearing cache: {e}")
