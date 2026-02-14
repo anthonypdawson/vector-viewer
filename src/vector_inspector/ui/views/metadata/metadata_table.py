@@ -1,11 +1,12 @@
 """Table population and interaction logic for metadata view."""
 
+import json
 import math
 from collections.abc import Callable
 from typing import Any, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMenu, QTableWidget, QTableWidgetItem
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QTableWidget, QTableWidgetItem
 
 from vector_inspector.core.logging import log_info
 from vector_inspector.ui.views.metadata.context import MetadataContext
@@ -72,6 +73,96 @@ def populate_table(
                 table.setItem(row, col_idx, QTableWidgetItem(str(value)))
 
     table.resizeColumnsToContents()
+
+
+def copy_vectors_to_json(
+    table: QTableWidget,
+    ctx: MetadataContext,
+    selected_rows: list[int],
+) -> None:
+    """Copy vector(s) from selected row(s) to clipboard as JSON.
+
+    Args:
+        table: QTableWidget instance
+        ctx: MetadataContext containing current data
+        selected_rows: List of selected row indices
+    """
+    if not ctx.current_data:
+        QMessageBox.warning(
+            table,
+            "No Vector Data",
+            "No vector embeddings available for the selected row(s).",
+        )
+        return
+
+    embeddings = ctx.current_data.get("embeddings", [])
+    ids = ctx.current_data.get("ids", [])
+
+    # Check if embeddings exist and have data (avoid truthiness check on arrays)
+    if embeddings is None or len(embeddings) == 0:
+        QMessageBox.warning(
+            table,
+            "No Vector Data",
+            "No vector embeddings available for the selected row(s).",
+        )
+        return
+
+    # Collect vectors for selected rows
+    vectors_data = []
+    for row in selected_rows:
+        if row < len(embeddings) and row < len(ids):
+            vector = embeddings[row]
+            item_id = ids[row]
+
+            # Handle different vector types (list, numpy array, etc.)
+            try:
+                vector_list = vector.tolist() if hasattr(vector, "tolist") else list(vector)
+
+                vectors_data.append(
+                    {
+                        "id": str(item_id),
+                        "vector": vector_list,
+                        "dimension": len(vector_list),
+                    }
+                )
+            except Exception as e:
+                log_info("Error processing vector for row %d: %s", row, e)
+                continue
+
+    if not vectors_data:
+        QMessageBox.warning(
+            table,
+            "No Vector Data",
+            "Could not extract vector data from the selected row(s).",
+        )
+        return
+
+    # Format as JSON (single object if one row, list if multiple)
+    try:
+        if len(vectors_data) == 1:
+            json_output = json.dumps(vectors_data[0], indent=2)
+        else:
+            json_output = json.dumps(vectors_data, indent=2)
+
+        # Copy to clipboard
+        clipboard = QApplication.clipboard()
+        clipboard.setText(json_output)
+
+        # Show success message
+        count = len(vectors_data)
+        item_text = "vector" if count == 1 else "vectors"
+        QMessageBox.information(
+            table,
+            "Success",
+            f"Copied {count} {item_text} to clipboard as JSON.",
+        )
+    except Exception as e:
+        log_info("Error copying vectors to JSON: %s", e)
+        QMessageBox.warning(
+            table,
+            "Error",
+            f"Failed to copy vector data: {e}",
+        )
 
 
 def update_pagination_controls(
@@ -152,6 +243,14 @@ def show_context_menu(
     edit_action.triggered.connect(
         lambda: on_row_double_clicked_callback(table.model().index(row, 0))
     )
+
+    # Add "Copy vector to JSON" action
+    selected_rows = [index.row() for index in table.selectionModel().selectedRows()]
+    if not selected_rows:
+        selected_rows = [row]
+
+    copy_vector_action = menu.addAction("📋 Copy vector to JSON")
+    copy_vector_action.triggered.connect(lambda: copy_vectors_to_json(table, ctx, selected_rows))
 
     # Call extension hooks to add custom menu items
     try:
