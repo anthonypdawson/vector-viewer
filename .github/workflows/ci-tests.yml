@@ -64,7 +64,7 @@ jobs:
           path: htmlcov
 
       - name: Deploy coverage to GitHub Pages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.python-version == '3.12'
+        if: github.ref == 'refs/heads/master' && matrix.python-version == '3.12'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
