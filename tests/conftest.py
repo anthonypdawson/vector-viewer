@@ -1,6 +1,19 @@
+import os
+
 import pytest
 
 from tests.fakes.fake_provider import FakeProvider
+
+
+def pytest_configure(config):
+    """Pytest configuration for headless Qt testing.
+
+    This method ensures Qt uses the offscreen platform during test runs so
+    tests do not create visible windows locally.
+    """
+    """Configure environment before any tests run."""
+    # Respect existing setting but default to offscreen for headless testing
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture
