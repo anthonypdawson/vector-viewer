@@ -589,13 +589,15 @@ class MetadataView(QWidget):
             if not item_data:
                 return
 
-            # Inject created_at timestamp if not already present
-            from datetime import datetime
+            # Inject created_at timestamp if checkbox is enabled and not already present
+            auto_timestamp = item_data.pop("auto_timestamp", False)
+            if auto_timestamp:
+                from datetime import datetime
 
-            if item_data["metadata"] is None:
-                item_data["metadata"] = {}
-            if "created_at" not in item_data["metadata"]:
-                item_data["metadata"]["created_at"] = datetime.now(UTC).isoformat()
+                if item_data["metadata"] is None:
+                    item_data["metadata"] = {}
+                if "created_at" not in item_data["metadata"]:
+                    item_data["metadata"]["created_at"] = datetime.now(UTC).isoformat()
 
             # Add item to collection
             success = self.ctx.connection.add_items(
@@ -737,12 +739,14 @@ class MetadataView(QWidget):
             if not updated_data:
                 return
 
-            # Inject updated_at timestamp
-            from datetime import datetime
+            # Inject updated_at timestamp if checkbox is enabled
+            auto_timestamp = updated_data.pop("auto_timestamp", True)
+            if auto_timestamp:
+                from datetime import datetime
 
-            if updated_data["metadata"] is None:
-                updated_data["metadata"] = {}
-            updated_data["metadata"]["updated_at"] = datetime.now(UTC).isoformat()
+                if updated_data["metadata"] is None:
+                    updated_data["metadata"] = {}
+                updated_data["metadata"]["updated_at"] = datetime.now(UTC).isoformat()
 
             # Decide whether to generate embeddings on edit or preserve existing
             embeddings_arg = None

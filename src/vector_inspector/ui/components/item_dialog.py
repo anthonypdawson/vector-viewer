@@ -3,6 +3,7 @@
 from typing import Any, Optional
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -23,6 +24,7 @@ class ItemDialog(QDialog):
     id_input: QLineEdit
     document_input: QTextEdit
     metadata_input: QTextEdit
+    auto_timestamp_checkbox: QCheckBox
 
     def __init__(self, parent=None, item_data: Optional[dict[str, Any]] = None):
         super().__init__(parent)
@@ -58,12 +60,18 @@ class ItemDialog(QDialog):
         form_layout.addRow("Metadata (JSON):", QLabel(""))
         self.metadata_input = QTextEdit()
         self.metadata_input.setMaximumHeight(150)
-        self.metadata_input.setPlaceholderText(
-            '{"key": "value", "category": "example"}'
-        )
+        self.metadata_input.setPlaceholderText('{"key": "value", "category": "example"}')
         form_layout.addRow(self.metadata_input)
 
         layout.addLayout(form_layout)
+
+        # Auto-timestamp checkbox
+        self.auto_timestamp_checkbox = QCheckBox(
+            "Automatically add timestamp "
+            + ("(updated_at)" if self.is_edit_mode else "(created_at)")
+        )
+        self.auto_timestamp_checkbox.setChecked(False)  # Default to disabled
+        layout.addWidget(self.auto_timestamp_checkbox)
 
         # Note about embeddings
         note_label = QLabel(
@@ -117,9 +125,12 @@ class ItemDialog(QDialog):
             try:
                 metadata = json.loads(metadata_text)
             except json.JSONDecodeError:
-                QMessageBox.warning(
-                    self, "Invalid Metadata", "Metadata must be valid JSON format."
-                )
+                QMessageBox.warning(self, "Invalid Metadata", "Metadata must be valid JSON format.")
                 return None
 
-        return {"id": item_id, "document": document, "metadata": metadata}
+        return {
+            "id": item_id,
+            "document": document,
+            "metadata": metadata,
+            "auto_timestamp": self.auto_timestamp_checkbox.isChecked(),
+        }
