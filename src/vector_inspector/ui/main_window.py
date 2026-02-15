@@ -429,6 +429,12 @@ class MainWindow(InspectorShell):
             active = self.connection_manager.get_active_connection()
 
             self.visualization_view = VisualizationView(active)
+
+            # Connect signal to view point in data browser
+            self.visualization_view.view_in_data_browser_requested.connect(
+                self._on_view_in_data_browser_requested
+            )
+
             # Replace placeholder with actual view
             self.remove_main_tab(InspectorTabs.VISUALIZATION_TAB)
             self.add_main_tab(
@@ -671,6 +677,19 @@ class MainWindow(InspectorShell):
         if context_info:
             num_results = len(results.get("ids", [[]])[0])
             self.search_view.results_status.setText(f"{context_info} - Found {num_results} results")
+
+    def _on_view_in_data_browser_requested(self, item_id: str):
+        """Handle request to view a specific item in the data browser.
+
+        Args:
+            item_id: ID of the item to view
+        """
+        # Switch to data browser tab
+        self.set_main_tab_active(InspectorTabs.DATA_TAB)
+
+        # Select the item in the metadata view
+        if self.metadata_view:
+            self.metadata_view.select_item_by_id(item_id)
 
     def closeEvent(self, event):
         """Handle application close."""

@@ -415,6 +415,20 @@ class MetadataView(QWidget):
             self.ctx.current_data = page_data
 
             populate_table(self.table, self.ctx)
+
+            # After populating table, check if we should select a specific item
+            if self.ctx._select_id_after_load:
+                try:
+                    sel_id = self.ctx._select_id_after_load
+                    ids = self.ctx.current_data.get("ids", []) if self.ctx.current_data else []
+                    if ids and sel_id in ids:
+                        row_idx = ids.index(sel_id)
+                        self.table.selectRow(row_idx)
+                        self.table.scrollToItem(self.table.item(row_idx, 0))
+                    self.ctx._select_id_after_load = None
+                except Exception:
+                    self.ctx._select_id_after_load = None
+
             update_pagination_controls(
                 self.ctx,
                 self.page_label,
@@ -446,22 +460,6 @@ class MetadataView(QWidget):
                     self.ctx.current_database, self.ctx.current_collection, cache_entry
                 )
             return
-
-        # After normal server-paginated load, if we were instructed to select
-        # a particular ID after load, attempt to find and select it.
-        if self.ctx._select_id_after_load:
-            try:
-                sel_id = self.ctx._select_id_after_load
-                ids = self.ctx.current_data.get("ids", []) if self.ctx.current_data else []
-                if ids and sel_id in ids:
-                    row_idx = ids.index(sel_id)
-                    # select and scroll to the row
-                    self.table.selectRow(row_idx)
-                    self.table.scrollToItem(self.table.item(row_idx, 0))
-                # clear the flag
-                self.ctx._select_id_after_load = None
-            except Exception:
-                self.ctx._select_id_after_load = None
 
         # No client-side filters: display server-paginated data
         # Check if we fetched more items than page_size (to detect next page)
@@ -495,6 +493,22 @@ class MetadataView(QWidget):
 
         self.ctx.current_data = data
         populate_table(self.table, self.ctx)
+
+        # After populating table with new page data, check if we should select a specific item
+        if self.ctx._select_id_after_load:
+            try:
+                sel_id = self.ctx._select_id_after_load
+                ids = self.ctx.current_data.get("ids", []) if self.ctx.current_data else []
+                if ids and sel_id in ids:
+                    row_idx = ids.index(sel_id)
+                    # select and scroll to the row
+                    self.table.selectRow(row_idx)
+                    self.table.scrollToItem(self.table.item(row_idx, 0))
+                # clear the flag
+                self.ctx._select_id_after_load = None
+            except Exception:
+                self.ctx._select_id_after_load = None
+
         update_pagination_controls(
             self.ctx,
             self.page_label,
@@ -848,6 +862,50 @@ class MetadataView(QWidget):
                 self._load_data()
             else:
                 QMessageBox.warning(self, "Error", "Failed to update item.")
+
+    def select_item_by_id(self, item_id: str) -> bool:
+        """Select and scroll to a row by item ID.
+
+        If the item is on the current page, selects it immediately.
+        If not, attempts to find which page it's on and loads that page.
+
+        Args:
+            item_id: The ID of the item to select
+
+        Returns:
+            True if item was found and selected, False otherwise
+        """
+        if not self.ctx.current_data:
+            return False
+
+        # Check if item is on current page
+        ids = self.ctx.current_data.get("ids", [])
+        if item_id in ids:
+            row_idx = ids.index(item_id)
+            self.table.selectRow(row_idx)
+            self.table.scrollToItem(self.table.item(row_idx, 0))
+            return True
+
+        # Item not on current page - try to find it
+        try:
+            from vector_inspector.ui.views.metadata import find_updated_item_page
+
+            server_filter = None
+            if self.filter_group.isChecked() and self.filter_builder.has_filters():
+                server_filter, _ = self.filter_builder.get_filters_split()
+            self.ctx.server_filter = server_filter
+
+            target_page = find_updated_item_page(self.ctx, item_id)
+
+            if target_page is not None:
+                self.ctx._select_id_after_load = item_id
+                self.ctx.current_page = target_page
+                self._load_data()
+                return True
+        except Exception:
+            pass
+
+        return False
 
     def _export_data(self, format_type: str) -> None:
         """Export current table data to file (visible rows or selected rows)."""

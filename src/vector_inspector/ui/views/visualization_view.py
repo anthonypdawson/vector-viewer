@@ -83,6 +83,9 @@ class ClusteringThread(QThread):
 class VisualizationView(QWidget):
     """View for visualizing vectors in 2D/3D using modular panels."""
 
+    # Signal emitted when user wants to view a point in data browser
+    view_in_data_browser_requested = Signal(str)  # item_id
+
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
         self.connection = connection
@@ -96,6 +99,11 @@ class VisualizationView(QWidget):
         self._last_temp_html = None
         self.loading_dialog = LoadingDialog("Loading visualization...", self)
         self._setup_ui()
+        self._connect_plot_signals()
+
+    def _connect_plot_signals(self):
+        """Connect plot panel signals."""
+        self.plot_panel.view_in_data_browser.connect(self._on_view_in_data_browser)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -407,6 +415,16 @@ class VisualizationView(QWidget):
         self.reduced_data = None
         self.cluster_labels = None
         self.status_label.setText(f"Collection: {collection_name}")
+
+    def _on_view_in_data_browser(self, _point_index: int, point_id: str):
+        """Handle button click to view selected point in data browser.
+
+        Args:
+            _point_index: Index of the selected point (unused)
+            point_id: ID of the selected point
+        """
+        if point_id:
+            self.view_in_data_browser_requested.emit(point_id)
 
     def cleanup_temp_html(self):
         """Clean up temporary HTML files."""
