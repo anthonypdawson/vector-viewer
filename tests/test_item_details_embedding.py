@@ -90,3 +90,91 @@ def test_item_details_dialog_handles_empty_embedding():
         app.quit()
     except Exception:
         pass
+
+
+def test_item_details_dialog_shows_enhanced_metadata():
+    """Ensure ItemDetailsDialog shows timestamps, cluster, and dimension info."""
+    app = QApplication.instance() or QApplication([])
+
+    embedding = np.random.rand(128)
+    item = {
+        "id": "test-enhanced",
+        "document": "test document with enhanced metadata",
+        "metadata": {
+            "created_at": "2024-01-15T10:30:00Z",
+            "updated_at": 1705318200,  # Unix timestamp
+            "cluster": 3,
+            "foo": "bar",
+            "category": "test",
+        },
+        "embedding": embedding,
+    }
+
+    dlg = ItemDetailsDialog(None, item_data=item, show_search_info=False)
+
+    # Check that timestamp fields were created
+    assert dlg.created_label is not None
+    assert dlg.updated_label is not None
+    assert "2024-01-15" in dlg.created_label.text()
+
+    # Check that cluster field was created
+    assert dlg.cluster_label is not None
+    assert "3" in dlg.cluster_label.text()
+
+    # Check that dimension field was created
+    assert dlg.dimension_label is not None
+    assert "128" in dlg.dimension_label.text()
+
+    # Check that filtered metadata doesn't include extracted fields
+    metadata_text = dlg.metadata_display.toPlainText()
+    assert "created_at" not in metadata_text
+    assert "updated_at" not in metadata_text
+    assert "cluster" not in metadata_text
+    # But should still have other fields
+    assert "foo" in metadata_text
+    assert "category" in metadata_text
+
+    dlg.accept()
+    try:
+        app.quit()
+    except Exception:
+        pass
+
+
+def test_item_details_dialog_search_info_with_metrics():
+    """Ensure ItemDetailsDialog shows search metrics when available."""
+    app = QApplication.instance() or QApplication([])
+
+    embedding = np.random.rand(64)
+    item = {
+        "id": "test-search",
+        "document": "search result document",
+        "metadata": {"label": "test"},
+        "embedding": embedding,
+        "distance": 0.234,
+        "rank": 5,
+        "dot_product": 0.876,
+        "cosine_similarity": 0.766,
+    }
+
+    dlg = ItemDetailsDialog(None, item_data=item, show_search_info=True)
+
+    # Check search fields
+    assert dlg.rank_label is not None
+    assert "5" in dlg.rank_label.text()
+
+    assert dlg.distance_label is not None
+    assert "0.234" in dlg.distance_label.text()
+
+    # Check additional metrics
+    assert dlg.dot_product_label is not None
+    assert "0.876" in dlg.dot_product_label.text()
+
+    assert dlg.cosine_label is not None
+    assert "0.766" in dlg.cosine_label.text()
+
+    dlg.accept()
+    try:
+        app.quit()
+    except Exception:
+        pass

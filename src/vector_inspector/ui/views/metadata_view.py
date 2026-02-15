@@ -1,5 +1,6 @@
 """Metadata browsing and data view."""
 
+from datetime import UTC
 from typing import Any, Optional
 
 from PySide6.QtCore import Qt, QTimer
@@ -574,6 +575,14 @@ class MetadataView(QWidget):
             if not item_data:
                 return
 
+            # Inject created_at timestamp if not already present
+            from datetime import datetime
+
+            if item_data["metadata"] is None:
+                item_data["metadata"] = {}
+            if "created_at" not in item_data["metadata"]:
+                item_data["metadata"]["created_at"] = datetime.now(UTC).isoformat()
+
             # Add item to collection
             success = self.ctx.connection.add_items(
                 self.ctx.current_collection,
@@ -713,6 +722,13 @@ class MetadataView(QWidget):
             updated_data = dialog.get_item_data()
             if not updated_data:
                 return
+
+            # Inject updated_at timestamp
+            from datetime import datetime
+
+            if updated_data["metadata"] is None:
+                updated_data["metadata"] = {}
+            updated_data["metadata"]["updated_at"] = datetime.now(UTC).isoformat()
 
             # Decide whether to generate embeddings on edit or preserve existing
             embeddings_arg = None

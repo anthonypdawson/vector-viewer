@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import traceback
 import webbrowser
+from datetime import UTC
 from typing import Any, Optional
 
 import numpy as np
@@ -22,7 +23,7 @@ from PySide6.QtWidgets import (
 
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.feature_flags import are_advanced_features_enabled, get_feature_tooltip
-from vector_inspector.core.logging import log_error
+from vector_inspector.core.logging import log_error, log_info
 from vector_inspector.services.visualization_service import VisualizationService
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.ui.views.visualization import ClusteringPanel, DRPanel, PlotPanel
@@ -322,6 +323,10 @@ class VisualizationView(QWidget):
         self.status_label.setStyleSheet("color: green;")
         self.clustering_panel.cluster_button.setEnabled(True)
 
+        # Save cluster labels to metadata if checkbox is checked
+        if self.clustering_panel.save_to_metadata_checkbox.isChecked():
+            self._save_cluster_labels_to_metadata()
+
         # Recreate plot with cluster colors if we have reduced data
         if self.reduced_data is not None:
             self.plot_panel.create_plot(
@@ -331,6 +336,61 @@ class VisualizationView(QWidget):
                 method_name=self.dr_panel.method_combo.currentText(),
             )
             self._save_temp_html()
+
+    def _save_cluster_labels_to_metadata(self):
+        """Save cluster labels to item metadata in the database."""
+        if not self.current_data or not self.cluster_labels.any():
+            return
+
+        if not self.connection:
+            log_error("Cannot save cluster labels: no database connection")
+            return
+
+        if not self.current_collection:
+            log_error("Cannot save cluster labels: no collection selected")
+            return
+
+        try:
+            from datetime import datetime
+
+            ids = self.current_data.get("ids", [])
+            metadatas = self.current_data.get("metadatas", [])
+
+            # Update metadata with cluster labels
+            updated_metadatas = []
+            for i, (item_id, metadata) in enumerate(zip(ids, metadatas)):
+                if i >= len(self.cluster_labels):
+                    break
+
+                # Create a copy of metadata to avoid modifying original
+                updated_meta = dict(metadata) if metadata else {}
+                updated_meta["cluster"] = int(self.cluster_labels[i])
+                updated_meta["updated_at"] = datetime.now(UTC).isoformat()
+                updated_metadatas.append(updated_meta)
+
+            # Batch update all items with new cluster metadata
+            success = self.connection.update_items(
+                self.current_collection,
+                ids=ids[: len(updated_metadatas)],
+                metadatas=updated_metadatas,
+            )
+
+            if success:
+                log_info("Successfully saved %d cluster labels to metadata", len(updated_metadatas))
+                # Update local cache
+                self.current_data["metadatas"] = updated_metadatas
+            else:
+                log_error("Failed to save cluster labels to metadata")
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "Clustering complete, but failed to save cluster labels to metadata.",
+                )
+        except Exception as e:
+            log_error("Error saving cluster labels to metadata: %s", e)
+            QMessageBox.warning(
+                self, "Warning", f"Clustering complete, but error saving labels to metadata: {e!s}"
+            )
 
     def _on_clustering_error(self, error_msg: str):
         """Handle clustering error."""

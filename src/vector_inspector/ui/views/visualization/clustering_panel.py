@@ -105,6 +105,14 @@ class ClusteringPanel(QGroupBox):
 
         first_row.addStretch()
 
+        # Checkbox to save cluster labels to metadata
+        self.save_to_metadata_checkbox = QCheckBox("Save labels to metadata")
+        self.save_to_metadata_checkbox.setChecked(False)
+        self.save_to_metadata_checkbox.setToolTip(
+            "When checked, cluster assignments will be saved to item metadata as 'cluster' field"
+        )
+        first_row.addWidget(self.save_to_metadata_checkbox)
+
         # Run clustering button
         self.cluster_button = QPushButton("Run Clustering")
         first_row.addWidget(self.cluster_button)
