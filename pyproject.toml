@@ -1,6 +1,6 @@
 [project]
 name = "vector-inspector"
-version = "0.3.15"
+version = "0.3.16"
 description = "A comprehensive desktop application for visualizing, querying, and managing vector database data"
 authors = [
     {name = "Anthony Dawson", email = "anthonypdawson+github@gmail.com"},
@@ -57,6 +57,9 @@ dev = [
     "pyarmor>=9.2.3",
     "bumpver>=2025.1131",
     "pyside6-stubs>=6.7.3.0",
+    "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-testmon>=2.2.0",
 ]
 
 [tool.ruff]
@@ -111,7 +114,7 @@ env = { PYTHONPATH = "src" }
 [tool.briefcase]
 project_name = "Vector Inspector"
 bundle = "com.divinedevops.vector-inspector"
-version = "0.3.15"
+version = "0.3.16"
 url = "https://vector-inspector.divinedevops.com"
 license.file = "LICENSE"
 author = "Anthony Dawson"

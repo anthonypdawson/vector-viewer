@@ -29,4 +29,6 @@
 ### Embedding Models
 - Added disk caching for embedding models (SentenceTransformers and HuggingFace-based models). Models are saved to a local cache to speed up repeated imports and searches; a new Settings control lets users view and clear the embedding model cache.
 
+- Added unit tests for new changes
+
 ---
