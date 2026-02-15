@@ -54,4 +54,21 @@ jobs:
         env:
           PYTHONPATH: ./src
           QT_QPA_PLATFORM: offscreen
-        run: pdm run pytest -q tests
+        run: pdm run pytest -q tests --cov=vector_inspector --cov-report=html
+
+      - name: Upload coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: htmlcov
+
+      # Optional: publish coverage to GitHub Pages (uncomment to enable)
+      # Note: This will push the generated html to the gh-pages branch.
+      # Ensure Pages is configured to serve from the gh-pages branch in repo settings.
+      # - name: Deploy coverage to GitHub Pages
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      #   uses: peaceiris/actions-gh-pages@v3
+      #   with:
+      #     github_token: ${{ secrets.GITHUB_TOKEN }}
+      #     publish_dir: ./htmlcov
