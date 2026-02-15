@@ -60,15 +60,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-html
+          name: coverage-html-py${{ matrix.python-version }}
           path: htmlcov
 
-      # Optional: publish coverage to GitHub Pages (uncomment to enable)
-      # Note: This will push the generated html to the gh-pages branch.
-      # Ensure Pages is configured to serve from the gh-pages branch in repo settings.
-      # - name: Deploy coverage to GitHub Pages
-      #   if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-      #   uses: peaceiris/actions-gh-pages@v3
-      #   with:
-      #     github_token: ${{ secrets.GITHUB_TOKEN }}
-      #     publish_dir: ./htmlcov
+      - name: Deploy coverage to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.python-version == '3.12'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./htmlcov
