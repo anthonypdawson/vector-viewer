@@ -16,12 +16,12 @@ def plot_panel(qtbot):
 
     panel = PlotPanel()
     qtbot.addWidget(panel)  # Register with qtbot for proper cleanup
-    
+
     # Give QWebEngineView time to initialize
     qtbot.waitUntil(lambda: panel.web_view is not None, timeout=3000)
-    
+
     yield panel
-    
+
     # Explicit cleanup to prevent "Release of profile" warning
     # Close the web view and its page before test ends
     if panel.web_view and panel.web_view.page():
@@ -144,16 +144,16 @@ def test_plot_panel_view_data_button_disabled_when_no_selection(qtbot, plot_pane
 def test_plot_event_bridge_signal_connected_to_panel(qtbot, plot_panel):
     """Test that PlotEventBridge signal is properly connected to panel."""
     # The bridge's signal should trigger panel's _on_point_selected
-    
+
     # Verify initial state
     assert plot_panel._selected_id is None
-    
+
     # Emit signal from bridge
     plot_panel._event_bridge.point_selected.emit(3, "test-id-999")
-    
+
     # Wait for Qt event loop to process
     qtbot.wait(100)
-    
+
     # Verify panel received the signal
     assert plot_panel._selected_index == 3
     assert plot_panel._selected_id == "test-id-999"
@@ -197,9 +197,9 @@ def test_visualization_view_forwards_signal(qtbot):
 
     # Verify forwarding (only ID should be forwarded)
     assert blocker.args == ["test-id-123"]
-    
+
     # Explicit cleanup to prevent "Release of profile" warning
-    if hasattr(view, 'plot_panel') and view.plot_panel and view.plot_panel.web_view:
+    if hasattr(view, "plot_panel") and view.plot_panel and view.plot_panel.web_view:
         if view.plot_panel.web_view.page():
             view.plot_panel.web_view.setPage(None)
         view.plot_panel.web_view.close()

@@ -7,8 +7,6 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from vector_inspector.ui.views.metadata.context import MetadataContext
-
 
 @pytest.fixture
 def qapp():
@@ -51,8 +49,9 @@ def sample_cluster_data():
 
 def test_save_cluster_labels_to_metadata_success(qapp, mock_connection, sample_cluster_data):
     """Test successfully saving cluster labels to metadata."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     view = VisualizationView(connection=mock_connection)
     view.current_collection = "test_coll"
@@ -83,10 +82,13 @@ def test_save_cluster_labels_to_metadata_success(qapp, mock_connection, sample_c
     assert "existing" in metadatas[0]  # Preserves existing metadata
 
 
-def test_save_cluster_labels_preserves_existing_metadata(qapp, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_preserves_existing_metadata(
+    qapp, mock_connection, sample_cluster_data
+):
     """Test that saving cluster labels preserves existing metadata fields."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     view = VisualizationView(connection=mock_connection)
     view.current_collection = "test_coll"
@@ -106,8 +108,9 @@ def test_save_cluster_labels_preserves_existing_metadata(qapp, mock_connection, 
 
 def test_save_cluster_labels_adds_updated_at(qapp, mock_connection, sample_cluster_data):
     """Test that saving cluster labels adds updated_at timestamp."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     view = VisualizationView(connection=mock_connection)
     view.current_collection = "test_coll"
@@ -129,8 +132,9 @@ def test_save_cluster_labels_adds_updated_at(qapp, mock_connection, sample_clust
 
 def test_save_cluster_labels_no_connection(qapp):
     """Test error handling when no connection is available."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     view = VisualizationView(connection=None)
     view.current_collection = "test_coll"
@@ -144,8 +148,9 @@ def test_save_cluster_labels_no_connection(qapp):
 
 def test_save_cluster_labels_no_collection(qapp, mock_connection):
     """Test error handling when no collection is selected."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     view = VisualizationView(connection=mock_connection)
     view.current_collection = None
@@ -161,8 +166,9 @@ def test_save_cluster_labels_no_collection(qapp, mock_connection):
 
 def test_save_cluster_labels_no_cluster_data(qapp, mock_connection):
     """Test handling when no cluster labels are available."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     view = VisualizationView(connection=mock_connection)
     view.current_collection = "test_coll"
@@ -182,8 +188,9 @@ def test_save_cluster_labels_no_cluster_data(qapp, mock_connection):
 
 def test_save_cluster_labels_update_fails(qapp, mock_connection, sample_cluster_data):
     """Test error handling when update_items fails."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     # Make update_items return False (failure)
     mock_connection.update_items.return_value = False
@@ -222,8 +229,9 @@ def test_clustering_panel_save_checkbox_default_unchecked(qapp):
 
 def test_save_cluster_labels_handles_noise_points(qapp, mock_connection):
     """Test that noise points (label -1) are saved correctly."""
-    from vector_inspector.ui.views.visualization_view import VisualizationView
     import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationView
 
     view = VisualizationView(connection=mock_connection)
     view.current_collection = "test_coll"

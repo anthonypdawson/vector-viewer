@@ -5,45 +5,15 @@ from vector_inspector.services.backup_helpers import write_backup_zip
 from vector_inspector.services.backup_restore_service import BackupRestoreService
 
 
-class FakeConnection:
-    def __init__(self):
-        self.collections = []
-        self.added = None
-
-    def list_collections(self):
-        return self.collections
-
-    def delete_collection(self, name):
-        if name in self.collections:
-            self.collections.remove(name)
-
-    def prepare_restore(self, metadata, data):
-        # Pretend to precreate collection
-        self.collections.append(metadata.get("collection_name"))
-        # Ensure IDs are strings
-        if data.get("ids"):
-            data["ids"] = [str(i) for i in data.get("ids")]
-        return True
-
-    def add_items(self, collection_name, documents, metadatas, ids, embeddings):
-        self.added = dict(
-            collection_name=collection_name,
-            documents=documents,
-            metadatas=metadatas,
-            ids=ids,
-            embeddings=embeddings,
-        )
-        return True
-
-
-def test_restore_uses_prepare_restore_and_adds_items(tmp_path):
+def test_restore_uses_prepare_restore_and_adds_items(tmp_path, empty_fake_provider):
+    """Test that restore creates collection and adds items using FakeProvider fixture."""
     metadata = {
         "collection_name": "col",
         "backup_timestamp": "now",
         "collection_info": {"vector_dimension": 3},
     }
     data = {
-        "ids": [1, 2],
+        "ids": ["1", "2"],
         "documents": ["a", "b"],
         "metadatas": [{}, {}],
         "embeddings": [[0, 0, 0], [1, 1, 1]],
@@ -51,86 +21,41 @@ def test_restore_uses_prepare_restore_and_adds_items(tmp_path):
     p = tmp_path / "b.zip"
     write_backup_zip(p, metadata, data)
 
-    conn = FakeConnection()
+    conn = empty_fake_provider
     svc = BackupRestoreService()
     ok = svc.restore_collection(conn, str(p))
     assert ok is True
-    assert conn.added is not None
-    assert conn.added["collection_name"] == "col"
-    assert conn.added["ids"] == ["1", "2"]
+    # Verify collection was created and items were added
+    assert "col" in conn.list_collections()
+    items = conn.get_all_items("col")
+    assert len(items["ids"]) == 2
+    assert items["documents"] == ["a", "b"]
 
 
-def test_restore_with_empty_embeddings_triggers_prepare_restore(tmp_path):
-    # Prepare a backup where embeddings key exists but is an empty list
+def test_restore_with_empty_embeddings(tmp_path, empty_fake_provider):
+    """Test restore with empty embeddings list using FakeProvider fixture."""
     metadata = {
         "collection_name": "col_empty",
         "backup_timestamp": "now",
         "collection_info": {"vector_dimension": 3},
     }
-    data = {"ids": [1, 2], "documents": ["a", "b"], "metadatas": [{}, {}], "embeddings": []}
+    data = {"ids": ["1", "2"], "documents": ["a", "b"], "metadatas": [{}, {}], "embeddings": []}
     p = tmp_path / "b_empty.zip"
     write_backup_zip(p, metadata, data)
 
-    class FakeConn2:
-        def __init__(self):
-            self.collections = []
-            self.added = None
-
-        def list_collections(self):
-            return self.collections
-
-        def delete_collection(self, name):
-            if name in self.collections:
-                self.collections.remove(name)
-
-        def prepare_restore(self, metadata, data):
-            # Simulate provider generating embeddings when list is empty
-            if data.get("embeddings") == []:
-                data["embeddings"] = [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]
-            self.collections.append(metadata.get("collection_name"))
-            return True
-
-        def add_items(self, collection_name, documents, metadatas, ids, embeddings):
-            self.added = dict(
-                collection_name=collection_name,
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids,
-                embeddings=embeddings,
-            )
-            return True
-
-    conn = FakeConn2()
+    conn = empty_fake_provider
     svc = BackupRestoreService()
     ok = svc.restore_collection(conn, str(p))
     assert ok is True
-    assert conn.added is not None
-    assert conn.added["collection_name"] == "col_empty"
-    assert conn.added["embeddings"] is not None
-    assert len(conn.added["embeddings"]) == 2
+    # Verify collection was created and items were added
+    assert "col_empty" in conn.list_collections()
+    items = conn.get_all_items("col_empty")
+    assert len(items["ids"]) == 2
 
 
-def test_backup_includes_model_from_settings(tmp_path):
-    """Test that backup includes model config from app settings when not in collection info."""
-
-    class FakeConnWithCollection:
-        def get_collection_info(self, name):
-            # Return collection info without model config
-            return {"name": name, "count": 2}
-
-        def get_all_items(self, name):
-            return {
-                "ids": ["1", "2"],
-                "documents": ["test1", "test2"],
-                "metadatas": [{}, {}],
-                "embeddings": [[0.1, 0.2], [0.3, 0.4]],
-            }
-
-        def get_embedding_model(self, name):
-            # Simulate connection not having model info
-            return None
-
-    conn = FakeConnWithCollection()
+def test_backup_includes_model_from_settings(tmp_path, fake_provider):
+    """Test that backup includes model config from app settings."""
+    conn = fake_provider
     svc = BackupRestoreService()
 
     # Mock SettingsService to return a model config
@@ -165,9 +90,8 @@ def test_backup_includes_model_from_settings(tmp_path):
     assert metadata.get("embedding_model_type") == "sentence-transformer"
 
 
-def test_restore_persists_model_to_settings(tmp_path):
+def test_restore_persists_model_to_settings(tmp_path, empty_fake_provider):
     """Test that restore saves model config to app settings."""
-
     # Create a backup with model metadata
     metadata = {
         "collection_name": "restored_col",
@@ -185,7 +109,7 @@ def test_restore_persists_model_to_settings(tmp_path):
     backup_file = tmp_path / "test_backup.zip"
     write_backup_zip(backup_file, metadata, data)
 
-    conn = FakeConnection()
+    conn = empty_fake_provider
     svc = BackupRestoreService()
 
     # Mock SettingsService
@@ -210,3 +134,36 @@ def test_restore_persists_model_to_settings(tmp_path):
         "sentence-transformers/paraphrase-MiniLM-L6-v2",
         "sentence-transformer",
     )
+
+
+def test_backup_and_restore_roundtrip(tmp_path, fake_provider_with_name):
+    """Test complete backup and restore cycle with FakeProvider."""
+    conn, collection_name = fake_provider_with_name
+    svc = BackupRestoreService()
+
+    # Backup the collection
+    backup_path = svc.backup_collection(
+        conn,
+        collection_name,
+        str(tmp_path),
+        include_embeddings=True,
+    )
+    assert backup_path is not None
+
+    # Verify original data
+    original = conn.get_all_items(collection_name)
+    assert len(original["ids"]) == 3
+
+    # Delete the collection
+    conn.delete_collection(collection_name)
+    assert collection_name not in conn.list_collections()
+
+    # Restore from backup
+    ok = svc.restore_collection(conn, backup_path)
+    assert ok is True
+    assert collection_name in conn.list_collections()
+
+    # Verify restored data matches original
+    restored = conn.get_all_items(collection_name)
+    assert len(restored["ids"]) == len(original["ids"])
+    assert restored["documents"] == original["documents"]
