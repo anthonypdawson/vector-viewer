@@ -31,6 +31,7 @@ from vector_inspector.core.logging import log_info
 from vector_inspector.services.filter_service import apply_client_side_filters
 from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.ui.components.filter_builder import FilterBuilder
+from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
@@ -106,7 +107,7 @@ class SearchView(QWidget):
 
         # Query input
         query_group_layout.addWidget(QLabel("Enter search text:"))
-        self.query_input.setMaximumHeight(100)
+        self.query_input.setMaximumHeight(60)
         self.query_input.setPlaceholderText("Enter text to search for similar vectors...")
         query_group_layout.addWidget(self.query_input)
 
@@ -143,7 +144,13 @@ class SearchView(QWidget):
         filter_group_layout.addWidget(self.filter_builder)
 
         self.filter_group.setLayout(filter_group_layout)
+        # Hide content when unchecked, show when checked
+        self.filter_group.toggled.connect(self.filter_builder.setVisible)
+        self.filter_builder.setVisible(False)  # Start hidden
         query_layout.addWidget(self.filter_group)
+
+        # Add stretch to push content to top
+        query_layout.addStretch()
 
         splitter.addWidget(query_widget)
 
@@ -151,6 +158,14 @@ class SearchView(QWidget):
         results_widget = QWidget()
         results_layout = QVBoxLayout(results_widget)
         results_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create sub-splitter for results table and details pane
+        results_splitter = QSplitter(Qt.Vertical)
+
+        # Results table container
+        results_table_widget = QWidget()
+        results_table_layout = QVBoxLayout(results_table_widget)
+        results_table_layout.setContentsMargins(0, 0, 0, 0)
 
         results_group = QGroupBox("Search Results")
         results_group_layout = QVBoxLayout()
@@ -162,14 +177,42 @@ class SearchView(QWidget):
         # Enable double-click to view details
         self.results_table.doubleClicked.connect(self._on_row_double_clicked)
         self.results_table.customContextMenuRequested.connect(self._show_context_menu)
+        # Connect selection changes to update inline details
+        self.results_table.itemSelectionChanged.connect(self._on_selection_changed)
         results_group_layout.addWidget(self.results_table)
 
         self.results_status.setStyleSheet("color: gray;")
         results_group_layout.addWidget(self.results_status)
 
         results_group.setLayout(results_group_layout)
-        results_layout.addWidget(results_group)
+        results_table_layout.addWidget(results_group)
+        results_splitter.addWidget(results_table_widget)
 
+        # Inline details pane
+        self.details_pane = InlineDetailsPane(view_mode="search")
+        self.details_pane.open_full_details.connect(self._open_full_details_from_pane)
+        self.details_pane.setMinimumHeight(120)
+        results_splitter.addWidget(self.details_pane)
+
+        # Set initial sizes for results splitter
+        results_splitter.setStretchFactor(0, 3)  # Table
+        results_splitter.setStretchFactor(1, 1)  # Details pane
+
+        # Restore splitter sizes from settings
+        from vector_inspector.services.settings_service import SettingsService
+
+        settings_service = SettingsService()
+        saved_sizes = settings_service.get("search_view_results_splitter_sizes", [])
+        if saved_sizes and len(saved_sizes) == 2:
+            results_splitter.setSizes(saved_sizes)
+
+        # Save splitter sizes when changed
+        results_splitter.splitterMoved.connect(
+            lambda: self._save_results_splitter_sizes(results_splitter, settings_service)
+        )
+        self.results_splitter = results_splitter
+
+        results_layout.addWidget(results_splitter)
         splitter.addWidget(results_widget)
 
         # Set splitter proportions
@@ -228,6 +271,8 @@ class SearchView(QWidget):
         self.results_status.setText("No search performed")
         self.clear_breadcrumb()
         self.search_results = None
+        if hasattr(self, "details_pane"):
+            self.details_pane.update_item(None)
 
     def set_collection(self, collection_name: str, database_name: str = ""):
         """Set the current collection to search."""
@@ -265,6 +310,8 @@ class SearchView(QWidget):
         self.query_input.clear()
         self.results_table.setRowCount(0)
         self.results_status.setText(f"Collection: {collection_name}")
+        if hasattr(self, "details_pane"):
+            self.details_pane.update_item(None)
 
         # Reset filters
         self.filter_builder._clear_all()
@@ -372,6 +419,8 @@ class SearchView(QWidget):
         if not results:
             self.results_status.setText("Search failed")
             self.results_table.setRowCount(0)
+            if hasattr(self, "details_pane"):
+                self.details_pane.update_item(None)
             return
 
         # Check if results have the expected structure
@@ -382,6 +431,8 @@ class SearchView(QWidget):
         ):
             self.results_status.setText("No results found or query failed")
             self.results_table.setRowCount(0)
+            if hasattr(self, "details_pane"):
+                self.details_pane.update_item(None)
             return
 
         # Apply client-side filters if any
@@ -455,6 +506,51 @@ class SearchView(QWidget):
         # Show details dialog
         dialog = ItemDetailsDialog(self, item_data=item_data, show_search_info=True)
         dialog.exec()
+
+    def _on_selection_changed(self):
+        """Handle table selection changes to update inline details pane."""
+        selected_rows = self.results_table.selectionModel().selectedRows()
+
+        if not selected_rows or not self.search_results:
+            self.details_pane.update_item(None)
+            return
+
+        row = selected_rows[0].row()
+        if row < 0 or row >= self.results_table.rowCount():
+            return
+
+        # Get item data for this row
+        ids = self._unwrap_result_list("ids")
+        documents = self._unwrap_result_list("documents")
+        metadatas = self._unwrap_result_list("metadatas")
+        distances = self._unwrap_result_list("distances")
+        embeddings = self._unwrap_result_list("embeddings")
+
+        if row >= len(ids):
+            return
+
+        item_data = {
+            "id": ids[row],
+            "document": documents[row] if row < len(documents) else "",
+            "metadata": metadatas[row] if row < len(metadatas) else {},
+            "embedding": embeddings[row] if row < len(embeddings) else None,
+            "distance": distances[row] if row < len(distances) else None,
+            "rank": row + 1,
+        }
+
+        self.details_pane.update_item(item_data)
+
+    def _open_full_details_from_pane(self):
+        """Open full details dialog for currently selected row."""
+        selected_rows = self.results_table.selectionModel().selectedRows()
+        if selected_rows:
+            row = selected_rows[0].row()
+            self._on_row_double_clicked(self.results_table.model().index(row, 0))
+
+    def _save_results_splitter_sizes(self, splitter: QSplitter, settings_service):
+        """Save results splitter sizes to settings."""
+        sizes = splitter.sizes()
+        settings_service.set("search_view_results_splitter_sizes", sizes)
 
     def _unwrap_result_list(self, key: str) -> list:
         """Safely unwrap nested result lists."""
@@ -644,6 +740,8 @@ class SearchView(QWidget):
         if not ids:
             self.results_table.setRowCount(0)
             self.results_status.setText("No results found")
+            if hasattr(self, "details_pane"):
+                self.details_pane.update_item(None)
             return
 
         # Determine columns
@@ -684,3 +782,9 @@ class SearchView(QWidget):
 
         self.results_table.resizeColumnsToContents()
         self.results_status.setText(f"Found {len(ids)} results")
+
+    def closeEvent(self, event):
+        """Save state before closing."""
+        if hasattr(self, "details_pane"):
+            self.details_pane.save_state()
+        super().closeEvent(event)

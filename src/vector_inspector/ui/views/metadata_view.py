@@ -27,6 +27,7 @@ from vector_inspector.core.logging import log_info
 from vector_inspector.services.filter_service import apply_client_side_filters
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.ui.components.filter_builder import FilterBuilder
+from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_dialog import ItemDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.ui.views.metadata import (
@@ -41,6 +42,7 @@ from vector_inspector.ui.views.metadata import (
     update_pagination_controls,
     update_row_in_place,
 )
+from vector_inspector.ui.views.metadata.metadata_table import _show_item_details
 
 
 class MetadataView(QWidget):
@@ -215,11 +217,29 @@ class MetadataView(QWidget):
         # Enable context menu
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
+        # Connect selection changes to update inline details
+        self.table.itemSelectionChanged.connect(self._on_selection_changed)
         splitter.addWidget(self.table)
 
-        # Set initial sizes: filter section small, table large
+        # Inline details pane
+        self.details_pane = InlineDetailsPane(view_mode="data_browser")
+        self.details_pane.open_full_details.connect(self._open_full_details_from_pane)
+        self.details_pane.setMinimumHeight(120)
+        splitter.addWidget(self.details_pane)
+
+        # Set initial sizes: filter section small, table large, details medium
         splitter.setStretchFactor(0, 0)  # Filter section
-        splitter.setStretchFactor(1, 1)  # Table gets most space
+        splitter.setStretchFactor(1, 3)  # Table gets most space
+        splitter.setStretchFactor(2, 1)  # Details pane
+
+        # Restore splitter sizes from settings
+        saved_sizes = self.settings_service.get("metadata_view_splitter_sizes", [])
+        if saved_sizes and len(saved_sizes) == 3:
+            splitter.setSizes(saved_sizes)
+
+        # Save splitter sizes when changed
+        splitter.splitterMoved.connect(lambda: self._save_splitter_sizes(splitter))
+        self.main_splitter = splitter
 
         # Add splitter to main layout
         layout.addWidget(splitter, stretch=1)
@@ -705,7 +725,23 @@ class MetadataView(QWidget):
         self._load_data()
 
     def _on_row_double_clicked(self, index: Any) -> None:
-        """Handle double-click on a row to edit item."""
+        """Handle double-click on a row to view item details."""
+        if not self.ctx.connection:
+            QMessageBox.warning(self, "No Connection", "No database connection available.")
+            return
+
+        if not self.ctx.current_collection or not self.ctx.current_data:
+            return
+
+        row = index.row()
+        if row < 0 or row >= self.table.rowCount():
+            return
+
+        # Show read-only details dialog (same as right-click -> View Details)
+        _show_item_details(self.table, self.ctx, row)
+
+    def _edit_item(self, index: Any) -> None:
+        """Handle editing an item (called from context menu)."""
         if not self.ctx.connection:
             QMessageBox.warning(self, "No Connection", "No database connection available.")
             return
@@ -920,13 +956,55 @@ class MetadataView(QWidget):
             self.table,
         )
 
+    def _on_selection_changed(self) -> None:
+        """Handle table selection changes to update inline details pane."""
+        selected_rows = self.table.selectionModel().selectedRows()
+
+        if not selected_rows or not self.ctx.current_data:
+            self.details_pane.update_item(None)
+            return
+
+        row = selected_rows[0].row()
+        if row < 0 or row >= self.table.rowCount():
+            return
+
+        # Get item data for this row
+        ids = self.ctx.current_data.get("ids", [])
+        documents = self.ctx.current_data.get("documents", [])
+        metadatas = self.ctx.current_data.get("metadatas", [])
+        embeddings = self.ctx.current_data.get("embeddings", [])
+
+        if row >= len(ids):
+            return
+
+        item_data = {
+            "id": ids[row],
+            "document": documents[row] if row < len(documents) else "",
+            "metadata": metadatas[row] if row < len(metadatas) else {},
+            "embedding": embeddings[row] if row < len(embeddings) else None,
+        }
+
+        self.details_pane.update_item(item_data)
+
+    def _open_full_details_from_pane(self) -> None:
+        """Open full details dialog for currently selected row."""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if selected_rows:
+            row = selected_rows[0].row()
+            self._on_row_double_clicked(self.table.model().index(row, 0))
+
+    def _save_splitter_sizes(self, splitter: QSplitter) -> None:
+        """Save splitter sizes to settings."""
+        sizes = splitter.sizes()
+        self.settings_service.set("metadata_view_splitter_sizes", sizes)
+
     def _show_context_menu(self, position: Any) -> None:
         """Show context menu for table rows."""
         show_context_menu(
             self.table,
             position,
             self.ctx,
-            self._on_row_double_clicked,
+            self._edit_item,
         )
 
     def _import_data(self, format_type: str) -> None:
@@ -944,3 +1022,9 @@ class MetadataView(QWidget):
                     self.ctx.current_database, self.ctx.current_collection
                 )
             self._load_data()
+
+    def closeEvent(self, event):
+        """Save state before closing."""
+        if hasattr(self, "details_pane"):
+            self.details_pane.save_state()
+        super().closeEvent(event)
