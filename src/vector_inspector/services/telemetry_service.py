@@ -61,6 +61,11 @@ class TelemetryService:
         Args:
             event: Event dict with at least event_name and metadata fields
         """
+        # Do not queue events when telemetry is disabled
+        if not self.is_enabled():
+            log_info("[Telemetry] Telemetry disabled; not queuing event.")
+            return
+
         # Auto-populate standard fields if not present
         if "app_version" not in event:
             event["app_version"] = self.app_version
