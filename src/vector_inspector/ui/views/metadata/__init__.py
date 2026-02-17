@@ -9,11 +9,13 @@ from .metadata_table import (
     update_pagination_controls,
     update_row_in_place,
 )
-from .metadata_threads import DataLoadThread
+from .metadata_threads import DataImportThread, DataLoadThread, ItemUpdateThread
 
 __all__ = [
+    "DataImportThread",
     "DataLoadThread",
     "FilterList",
+    "ItemUpdateThread",
     "MetadataContext",
     "MetadataDict",
     "export_data",

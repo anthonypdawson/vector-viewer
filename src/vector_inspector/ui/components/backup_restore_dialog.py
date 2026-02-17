@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.services.backup_restore_service import BackupRestoreService
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.ui.components.backup_restore_threads import BackupThread, RestoreThread
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
 
@@ -47,6 +48,8 @@ class BackupRestoreDialog(QDialog):
         default_backup_dir = str(Path.home() / "vector-viewer-backups")
         self.backup_dir = self.settings_service.get("backup_directory", default_backup_dir)
         self.loading_dialog = LoadingDialog("Processing...", self)
+        self.backup_thread = None
+        self.restore_thread = None
         self.setWindowTitle("Backup & Restore")
         self.setMinimumSize(600, 500)
         self._setup_ui()
@@ -206,27 +209,39 @@ class BackupRestoreDialog(QDialog):
         # Create backup
         include_embeddings = self.include_embeddings_check.isChecked()
 
+        # Cancel any existing backup thread
+        if self.backup_thread and self.backup_thread.isRunning():
+            self.backup_thread.quit()
+            self.backup_thread.wait()
+
+        # Create and start backup thread
+        self.backup_thread = BackupThread(
+            self.backup_service,
+            self.connection.database,
+            self.collection_name,
+            self.backup_dir,
+            include_embeddings,
+            self.connection.name,
+        )
+        self.backup_thread.finished.connect(self._on_backup_finished)
+        self.backup_thread.error.connect(self._on_backup_error)
+
+        # Show loading dialog during backup
         self.loading_dialog.show_loading("Creating backup...")
-        QApplication.processEvents()
+        self.backup_thread.start()
 
-        try:
-            backup_path = self.backup_service.backup_collection(
-                self.connection.database,
-                self.collection_name,
-                self.backup_dir,
-                include_embeddings=include_embeddings,
-                profile_name=self.connection.name,
-            )
-        finally:
-            self.loading_dialog.hide_loading()
+    def _on_backup_finished(self, backup_path: str) -> None:
+        """Handle successful backup completion."""
+        self.loading_dialog.hide_loading()
+        QMessageBox.information(
+            self, "Backup Successful", f"Backup created successfully:\n{backup_path}"
+        )
+        self._refresh_backups_list()
 
-        if backup_path:
-            QMessageBox.information(
-                self, "Backup Successful", f"Backup created successfully:\n{backup_path}"
-            )
-            self._refresh_backups_list()
-        else:
-            QMessageBox.warning(self, "Backup Failed", "Failed to create backup.")
+    def _on_backup_error(self, error_message: str) -> None:
+        """Handle backup error."""
+        self.loading_dialog.hide_loading()
+        QMessageBox.warning(self, "Backup Failed", f"Failed to create backup: {error_message}")
 
     def _refresh_backups_list(self):
         """Refresh the list of available backups."""
@@ -418,30 +433,41 @@ class BackupRestoreDialog(QDialog):
         except Exception:
             recompute_choice = None  # Default to using stored embeddings
 
+        # Cancel any existing restore thread
+        if self.restore_thread and self.restore_thread.isRunning():
+            self.restore_thread.quit()
+            self.restore_thread.wait()
+
+        # Create and start restore thread
+        self.restore_thread = RestoreThread(
+            self.backup_service,
+            self.connection.database,
+            backup_file,
+            restore_name if restore_name else None,
+            overwrite,
+            recompute_choice,
+            self.connection.name,
+        )
+        self.restore_thread.finished.connect(self._on_restore_finished)
+        self.restore_thread.error.connect(self._on_restore_error)
+
+        # Show loading dialog during restore
         self.loading_dialog.show_loading("Restoring backup...")
-        QApplication.processEvents()
+        self.restore_thread.start()
 
-        try:
-            # Restore (pass low-level connection to service)
-            success = self.backup_service.restore_collection(
-                self.connection.database,
-                backup_file,
-                collection_name=restore_name if restore_name else None,
-                overwrite=overwrite,
-                recompute_embeddings=recompute_choice,
-                profile_name=self.connection.name,
-            )
-        finally:
-            self.loading_dialog.hide_loading()
+    def _on_restore_finished(self, collection_name: str) -> None:
+        """Handle successful restore completion."""
+        self.loading_dialog.hide_loading()
+        QMessageBox.information(
+            self,
+            "Restore Successful",
+            f"Backup restored successfully to collection '{collection_name}'.",
+        )
 
-        if success:
-            QMessageBox.information(
-                self,
-                "Restore Successful",
-                f"Backup restored successfully to collection '{final_name}'.",
-            )
-        else:
-            QMessageBox.warning(self, "Restore Failed", "Failed to restore backup.")
+    def _on_restore_error(self, error_message: str) -> None:
+        """Handle restore error."""
+        self.loading_dialog.hide_loading()
+        QMessageBox.warning(self, "Restore Failed", f"Failed to restore backup: {error_message}")
 
     def _delete_backup(self):
         """Delete a backup file."""

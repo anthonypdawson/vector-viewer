@@ -49,6 +49,37 @@ class ConnectionThread(QThread):
             self.finished.emit(False, [], str(e), duration_ms, self.correlation_id)
 
 
+class ModelMetadataLoadThread(QThread):
+    """Background thread for loading embedding model metadata."""
+
+    finished = Signal(int)  # dimension
+    error = Signal(str)  # error_message
+
+    def __init__(self, embedder_name: str, embedder_type: str, parent=None):
+        """
+        Initialize model metadata load thread.
+
+        Args:
+            embedder_name: Name of the embedding model
+            embedder_type: Type of the embedding provider
+            parent: Parent QObject
+        """
+        super().__init__(parent)
+        self.embedder_name = embedder_name
+        self.embedder_type = embedder_type
+
+    def run(self):
+        """Load model metadata in background."""
+        try:
+            from vector_inspector.core.embedding_providers import ProviderFactory
+
+            provider = ProviderFactory.create(self.embedder_name, self.embedder_type)
+            metadata = provider.get_metadata()
+            self.finished.emit(metadata.dimension)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class ConnectionController(QObject):
     """Controller for managing connection operations and lifecycle.
 
@@ -78,6 +109,7 @@ class ConnectionController(QObject):
         # State
         self._connection_threads: dict[str, ConnectionThread] = {}
         self._active_worker = None
+        self.model_metadata_thread: Optional[ModelMetadataLoadThread] = None
         self.loading_dialog = LoadingDialog("Loading...", parent)
         self.collection_service = CollectionService(parent)
 
@@ -301,33 +333,58 @@ class ConnectionController(QObject):
         progress_dialog.setAutoReset(False)
         progress_dialog.setValue(0)
         progress_dialog.show()
-        QApplication.processEvents()
 
         # Get dimension from model if sample data is requested
-        # Show loading progress while we do this
-        dimension = None
         if config["add_sample"]:
             progress_dialog.setLabelText("Loading embedding model...")
-            QApplication.processEvents()
 
-            try:
-                from vector_inspector.core.embedding_providers import ProviderFactory
+            # Cancel any existing model metadata thread
+            if self.model_metadata_thread and self.model_metadata_thread.isRunning():
+                self.model_metadata_thread.quit()
+                self.model_metadata_thread.wait()
 
-                provider = ProviderFactory.create(config["embedder_name"], config["embedder_type"])
-                metadata = provider.get_metadata()
-                dimension = metadata.dimension
-            except Exception as e:
-                progress_dialog.close()
-                QMessageBox.critical(
-                    self.parent_widget, "Error", f"Failed to get model dimension: {e}"
+            # Start thread to load model metadata
+            self.model_metadata_thread = ModelMetadataLoadThread(
+                config["embedder_name"], config["embedder_type"], self
+            )
+            self.model_metadata_thread.finished.connect(
+                lambda dim: self._create_collection_with_dimension(
+                    connection, connection_id, collection_name, config, dim, progress_dialog
                 )
-                return False
+            )
+            self.model_metadata_thread.error.connect(
+                lambda err: self._on_model_metadata_error(err, progress_dialog)
+            )
+            self.model_metadata_thread.start()
+        else:
+            # No sample data - proceed directly with None dimension
+            self._create_collection_with_dimension(
+                connection, connection_id, collection_name, config, None, progress_dialog
+            )
 
+        return True
+
+    def _on_model_metadata_error(self, error_message: str, progress_dialog: QProgressDialog) -> None:
+        """Handle model metadata loading error."""
+        progress_dialog.close()
+        QMessageBox.critical(
+            self.parent_widget, "Error", f"Failed to get model dimension: {error_message}"
+        )
+
+    def _create_collection_with_dimension(
+        self,
+        connection,
+        connection_id: str,
+        collection_name: str,
+        config: dict,
+        dimension: Optional[int],
+        progress_dialog: QProgressDialog,
+    ) -> None:
+        """Create collection with the loaded dimension."""
         # Now set up for collection creation
         progress_dialog.setMaximum(3)
         progress_dialog.setLabelText("Creating collection...")
         progress_dialog.setValue(0)
-        QApplication.processEvents()
 
         # Create worker thread
         sample_config = None

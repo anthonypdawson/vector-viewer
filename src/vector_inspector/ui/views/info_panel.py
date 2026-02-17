@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -22,6 +22,68 @@ from vector_inspector.core.connections.pinecone_connection import PineconeConnec
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 from vector_inspector.core.connections.weaviate_connection import WeaviateConnection
 from vector_inspector.core.logging import log_info
+
+
+class ModelConfigPreparationThread(QThread):
+    """Background thread for loading collection info for model configuration."""
+
+    finished = Signal(dict)  # collection_info
+    error = Signal(str)  # error_message
+
+    def __init__(self, connection, collection_name: str, parent=None):
+        """
+        Initialize model config preparation thread.
+
+        Args:
+            connection: The ConnectionInstance
+            collection_name: Name of the collection
+            parent: Parent QObject
+        """
+        super().__init__(parent)
+        self.connection = connection
+        self.collection_name = collection_name
+
+    def run(self):
+        """Load collection info in background."""
+        try:
+            collection_info = self.connection.get_collection_info(self.collection_name)
+            if collection_info:
+                self.finished.emit(collection_info)
+            else:
+                self.error.emit("Failed to get collection info")
+        except Exception as e:
+            self.error.emit(f"Error getting collection info: {e}")
+
+
+class CollectionInfoLoadThread(QThread):
+    """Background thread for loading collection information."""
+
+    finished = Signal(dict)  # collection_info
+    error = Signal(str)  # error_message
+
+    def __init__(self, connection, collection_name: str, parent=None):
+        """
+        Initialize collection info load thread.
+
+        Args:
+            connection: The ConnectionInstance  
+            collection_name: Name of the collection
+            parent: Parent QObject
+        """
+        super().__init__(parent)
+        self.connection = connection
+        self.collection_name = collection_name
+
+    def run(self):
+        """Load collection info in background."""
+        try:
+            collection_info = self.connection.get_collection_info(self.collection_name)
+            if collection_info:
+                self.finished.emit(collection_info)
+            else:
+                self.error.emit("Failed to get collection info")
+        except Exception as e:
+            self.error.emit(f"Error getting collection info: {e}")
 
 
 class InfoPanel(QWidget):
@@ -47,6 +109,8 @@ class InfoPanel(QWidget):
     embedding_model_label: QLabel
     configure_embedding_btn: QPushButton
     clear_embedding_btn: QPushButton
+    model_config_thread: Optional[ModelConfigPreparationThread]
+    collection_info_thread: Optional[CollectionInfoLoadThread]
 
     def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
         super().__init__(parent)
@@ -55,6 +119,8 @@ class InfoPanel(QWidget):
         self.current_collection = ""
         self.current_database = ""
         self.cache_manager = get_cache_manager()
+        self.model_config_thread = None
+        self.collection_info_thread = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -366,44 +432,47 @@ class InfoPanel(QWidget):
             self.provider_details_label.setText("N/A")
             return
 
-        try:
-            # Get collection info from database
-            collection_info = self.connection.get_collection_info(self.current_collection)
+        # Cancel any existing collection info thread
+        if self.collection_info_thread and self.collection_info_thread.isRunning():
+            self.collection_info_thread.quit()
+            self.collection_info_thread.wait()
 
-            if not collection_info:
-                self._update_label(self.collection_name_label, self.current_collection)
-                self._update_label(self.vector_dim_label, "Unable to retrieve")
-                self._update_label(self.distance_metric_label, "Unable to retrieve")
-                self._update_label(self.total_points_label, "Unable to retrieve")
-                self.schema_label.setText("Unable to retrieve collection info")
-                self.provider_details_label.setText("N/A")
-                return
+        # Start thread to load collection info
+        self.collection_info_thread = CollectionInfoLoadThread(
+            self.connection, self.current_collection, self
+        )
+        self.collection_info_thread.finished.connect(self._on_collection_info_loaded)
+        self.collection_info_thread.error.connect(self._on_collection_info_error)
+        self.collection_info_thread.start()
 
-            # Display the info
-            self._display_collection_info(collection_info)
+    def _on_collection_info_loaded(self, collection_info: dict) -> None:
+        """Handle collection info loaded."""
+        # Display the info
+        self._display_collection_info(collection_info)
 
-            # Save to cache
-            if self.current_database and self.current_collection:
-                log_info(
-                    "[InfoPanel] Saving collection info to cache: db='%s', coll='%s'",
-                    self.current_database,
-                    self.current_collection,
-                )
-                self.cache_manager.update(
-                    self.current_database,
-                    self.current_collection,
-                    user_inputs={"collection_info": collection_info},
-                )
-                log_info("[InfoPanel] ✓ Saved collection info to cache.")
+        # Save to cache
+        if self.current_database and self.current_collection:
+            log_info(
+                "[InfoPanel] Saving collection info to cache: db='%s', coll='%s'",
+                self.current_database,
+                self.current_collection,
+            )
+            self.cache_manager.update(
+                self.current_database,
+                self.current_collection,
+                user_inputs={"collection_info": collection_info},
+            )
+            log_info("[InfoPanel] ✓ Saved collection info to cache.")
 
-        except Exception as e:
-            self._update_label(self.collection_name_label, self.current_collection)
-            self._update_label(self.vector_dim_label, "Error")
-            self._update_label(self.distance_metric_label, "Error")
-            self._update_label(self.total_points_label, "Error")
-            self.schema_label.setText(f"Error: {e!s}")
-            self.schema_label.setStyleSheet("color: red; padding-left: 20px;")
-            self.provider_details_label.setText("N/A")
+    def _on_collection_info_error(self, error_message: str) -> None:
+        """Handle collection info loading error."""
+        self._update_label(self.collection_name_label, self.current_collection)
+        self._update_label(self.vector_dim_label, "Error")
+        self._update_label(self.distance_metric_label, "Error")
+        self._update_label(self.total_points_label, "Error")
+        self.schema_label.setText(f"Error: {error_message}")
+        self.schema_label.setStyleSheet("color: red; padding-left: 20px;")
+        self.provider_details_label.setText("N/A")
 
     def _display_collection_info(self, collection_info: dict[str, Any]):
         """Display collection information (from cache or fresh query)."""
@@ -605,28 +674,42 @@ class InfoPanel(QWidget):
         if not effective_connection_id:
             return
 
-        # Show loading immediately; preparing can touch DB/registry
+        # Cancel any existing model config thread
+        if self.model_config_thread and self.model_config_thread.isRunning():
+            self.model_config_thread.quit()
+            self.model_config_thread.wait()
+
+        # Show loading dialog
         from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
         loading = LoadingDialog("Preparing model configuration...", self)
         loading.show_loading("Preparing model configuration...")
-        QApplication.processEvents()
 
-        from vector_inspector.services.settings_service import SettingsService
-        from vector_inspector.ui.dialogs import EmbeddingConfigDialog, ProviderTypeDialog
+        # Start thread to load collection info
+        self.model_config_thread = ModelConfigPreparationThread(
+            self.connection, self.current_collection, self
+        )
+        self.model_config_thread.finished.connect(
+            lambda info: self._on_model_config_loaded(info, loading, effective_connection_id)
+        )
+        self.model_config_thread.error.connect(lambda err: self._on_model_config_error(err, loading))
+        self.model_config_thread.start()
 
-        # Get current collection info
-        try:
-            collection_info = self.connection.get_collection_info(self.current_collection)
-        finally:
-            # Hide loading before presenting dialogs
-            loading.hide_loading()
+    def _on_model_config_loaded(
+        self, collection_info: dict, loading, effective_connection_id: str
+    ) -> None:
+        """Handle model configuration data loaded."""
+        loading.hide_loading()
+
         if not collection_info:
             return
 
         vector_dim = collection_info.get("vector_dimension")
         if not vector_dim or vector_dim == "Unknown":
             return
+
+        from vector_inspector.services.settings_service import SettingsService
+        from vector_inspector.ui.dialogs import EmbeddingConfigDialog, ProviderTypeDialog
 
         # Get current configuration if any
         settings = SettingsService()
@@ -664,8 +747,6 @@ class InfoPanel(QWidget):
             self.current_collection, vector_dim, provider_type, current_model, current_type, self
         )
 
-        # Optionally show brief loading while populating models
-        # (dialog itself handles content; only show if provider lists are large)
         result = model_dialog.exec()
 
         if result == QDialog.DialogCode.Accepted:
@@ -690,26 +771,12 @@ class InfoPanel(QWidget):
 
                 # Update the display immediately to show new model
                 self.embedding_model_label.setText(f"{model_name} ({model_type})")
-                self.embedding_model_label.setStyleSheet("color: lightblue;")
+                self.embedding_model_label.setStyleSheet("")
+                self.clear_embedding_btn.setEnabled(True)
 
-                # Enable the clear button
-                self._update_clear_button_state()
+    def _on_model_config_error(self, error_message: str, loading) -> None:
+        """Handle model configuration loading error."""
+        loading.hide_loading()
+        from PySide6.QtWidgets import QMessageBox
 
-                log_info(
-                    "✓ Configured embedding model for '%s': %s (%s)",
-                    self.current_collection,
-                    model_name,
-                    model_type,
-                )
-
-        elif result == 2:  # Clear configuration
-            # Remove from settings using the new SettingsService method
-            settings.remove_embedding_model(
-                self.connection.name if self.connection else "",
-                self.current_collection,
-            )
-
-            # Refresh display
-            self._update_embedding_model_display(collection_info)
-
-            log_info("✓ Cleared embedding model configuration for '%s'", self.current_collection)
+        QMessageBox.warning(self, "Error", error_message)

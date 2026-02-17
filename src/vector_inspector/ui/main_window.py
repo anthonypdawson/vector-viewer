@@ -476,24 +476,12 @@ class MainWindow(InspectorShell):
 
             # Update views if this is the active connection
             if connection_id == self.connection_manager.get_active_connection_id():
-                # Show loading immediately when collection changes
+                # Update views for collection (operations are threaded internally)
                 if collection_name:
-                    self.connection_controller.loading_dialog.show_loading(
-                        f"Loading collection '{collection_name}'..."
-                    )
-                    QApplication.processEvents()
-                    try:
-                        self._update_views_for_collection(collection_name)
-                    finally:
-                        self.connection_controller.loading_dialog.hide_loading()
+                    self._update_views_for_collection(collection_name)
                 else:
                     # Clear collection from views
-                    self.connection_controller.loading_dialog.show_loading("Clearing collection...")
-                    QApplication.processEvents()
-                    try:
-                        self._update_views_for_collection(None)
-                    finally:
-                        self.connection_controller.loading_dialog.hide_loading()
+                    self._update_views_for_collection(None)
 
     def _on_collections_updated(self, connection_id: str, collections: list):
         """Handle collections list updated."""
@@ -510,18 +498,9 @@ class MainWindow(InspectorShell):
 
     def _on_collection_selected_from_panel(self, connection_id: str, collection_name: str):
         """Handle collection selection from connection panel."""
-        # Show loading dialog while switching collections
-        self.connection_controller.loading_dialog.show_loading(
-            f"Loading collection '{collection_name}'..."
-        )
-        QApplication.processEvents()
-
-        try:
-            # The connection manager already handled setting active collection
-            # Just update the views
-            self._update_views_for_collection(collection_name)
-        finally:
-            self.connection_controller.loading_dialog.hide_loading()
+        # The connection manager already handled setting active collection
+        # Just update the views (operations are threaded internally)
+        self._update_views_for_collection(collection_name)
 
     def _update_views_with_connection(self, connection: Optional[ConnectionInstance]):
         """Update all views with a new connection."""
