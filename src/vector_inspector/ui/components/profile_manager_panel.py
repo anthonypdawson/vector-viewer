@@ -838,6 +838,9 @@ class ProfileEditorDialog(QDialog):
                 QMessageBox.warning(self, "Failed", "Connection test failed.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Connection test error: {e}")
+        finally:
+            if progress.isVisible():
+                progress.close()
 
     def _get_config(self) -> dict:
         """Get configuration from form."""
