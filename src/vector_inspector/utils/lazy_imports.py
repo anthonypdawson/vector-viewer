@@ -5,6 +5,7 @@ from typing import Any
 _plotly_cache = None
 _sklearn_cache = {}
 _numpy_cache = None
+_weaviate_cache = None
 
 
 def get_plotly():
@@ -74,3 +75,13 @@ def get_sklearn_model(model_name: str) -> Any:
 
             _sklearn_cache["OPTICS"] = OPTICS
     return _sklearn_cache[model_name]
+
+
+def get_weaviate_client() -> Any:
+    """Lazy import weaviate client."""
+    global _weaviate_cache
+    if _weaviate_cache is None:
+        import weaviate
+
+        _weaviate_cache = weaviate
+    return _weaviate_cache

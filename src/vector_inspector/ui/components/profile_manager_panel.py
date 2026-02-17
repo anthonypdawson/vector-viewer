@@ -346,6 +346,7 @@ class ProfileEditorDialog(QDialog):
         self.provider_combo.addItem("PgVector/PostgreSQL", "pgvector")
         self.provider_combo.addItem("Pinecone", "pinecone")
         self.provider_combo.addItem("LanceDB", "lancedb")
+        self.provider_combo.addItem("Weaviate", "weaviate")
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         form_layout.addRow("Provider:", self.provider_combo)
 
@@ -460,6 +461,9 @@ class ProfileEditorDialog(QDialog):
         """Handle provider change."""
         provider = self.provider_combo.currentData()
 
+        # Reset persistent radio button text (may be changed for specific providers)
+        self.persistent_radio.setText("Persistent (Local File)")
+
         # Update default port
         if provider == "qdrant":
             if self.port_input.text() == "8000":
@@ -469,6 +473,8 @@ class ProfileEditorDialog(QDialog):
                 self.port_input.setText("8000")
         elif provider == "pgvector" and self.port_input.text() in ("8000", "6333"):
             self.port_input.setText("5432")
+        elif provider == "weaviate" and self.port_input.text() in ("8000", "6333", "5432"):
+            self.port_input.setText("8080")
 
         if provider == "lancedb":
             self.persistent_radio.setEnabled(True)
@@ -493,6 +499,32 @@ class ProfileEditorDialog(QDialog):
             self.host_input.setEnabled(False)
             self.port_input.setEnabled(False)
             self.api_key_input.setEnabled(True)
+        elif provider == "weaviate":
+            # Weaviate supports HTTP (local/cloud) and Persistent (embedded)
+            self.persistent_radio.setEnabled(True)
+            self.persistent_radio.setText("Embedded (In-Process)")
+            self.http_radio.setEnabled(True)
+            self.ephemeral_radio.setEnabled(False)
+            
+            is_persistent = self.persistent_radio.isChecked()
+            if is_persistent:
+                # Embedded mode: enable path for persistence directory
+                self.path_input.setEnabled(True)
+                self.path_browse_btn.setEnabled(True)
+                self.host_input.setEnabled(False)
+                self.port_input.setEnabled(False)
+                self.api_key_input.setEnabled(False)
+            else:
+                # HTTP mode: enable host/port/api_key
+                self.path_input.setEnabled(False)
+                self.path_browse_btn.setEnabled(False)
+                self.host_input.setEnabled(True)
+                self.port_input.setEnabled(True)
+                self.api_key_input.setEnabled(True)
+            
+            self.database_input.setEnabled(False)
+            self.user_input.setEnabled(False)
+            self.password_input.setEnabled(False)
         elif provider == "pgvector":
             self.persistent_radio.setEnabled(False)
             self.http_radio.setEnabled(True)
@@ -536,6 +568,16 @@ class ProfileEditorDialog(QDialog):
             self.host_input.setEnabled(False)
             self.port_input.setEnabled(False)
             self.api_key_input.setEnabled(True)
+        elif provider == "weaviate":
+            # Embedded mode uses path, HTTP mode uses host/port/api_key
+            self.path_input.setEnabled(is_persistent)
+            self.path_browse_btn.setEnabled(is_persistent)
+            self.host_input.setEnabled(is_http)
+            self.port_input.setEnabled(is_http)
+            self.api_key_input.setEnabled(is_http)
+            self.database_input.setEnabled(False)
+            self.user_input.setEnabled(False)
+            self.password_input.setEnabled(False)
         elif provider == "pgvector":
             self.path_input.setEnabled(False)
             self.path_browse_btn.setEnabled(False)
@@ -617,6 +659,7 @@ class ProfileEditorDialog(QDialog):
         from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
         from vector_inspector.core.connections.pinecone_connection import PineconeConnection
         from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+        from vector_inspector.core.connections.weaviate_connection import WeaviateConnection
 
         try:
             if provider == "pinecone":
@@ -637,6 +680,23 @@ class ProfileEditorDialog(QDialog):
                 )
             elif provider == "lancedb":
                 conn = LanceDBConnection(uri=self.path_input.text())
+            elif provider == "weaviate":
+                # Build Weaviate connection parameters
+                config_type = config.get("type")
+                if config_type == "persistent":
+                    # Embedded mode
+                    conn = WeaviateConnection(
+                        mode="embedded",
+                        persistence_directory=self.path_input.text(),
+                    )
+                else:
+                    # HTTP mode (local or cloud)
+                    conn = WeaviateConnection(
+                        host=self.host_input.text() if config_type == "http" else None,
+                        port=int(self.port_input.text()) if config_type == "http" else None,
+                        url=config.get("url"),
+                        api_key=self.api_key_input.text() if self.api_key_input.text() else None,
+                    )
             else:
                 conn = QdrantConnection(**self._get_connection_kwargs(config))
 
