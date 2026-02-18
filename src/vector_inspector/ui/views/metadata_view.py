@@ -1,6 +1,7 @@
 """Metadata browsing and data view."""
 
 from datetime import UTC
+from functools import partial
 from typing import Any, Optional
 
 from PySide6.QtCore import Qt, QTimer
@@ -1062,7 +1063,9 @@ class MetadataView(QWidget):
             format_type,
             parent=self,
         )
-        self.import_thread.finished.connect(lambda data, count: self._on_import_finished(data, count, file_path))
+        self.import_thread.finished.connect(
+            partial(self._on_import_finished, file_path=file_path)
+        )
         self.import_thread.error.connect(self._on_import_error)
         self.import_thread.progress.connect(self._on_import_progress)
         self.import_thread.start()
