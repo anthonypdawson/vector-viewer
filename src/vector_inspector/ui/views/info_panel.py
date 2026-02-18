@@ -774,6 +774,27 @@ class InfoPanel(QWidget):
                 self.embedding_model_label.setStyleSheet("")
                 self.clear_embedding_btn.setEnabled(True)
 
+        elif result == 2:  # Clear configuration
+            # Remove from settings using the new SettingsService method
+            settings.remove_embedding_model(
+                self.connection.name if self.connection else "",
+                self.current_collection,
+            )
+
+            # Clear cache to ensure fresh collection info on next load
+            if effective_connection_id:
+                self.cache_manager.invalidate(effective_connection_id, self.current_collection)
+                log_info(
+                    "Cleared embedding model configuration and cache for collection: %s",
+                    self.current_collection,
+                )
+
+            # Update the display to reflect that no model is configured
+            self.embedding_model_label.setText("Not configured")
+            self.clear_embedding_btn.setEnabled(False)
+
+            log_info("✓ Cleared embedding model configuration for '%s'", self.current_collection)
+
     def _on_model_config_error(self, error_message: str, loading) -> None:
         """Handle model configuration loading error."""
         loading.hide_loading()
