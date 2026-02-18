@@ -34,6 +34,7 @@ from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
+from vector_inspector.ui.views.search_threads import SearchThread
 
 
 class SearchView(QWidget):
@@ -49,6 +50,7 @@ class SearchView(QWidget):
     filter_group: QGroupBox
     search_button: QPushButton
     loading_dialog: LoadingDialog
+    search_thread: Optional[Any]
     cache_manager: Any
     connection: Optional[ConnectionInstance]
     current_collection: str
@@ -64,6 +66,7 @@ class SearchView(QWidget):
         self.current_database = ""
         self.search_results = None
         self.loading_dialog = LoadingDialog("Searching...", self)
+        self.search_thread = None
         self.cache_manager = get_cache_manager()
         self._setup_ui()
 
@@ -364,64 +367,72 @@ class SearchView(QWidget):
                 filter_summary = self.filter_builder.get_filter_summary()
                 self.results_status.setText(f"Searching with filters: {filter_summary}")
 
+        # Store search context for use in handlers
+        self._search_client_filters = client_filters
+        self._search_correlation_id = str(uuid.uuid4())
+        self._search_start_time = time.time()
+        self._search_server_filter = server_filter
+        self._search_n_results = n_results
+        self._search_query_text = query_text
+
+        # Cancel any existing search thread
+        if self.search_thread and self.search_thread.isRunning():
+            self.search_thread.quit()
+            self.search_thread.wait()
+
+        # Create and start search thread
+        self.search_thread = SearchThread(
+            self.connection,
+            self.current_collection,
+            query_text,
+            n_results,
+            server_filter,
+            parent=self,
+        )
+        self.search_thread.finished.connect(self._on_search_finished)
+        self.search_thread.error.connect(self._on_search_error)
+
         # Show loading indicator
         self.loading_dialog.show_loading("Searching for similar vectors...")
-        QApplication.processEvents()
+        self.search_thread.start()
 
-        # Generate correlation ID and start timing
-        correlation_id = str(uuid.uuid4())
-        start_time = time.time()
+    def _on_search_finished(self, results: dict[str, Any]) -> None:
+        """Handle successful search completion."""
+        self.loading_dialog.hide_loading()
+
+        # Calculate duration and send telemetry
+        duration_ms = int((time.time() - self._search_start_time) * 1000)
         result_count = 0
-        query_success = False
 
         try:
-            # Always pass query_texts; provider handles embedding if needed
-            results = self.connection.query_collection(
-                self.current_collection,
-                query_texts=[query_text],
-                n_results=n_results,
-                where=server_filter,
+            provider_type = (
+                type(self.connection._connection).__name__.replace("Connection", "").lower()
+                if hasattr(self.connection, "_connection")
+                else "unknown"
             )
-            query_success = bool(results)
-        finally:
-            self.loading_dialog.hide_loading()
-            duration_ms = int((time.time() - start_time) * 1000)
+            if results and results.get("ids") and len(results["ids"]) > 0:
+                result_count = len(results["ids"][0])
 
-            # Send query telemetry
-            try:
-                provider_type = (
-                    type(self.connection._connection).__name__.replace("Connection", "").lower()
-                    if hasattr(self.connection, "_connection")
-                    else "unknown"
-                )
-                if results and results.get("ids") and len(results["ids"]) > 0:
-                    result_count = len(results["ids"][0])
-
-                telemetry = TelemetryService()
-                telemetry.queue_event(
-                    {
-                        "event_name": "query.executed",
-                        "metadata": {
-                            "query_type": "similarity",
-                            "db_type": provider_type,
-                            "result_count": result_count,
-                            "latency_ms": duration_ms,
-                            "correlation_id": correlation_id,
-                            "has_filters": bool(server_filter or client_filters),
-                            "success": query_success,
-                        },
-                    }
-                )
-                telemetry.send_batch()
-            except Exception:
-                pass  # Best effort telemetry
-
-        if not results:
-            self.results_status.setText("Search failed")
-            self.results_table.setRowCount(0)
-            if hasattr(self, "details_pane"):
-                self.details_pane.update_item(None)
-            return
+            telemetry = TelemetryService()
+            telemetry.queue_event(
+                {
+                    "event_name": "query.executed",
+                    "metadata": {
+                        "query_type": "similarity",
+                        "db_type": provider_type,
+                        "result_count": result_count,
+                        "latency_ms": duration_ms,
+                        "correlation_id": self._search_correlation_id,
+                        "has_filters": bool(
+                            self._search_server_filter or self._search_client_filters
+                        ),
+                        "success": True,
+                    },
+                }
+            )
+            telemetry.send_batch()
+        except Exception:
+            pass  # Best effort telemetry
 
         # Check if results have the expected structure
         if (
@@ -436,14 +447,14 @@ class SearchView(QWidget):
             return
 
         # Apply client-side filters if any
-        if client_filters and results:
+        if self._search_client_filters and results:
             # Restructure results for filtering
             filter_data = {
                 "ids": results.get("ids", [[]])[0],
                 "documents": results.get("documents", [[]])[0],
                 "metadatas": results.get("metadatas", [[]])[0],
             }
-            filtered = apply_client_side_filters(filter_data, client_filters)
+            filtered = apply_client_side_filters(filter_data, self._search_client_filters)
 
             # Restructure back to query results format
             results = {
@@ -467,15 +478,54 @@ class SearchView(QWidget):
             self.cache_manager.update(
                 self.current_database,
                 self.current_collection,
-                search_query=query_text,
+                search_query=self._search_query_text,
                 search_results=results,
                 user_inputs={
-                    "n_results": n_results,
+                    "n_results": self._search_n_results,
                     "filters": self.filter_builder.to_dict()
                     if hasattr(self.filter_builder, "to_dict")
                     else {},
                 },
             )
+
+    def _on_search_error(self, error_message: str) -> None:
+        """Handle search error."""
+        self.loading_dialog.hide_loading()
+
+        # Send telemetry for failed search
+        duration_ms = int((time.time() - self._search_start_time) * 1000)
+        try:
+            provider_type = (
+                type(self.connection._connection).__name__.replace("Connection", "").lower()
+                if hasattr(self.connection, "_connection")
+                else "unknown"
+            )
+
+            telemetry = TelemetryService()
+            telemetry.queue_event(
+                {
+                    "event_name": "query.executed",
+                    "metadata": {
+                        "query_type": "similarity",
+                        "db_type": provider_type,
+                        "result_count": 0,
+                        "latency_ms": duration_ms,
+                        "correlation_id": self._search_correlation_id,
+                        "has_filters": bool(
+                            self._search_server_filter or self._search_client_filters
+                        ),
+                        "success": False,
+                    },
+                }
+            )
+            telemetry.send_batch()
+        except Exception:
+            pass  # Best effort telemetry
+
+        self.results_status.setText(f"Search failed: {error_message}")
+        self.results_table.setRowCount(0)
+        if hasattr(self, "details_pane"):
+            self.details_pane.update_item(None)
 
     def _on_row_double_clicked(self, index):
         """Handle double-click on a row to view item details."""

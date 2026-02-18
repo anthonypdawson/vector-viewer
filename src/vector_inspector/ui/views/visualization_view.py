@@ -11,7 +11,6 @@ from typing import Any, Optional
 import numpy as np
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QHBoxLayout,
     QLabel,
@@ -80,6 +79,39 @@ class ClusteringThread(QThread):
             self.error.emit(str(e))
 
 
+class VisualizationDataLoadThread(QThread):
+    """Background thread for loading visualization data."""
+
+    finished = Signal(dict)  # data
+    error = Signal(str)
+
+    def __init__(self, connection, collection, sample_size, parent=None):
+        super().__init__(parent)
+        self.connection = connection
+        self.collection = collection
+        self.sample_size = sample_size
+
+    def run(self):
+        """Load data from collection."""
+        try:
+            if not self.connection:
+                self.error.emit("No database connection available")
+                return
+
+            if self.sample_size is None:
+                data = self.connection.get_all_items(self.collection)
+            else:
+                data = self.connection.get_all_items(self.collection, limit=self.sample_size)
+
+            if data:
+                self.finished.emit(data)
+            else:
+                self.error.emit("Failed to load data")
+        except Exception as e:
+            traceback.print_exc()
+            self.error.emit(str(e))
+
+
 class VisualizationView(QWidget):
     """View for visualizing vectors in 2D/3D using modular panels."""
 
@@ -93,6 +125,7 @@ class VisualizationView(QWidget):
         self.current_data = None
         self.reduced_data = None
         self.visualization_thread = None
+        self.data_load_thread = None
         self.clustering_thread = None
         self.temp_html_files = []
         self.cluster_labels = None
@@ -167,22 +200,33 @@ class VisualizationView(QWidget):
             QMessageBox.warning(self, "No Collection", "Please select a collection first.")
             return
 
-        # Load data with embeddings (show loading immediately)
-        self.loading_dialog.show_loading("Loading data for visualization...")
-        QApplication.processEvents()
-
         if self.use_all_checkbox.isChecked():
             sample_size = None
         else:
             sample_size = self.sample_spin.value()
 
-        try:
-            if sample_size is None:
-                data = self.connection.get_all_items(self.current_collection)
-            else:
-                data = self.connection.get_all_items(self.current_collection, limit=sample_size)
-        finally:
-            self.loading_dialog.hide_loading()
+        # Cancel any existing data load thread
+        if self.data_load_thread and self.data_load_thread.isRunning():
+            self.data_load_thread.quit()
+            self.data_load_thread.wait()
+
+        # Create and start data load thread
+        self.data_load_thread = VisualizationDataLoadThread(
+            self.connection,
+            self.current_collection,
+            sample_size,
+            parent=self,
+        )
+        self.data_load_thread.finished.connect(self._on_data_loaded)
+        self.data_load_thread.error.connect(self._on_data_load_error)
+
+        # Show loading dialog during data load
+        self.loading_dialog.show_loading("Loading data for visualization...")
+        self.data_load_thread.start()
+
+    def _on_data_loaded(self, data: dict) -> None:
+        """Handle successful data load."""
+        self.loading_dialog.hide_loading()
 
         if (
             data is None
@@ -214,8 +258,16 @@ class VisualizationView(QWidget):
         self.visualization_thread.error.connect(self._on_reduction_error)
         # Show loading during reduction
         self.loading_dialog.show_loading("Reducing dimensions...")
-        QApplication.processEvents()
         self.visualization_thread.start()
+
+    def _on_data_load_error(self, error_message: str) -> None:
+        """Handle data load error."""
+        self.loading_dialog.hide_loading()
+        QMessageBox.warning(
+            self,
+            "Load Error",
+            f"Failed to load data: {error_message}",
+        )
 
     def _on_reduction_finished(self, reduced_data: Any):
         """Handle dimensionality reduction completion."""
@@ -265,42 +317,62 @@ class VisualizationView(QWidget):
 
         # Load data if not already loaded
         if self.current_data is None:
-            self.loading_dialog.show_loading("Loading data for clustering...")
-            QApplication.processEvents()
             if self.use_all_checkbox.isChecked():
                 sample_size = None
             else:
                 sample_size = self.sample_spin.value()
-            try:
-                if sample_size is None:
-                    data = self.connection.get_all_items(self.current_collection)
-                else:
-                    data = self.connection.get_all_items(self.current_collection, limit=sample_size)
-            finally:
-                self.loading_dialog.hide_loading()
 
-            if (
-                data is None
-                or not data
-                or "embeddings" not in data
-                or data["embeddings"] is None
-                or len(data["embeddings"]) == 0
-            ):
-                QMessageBox.warning(
-                    self,
-                    "No Data",
-                    "No embeddings found in collection.",
-                )
-                return
-            self.current_data = data
+            # Cancel any existing data load thread
+            if self.data_load_thread and self.data_load_thread.isRunning():
+                self.data_load_thread.quit()
+                self.data_load_thread.wait()
 
+            # Create and start data load thread for clustering
+            self.data_load_thread = VisualizationDataLoadThread(
+                self.connection,
+                self.current_collection,
+                sample_size,
+                parent=self,
+            )
+            self.data_load_thread.finished.connect(self._on_clustering_data_loaded)
+            self.data_load_thread.error.connect(self._on_data_load_error)
+
+            # Show loading dialog during data load
+            self.loading_dialog.show_loading("Loading data for clustering...")
+            self.data_load_thread.start()
+        else:
+            # Data already loaded, proceed with clustering
+            self._start_clustering()
+
+    def _on_clustering_data_loaded(self, data: dict) -> None:
+        """Handle successful data load for clustering."""
+        self.loading_dialog.hide_loading()
+
+        if (
+            data is None
+            or not data
+            or "embeddings" not in data
+            or data["embeddings"] is None
+            or len(data["embeddings"]) == 0
+        ):
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "No embeddings found in collection.",
+            )
+            return
+
+        self.current_data = data
+        self._start_clustering()
+
+    def _start_clustering(self) -> None:
+        """Start clustering with already loaded data."""
         # Get algorithm and parameters from panel
         algorithm = self.clustering_panel.cluster_algorithm_combo.currentText()
         params = self.clustering_panel.get_clustering_params()
 
         # Run clustering in background thread
         self.loading_dialog.show_loading("Running clustering...")
-        QApplication.processEvents()
         self.clustering_panel.cluster_button.setEnabled(False)
 
         self.clustering_thread = ClusteringThread(

@@ -29,6 +29,37 @@ from PySide6.QtWidgets import (
 from vector_inspector.services.profile_service import ConnectionProfile, ProfileService
 
 
+class TestConnectionThread(QThread):
+    """Background thread for testing database connections."""
+
+    finished = Signal(bool, str)  # success, message
+    error = Signal(str)  # error_message
+
+    def __init__(self, connection, provider: str, parent=None):
+        """
+        Initialize test connection thread.
+
+        Args:
+            connection: The VectorDBConnection instance to test
+            provider: Provider name (for database fetching)
+            parent: Parent QObject
+        """
+        super().__init__(parent)
+        self.connection = connection
+        self.provider = provider
+
+    def run(self):
+        """Run the connection test in background."""
+        try:
+            success = self.connection.connect()
+            if success:
+                self.finished.emit(True, "Connection test successful!")
+            else:
+                self.finished.emit(False, "Connection test failed.")
+        except Exception as e:
+            self.error.emit(f"Connection test error: {e}")
+
+
 class ProfileManagerPanel(QWidget):
     """Panel for managing saved connection profiles.
 
@@ -44,6 +75,7 @@ class ProfileManagerPanel(QWidget):
     connect_btn: QPushButton
     edit_btn: QPushButton
     delete_btn: QPushButton
+    test_thread: Optional[TestConnectionThread]
 
     def __init__(self, profile_service: ProfileService, parent=None):
         """
@@ -55,6 +87,7 @@ class ProfileManagerPanel(QWidget):
         """
         super().__init__(parent)
         self.profile_service = profile_service
+        self.test_thread = None
 
         self._setup_ui()
         self._connect_signals()
@@ -321,6 +354,7 @@ class ProfileEditorDialog(QDialog):
         self.profile_service = profile_service
         self.profile = profile
         self.is_edit_mode = profile is not None
+        self.test_thread = None
 
         self.setWindowTitle("Edit Profile" if self.is_edit_mode else "New Profile")
         self.setMinimumWidth(500)
@@ -750,11 +784,6 @@ class ProfileEditorDialog(QDialog):
 
     def _test_connection(self):
         """Test the connection with current settings."""
-
-        # Test connection progress dialog
-        progress = QProgressDialog("Testing connection...", "Cancel", 0, 0, self)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.show()
         # Get config
         config = self._get_config()
         provider = self.provider_combo.currentData()
@@ -823,24 +852,50 @@ class ProfileEditorDialog(QDialog):
                         )
             else:
                 conn = QdrantConnection(**self._get_connection_kwargs(config))
-
-            success = conn.connect()
-            progress.close()
-
-            if success:
-                QMessageBox.information(self, "Success", "Connection test successful!")
-                # For pgvector, populate database suggestions after a successful connect
-                if provider == "pgvector":
-                    with contextlib.suppress(Exception):
-                        self._fetch_databases()
-                conn.disconnect()
-            else:
-                QMessageBox.warning(self, "Failed", "Connection test failed.")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Connection test error: {e}")
-        finally:
-            if progress.isVisible():
-                progress.close()
+            QMessageBox.critical(self, "Error", f"Failed to create connection: {e}")
+            return
+
+        # Cancel any existing test thread
+        if self.test_thread and self.test_thread.isRunning():
+            self.test_thread.quit()
+            self.test_thread.wait()
+
+        # Show progress dialog
+        progress = QProgressDialog("Testing connection...", "Cancel", 0, 0, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.show()
+
+        # Create and start test thread
+        self.test_thread = TestConnectionThread(conn, provider, self)
+        self.test_thread.finished.connect(
+            lambda success, msg: self._on_test_finished(success, msg, conn, provider, progress)
+        )
+        self.test_thread.error.connect(lambda err: self._on_test_error(err, progress))
+        self.test_thread.start()
+
+    def _on_test_finished(
+        self, success: bool, message: str, conn, provider: str, progress: QProgressDialog
+    ) -> None:
+        """Handle test connection completion."""
+        progress.close()
+
+        if success:
+            QMessageBox.information(self, "Success", message)
+            # For pgvector, populate database suggestions after a successful connect
+            if provider == "pgvector":
+                with contextlib.suppress(Exception):
+                    self._fetch_databases()
+            # Disconnect after successful test
+            with contextlib.suppress(Exception):
+                conn.disconnect()
+        else:
+            QMessageBox.warning(self, "Failed", message)
+
+    def _on_test_error(self, error_message: str, progress: QProgressDialog) -> None:
+        """Handle test connection error."""
+        progress.close()
+        QMessageBox.critical(self, "Error", error_message)
 
     def _get_config(self) -> dict:
         """Get configuration from form."""

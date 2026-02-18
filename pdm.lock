@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:b0397326df392721f52defc7426ee809daf65955a18b2ce17f62d5defa5412ee"
+content_hash = "sha256:b34c21e1d6914d6ec2529b3ee54696f8b1c03bf72de2570de6cd40a7d8ea5755"
 
 [[metadata.targets]]
 requires_python = ">=3.11,<3.14"
@@ -81,6 +81,21 @@ marker = "python_version >= \"3.11\" and python_version < \"3.14\""
 files = [
     {file = "attrs-25.4.0-py3-none-any.whl", hash = "sha256:adcf7e2a1fb3b36ac48d97835bb6d8ade15b8dcce26aba8bf1d14847b57a3373"},
     {file = "attrs-25.4.0.tar.gz", hash = "sha256:16d5969b87f0859ef33a48b35d55ac1be6e42ae49d5e853b597db70c35c57e11"},
+]
+
+[[package]]
+name = "authlib"
+version = "1.6.8"
+requires_python = ">=3.9"
+summary = "The ultimate Python library in building OAuth and OpenID Connect servers and clients."
+groups = ["default"]
+marker = "python_version >= \"3.11\" and python_version < \"3.14\""
+dependencies = [
+    "cryptography",
+]
+files = [
+    {file = "authlib-1.6.8-py2.py3-none-any.whl", hash = "sha256:97286fd7a15e6cfefc32771c8ef9c54f0ed58028f1322de6a2a7c969c3817888"},
+    {file = "authlib-1.6.8.tar.gz", hash = "sha256:41ae180a17cf672bc784e4a518e5c82687f1fe1e98b0cafaeda80c8e4ab2d1cb"},
 ]
 
 [[package]]
@@ -319,7 +334,7 @@ version = "2.0.0"
 requires_python = ">=3.9"
 summary = "Foreign Function Interface for Python calling C code."
 groups = ["default"]
-marker = "python_version >= \"3.11\" and platform_python_implementation != \"PyPy\" and sys_platform == \"linux\" and python_version < \"3.14\""
+marker = "python_version >= \"3.11\" and platform_python_implementation != \"PyPy\" and python_version < \"3.14\""
 dependencies = [
     "pycparser; implementation_name != \"PyPy\"",
 ]
@@ -686,7 +701,7 @@ version = "46.0.4"
 requires_python = "!=3.9.0,!=3.9.1,>=3.8"
 summary = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
 groups = ["default"]
-marker = "python_version >= \"3.11\" and python_version < \"3.14\" and sys_platform == \"linux\""
+marker = "python_version >= \"3.11\" and python_version < \"3.14\""
 dependencies = [
     "cffi>=1.14; python_full_version == \"3.8.*\" and platform_python_implementation != \"PyPy\"",
     "cffi>=2.0.0; python_full_version >= \"3.9\" and platform_python_implementation != \"PyPy\"",
@@ -980,6 +995,16 @@ dependencies = [
 files = [
     {file = "googleapis_common_protos-1.72.0-py3-none-any.whl", hash = "sha256:4299c5a82d5ae1a9702ada957347726b167f9f8d1fc352477702a1e851ff4038"},
     {file = "googleapis_common_protos-1.72.0.tar.gz", hash = "sha256:e55a601c1b32b52d7a3e65f43563e2aa61bcd737998ee672ac9b951cd49319f5"},
+]
+
+[[package]]
+name = "gputil"
+version = "1.4.0"
+summary = "GPUtil is a Python module for getting the GPU status from NVIDA GPUs using nvidia-smi."
+groups = ["default"]
+marker = "python_version >= \"3.11\" and python_version < \"3.14\""
+files = [
+    {file = "GPUtil-1.4.0.tar.gz", hash = "sha256:099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9"},
 ]
 
 [[package]]
@@ -3117,7 +3142,7 @@ version = "3.0"
 requires_python = ">=3.10"
 summary = "C parser in Python"
 groups = ["default"]
-marker = "python_version >= \"3.11\" and platform_python_implementation != \"PyPy\" and sys_platform == \"linux\" and implementation_name != \"PyPy\" and python_version < \"3.14\""
+marker = "python_version >= \"3.11\" and platform_python_implementation != \"PyPy\" and implementation_name != \"PyPy\" and python_version < \"3.14\""
 files = [
     {file = "pycparser-3.0-py3-none-any.whl", hash = "sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992"},
     {file = "pycparser-3.0.tar.gz", hash = "sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29"},
@@ -4514,6 +4539,18 @@ files = [
 ]
 
 [[package]]
+name = "validators"
+version = "0.35.0"
+requires_python = ">=3.9"
+summary = "Python Data Validation for Humans™"
+groups = ["default"]
+marker = "python_version >= \"3.11\" and python_version < \"3.14\""
+files = [
+    {file = "validators-0.35.0-py3-none-any.whl", hash = "sha256:e8c947097eae7892cb3d26868d637f79f47b4a0554bc6b80065dfe5aac3705dd"},
+    {file = "validators-0.35.0.tar.gz", hash = "sha256:992d6c48a4e77c81f1b4daba10d16c3a9bb0dbb79b3a19ea847ff0928e70497a"},
+]
+
+[[package]]
 name = "watchfiles"
 version = "1.1.1"
 requires_python = ">=3.9"
@@ -4590,6 +4627,27 @@ marker = "python_version >= \"3.11\" and python_version < \"3.14\""
 files = [
     {file = "wcwidth-0.6.0-py3-none-any.whl", hash = "sha256:1a3a1e510b553315f8e146c54764f4fb6264ffad731b3d78088cdb1478ffbdad"},
     {file = "wcwidth-0.6.0.tar.gz", hash = "sha256:cdc4e4262d6ef9a1a57e018384cbeb1208d8abbc64176027e2c2455c81313159"},
+]
+
+[[package]]
+name = "weaviate-client"
+version = "4.19.2"
+requires_python = ">=3.10"
+summary = "A python native Weaviate client"
+groups = ["default"]
+marker = "python_version >= \"3.11\" and python_version < \"3.14\""
+dependencies = [
+    "authlib<2.0.0,>=1.6.5",
+    "deprecation<3.0.0,>=2.1.0",
+    "grpcio<1.80.0,>=1.59.5",
+    "httpx<0.29.0,>=0.26.0",
+    "protobuf<7.0.0,>=4.21.6",
+    "pydantic<3.0.0,>=2.12.0",
+    "validators<1.0.0,>=0.34.0",
+]
+files = [
+    {file = "weaviate_client-4.19.2-py3-none-any.whl", hash = "sha256:e78306d47c574c4035c87223e480bb77bd6e54142a21c4c58522dd43019fe493"},
+    {file = "weaviate_client-4.19.2.tar.gz", hash = "sha256:99e76e912c95762436089cd5feedbfeea31e892aa13b6ad94729a2a54b316c45"},
 ]
 
 [[package]]

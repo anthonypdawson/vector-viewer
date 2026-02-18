@@ -37,6 +37,17 @@ class MyWidget(QWidget):
 ## Example Instruction
 > When generating Python classes, always include class-level type annotations for all attributes, even if they are set in `__init__` or other methods.
 
+## Exception handling
+> When raising exceptions in generated code, use the `from` keyword to chain exceptions for better debugging. For example, instead of:
+```python
+        except ImportError:
+            raise ImportError("PyTorch required for CLIP. Install with: pip install torch")
+```
+Use:
+```python
+        except ImportError as ie:
+            raise ImportError("PyTorch required for CLIP. Install with: pip install torch") from ie
+```
 ---
 
 This rule must be followed for all future code contributions and AI-generated code.

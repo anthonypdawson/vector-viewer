@@ -1,6 +1,7 @@
 """Metadata browsing and data view."""
 
 from datetime import UTC
+from functools import partial
 from typing import Any, Optional
 
 from PySide6.QtCore import Qt, QTimer
@@ -31,7 +32,9 @@ from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_dialog import ItemDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.ui.views.metadata import (
+    DataImportThread,
     DataLoadThread,
+    ItemUpdateThread,
     MetadataContext,
     export_data,
     find_updated_item_page,
@@ -52,6 +55,8 @@ class MetadataView(QWidget):
     loading_dialog: LoadingDialog
     settings_service: SettingsService
     load_thread: Optional[DataLoadThread]
+    update_thread: Optional[ItemUpdateThread]
+    import_thread: Optional[DataImportThread]
     filter_reload_timer: QTimer
 
     def __init__(
@@ -67,6 +72,8 @@ class MetadataView(QWidget):
         self.loading_dialog = LoadingDialog("Loading data...", self)
         self.settings_service = SettingsService()
         self.load_thread = None
+        self.update_thread = None
+        self.import_thread = None
         self.filter_reload_timer = QTimer()
         self.filter_reload_timer.setSingleShot(True)
         self.filter_reload_timer.timeout.connect(self._reload_with_filters)
@@ -806,112 +813,112 @@ class MetadataView(QWidget):
                     if has_embedding(existing):
                         embeddings_arg = [existing]
 
+            # Cancel any existing update thread
+            if self.update_thread and self.update_thread.isRunning():
+                self.update_thread.quit()
+                self.update_thread.wait()
+
+            # Create and start update thread
+            self.update_thread = ItemUpdateThread(
+                self.ctx.connection,
+                self.ctx.current_collection,
+                updated_data,
+                embeddings_arg,
+                parent=self,
+            )
+            self.update_thread.finished.connect(self._on_item_update_finished)
+            self.update_thread.error.connect(self._on_item_update_error)
+
             # Show loading dialog during update
             self.loading_dialog.show_loading("Updating item...")
+            self.update_thread.start()
 
-            try:
-                # Update item in collection
-                if embeddings_arg is None:
-                    # No embeddings passed -> will trigger regeneration when update_items supports it
-                    success = self.ctx.connection.update_items(
-                        self.ctx.current_collection,
-                        ids=[updated_data["id"]],
-                        documents=[updated_data["document"]] if updated_data["document"] else None,
-                        metadatas=[updated_data["metadata"]] if updated_data["metadata"] else None,
-                    )
-                else:
-                    # Pass existing embeddings to preserve them
-                    success = self.ctx.connection.update_items(
-                        self.ctx.current_collection,
-                        ids=[updated_data["id"]],
-                        documents=[updated_data["document"]] if updated_data["document"] else None,
-                        metadatas=[updated_data["metadata"]] if updated_data["metadata"] else None,
-                        embeddings=embeddings_arg,
-                    )
-            finally:
-                # Always hide loading dialog when update completes
-                self.loading_dialog.hide_loading()
+    def _on_item_update_finished(self, updated_data: dict[str, Any]) -> None:
+        """Handle successful item update."""
+        self.loading_dialog.hide_loading()
 
-            if success:
-                # Invalidate cache after updating item
-                if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(
-                        self.ctx.current_database, self.ctx.current_collection
-                    )
+        # Invalidate cache after updating item
+        if self.ctx.current_database and self.ctx.current_collection:
+            self.ctx.cache_manager.invalidate(
+                self.ctx.current_database, self.ctx.current_collection
+            )
 
-                # Show info about embedding regeneration/preservation when applicable
-                try:
-                    generate_on_edit = bool(self.generate_on_edit_checkbox.isChecked())
-                except Exception:
-                    generate_on_edit = False
+        # Show info about embedding regeneration/preservation when applicable
+        try:
+            generate_on_edit = bool(self.generate_on_edit_checkbox.isChecked())
+        except Exception:
+            generate_on_edit = False
 
-                regen_count = 0
-                try:
-                    regen_count = int(
-                        getattr(self.ctx.connection, "_last_regenerated_count", 0) or 0
-                    )
-                except Exception:
-                    regen_count = 0
+        regen_count = 0
+        try:
+            regen_count = int(
+                getattr(self.ctx.connection, "_last_regenerated_count", 0) or 0
+            )
+        except Exception:
+            regen_count = 0
 
-                if generate_on_edit:
-                    if regen_count > 0:
-                        QMessageBox.information(
-                            self,
-                            "Success",
-                            f"Item updated and embeddings regenerated ({regen_count}).",
-                        )
-                    else:
-                        QMessageBox.information(
-                            self, "Success", "Item updated. No embeddings were regenerated."
-                        )
-                else:
-                    # embedding preservation mode
-                    if regen_count == 0:
-                        QMessageBox.information(
-                            self, "Success", "Item updated and existing embedding preserved."
-                        )
-                    else:
-                        QMessageBox.information(
-                            self,
-                            "Success",
-                            "Item updated.",  # Fallback message
-                        )
-
-                # If embeddings were regenerated, server ordering may have changed.
-                # Locate the updated item on the server (respecting server-side filters),
-                # compute its page and load that page while selecting the row. This
-                # ensures the edited item becomes visible even if the backend moved it.
-                try:
-                    # Quick in-place update: if the updated item is still on the
-                    # currently-visible page, update the in-memory page and
-                    # table cells and emit `dataChanged` so the view refreshes
-                    # immediately without a full reload.
-                    if update_row_in_place(self.table, self.ctx, updated_data):
-                        return
-
-                    # If in-place update failed, try to find the item on the server
-                    server_filter = None
-                    if self.filter_group.isChecked() and self.filter_builder.has_filters():
-                        server_filter, _ = self.filter_builder.get_filters_split()
-                    self.ctx.server_filter = server_filter
-
-                    target_page = find_updated_item_page(
-                        self.ctx,
-                        updated_data.get("id"),
-                    )
-                    if target_page is not None:
-                        # set selection flag and load target page
-                        self.ctx._select_id_after_load = updated_data.get("id")
-                        self.ctx.current_page = target_page
-                        self._load_data()
-                        return
-                except Exception:
-                    pass
-
-                # Fallback: reload current page so UI reflects server state
-                self._load_data()
+        if generate_on_edit:
+            if regen_count > 0:
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"Item updated and embeddings regenerated ({regen_count}).",
+                )
             else:
-                QMessageBox.warning(self, "Error", "Failed to update item.")
+                QMessageBox.information(
+                    self, "Success", "Item updated. No embeddings were regenerated."
+                )
+        else:
+            # embedding preservation mode
+            if regen_count == 0:
+                QMessageBox.information(
+                    self, "Success", "Item updated and existing embedding preserved."
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    "Item updated.",  # Fallback message
+                )
+
+        # If embeddings were regenerated, server ordering may have changed.
+        # Locate the updated item on the server (respecting server-side filters),
+        # compute its page and load that page while selecting the row. This
+        # ensures the edited item becomes visible even if the backend moved it.
+        try:
+            # Quick in-place update: if the updated item is still on the
+            # currently-visible page, update the in-memory page and
+            # table cells and emit `dataChanged` so the view refreshes
+            # immediately without a full reload.
+            if update_row_in_place(self.table, self.ctx, updated_data):
+                return
+
+            # If in-place update failed, try to find the item on the server
+            server_filter = None
+            if self.filter_group.isChecked() and self.filter_builder.has_filters():
+                server_filter, _ = self.filter_builder.get_filters_split()
+            self.ctx.server_filter = server_filter
+
+            target_page = find_updated_item_page(
+                self.ctx,
+                updated_data.get("id"),
+            )
+            if target_page is not None:
+                # set selection flag and load target page
+                self.ctx._select_id_after_load = updated_data.get("id")
+                self.ctx.current_page = target_page
+                self._load_data()
+                return
+        except Exception:
+            pass
+
+        # Fallback: reload current page so UI reflects server state
+        self._load_data()
+
+    def _on_item_update_error(self, error_message: str) -> None:
+        """Handle item update error."""
+        self.loading_dialog.hide_loading()
+        QMessageBox.warning(self, "Update Error", f"Failed to update item: {error_message}")
 
     def select_item_by_id(self, item_id: str) -> bool:
         """Select and scroll to a row by item ID.
@@ -1019,19 +1026,76 @@ class MetadataView(QWidget):
 
     def _import_data(self, format_type: str) -> None:
         """Import data from file into collection."""
-        imported_data = import_data(
-            self,
-            self.ctx,
-            format_type,
-            self.loading_dialog,
+        if not self.ctx.current_collection:
+            QMessageBox.warning(self, "No Collection", "Please select a collection first.")
+            return
+
+        # Select file to import
+        file_filters: dict[str, str] = {
+            "json": "JSON Files (*.json)",
+            "csv": "CSV Files (*.csv)",
+            "parquet": "Parquet Files (*.parquet)",
+        }
+
+        # Get last used directory from settings
+        last_dir = self.settings_service.get("last_import_export_dir", "")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, f"Import from {format_type.upper()}", last_dir, file_filters[format_type]
         )
-        if imported_data:
-            # Invalidate cache after import
-            if self.ctx.current_database and self.ctx.current_collection:
-                self.ctx.cache_manager.invalidate(
-                    self.ctx.current_database, self.ctx.current_collection
-                )
-            self._load_data()
+
+        if not file_path:
+            return
+
+        # Cancel any existing import thread
+        if self.import_thread and self.import_thread.isRunning():
+            self.import_thread.quit()
+            self.import_thread.wait()
+
+        # Show loading dialog
+        self.loading_dialog.show_loading("Importing data...")
+
+        # Start import thread
+        self.import_thread = DataImportThread(
+            self.ctx.connection,
+            self.ctx.current_collection,
+            file_path,
+            format_type,
+            parent=self,
+        )
+        self.import_thread.finished.connect(
+            partial(self._on_import_finished, file_path=file_path)
+        )
+        self.import_thread.error.connect(self._on_import_error)
+        self.import_thread.progress.connect(self._on_import_progress)
+        self.import_thread.start()
+
+    def _on_import_progress(self, message: str) -> None:
+        """Handle import progress update."""
+        self.loading_dialog.setLabelText(message)
+
+    def _on_import_finished(self, imported_data: dict, item_count: int, file_path: str) -> None:
+        """Handle import completion."""
+        self.loading_dialog.hide_loading()
+
+        # Save the directory for next time
+        from pathlib import Path
+
+        self.settings_service.set("last_import_export_dir", str(Path(file_path).parent))
+
+        QMessageBox.information(self, "Import Successful", f"Imported {item_count} items.")
+
+        # Invalidate cache after import
+        if self.ctx.current_database and self.ctx.current_collection:
+            self.ctx.cache_manager.invalidate(
+                self.ctx.current_database, self.ctx.current_collection
+            )
+        self._load_data()
+
+    def _on_import_error(self, error_message: str) -> None:
+        """Handle import error."""
+        self.loading_dialog.hide_loading()
+        QMessageBox.warning(self, "Import Failed", error_message)
 
     def closeEvent(self, event):
         """Save state before closing."""

@@ -504,6 +504,12 @@ class QdrantConnection(VectorDBConnection):
 
         Returns:
             True if successful, False otherwise
+            
+        Note:
+            Qdrant requires UUIDs for point IDs. If a provided ID is not a valid UUID,
+            it will be converted to a deterministic UUID using uuid5, and the original
+            ID will be preserved in the metadata under the key "original_id" to ensure
+            data preservation during import/export or migration operations.
         """
         if not self._client:
             return False
@@ -538,16 +544,35 @@ class QdrantConnection(VectorDBConnection):
             if not ids:
                 ids = [str(uuid.uuid4()) for _ in documents]
 
+            # Ensure metadatas list exists and matches document count
+            if not metadatas:
+                metadatas = [{} for _ in documents]
+            else:
+                # Pad metadatas if needed
+                while len(metadatas) < len(documents):
+                    metadatas.append({})
+
             # Build points
             points = []
             for i, (doc_id, document, embedding) in enumerate(zip(ids, documents, embeddings)):
                 # Build payload with document and metadata
                 payload = {"document": document}
                 if metadatas and i < len(metadatas):
+                    # Copy metadata to avoid modifying the original
+                    if metadatas[i] is None:
+                        metadatas[i] = {}
                     payload.update(metadatas[i])
 
                 # Convert string ID to UUID
-                point_id = self._to_uuid(doc_id)
+                # If the ID is not a valid UUID, we preserve the original ID in metadata
+                # This ensures data preservation when importing/exporting or migrating data
+                try:
+                    point_id = uuid.UUID(doc_id)
+                except (ValueError, AttributeError):
+                    # ID is not a valid UUID, generate one and preserve original
+                    point_id = uuid.uuid5(uuid.NAMESPACE_DNS, str(doc_id))
+                    # Store original ID in metadata for data preservation
+                    payload["original_id"] = doc_id
 
                 point = PointStruct(id=point_id, vector=embedding, payload=payload)
                 points.append(point)

@@ -13,7 +13,6 @@ Add new items below as needed. When an item is scheduled for a phase or release,
   - Probably should store as a dict of defaults somewhere
 - Improve error handling and user feedback for database connection issues
 
-
 - Refactor UI MainWindow as suggested here https://copilot.microsoft.com/shares/2657KN5vHbc1qNwLHQMc3
 - Continue testing search similar feature and fix any bugs found
 - Allow create collections

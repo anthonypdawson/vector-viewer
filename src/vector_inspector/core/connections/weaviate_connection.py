@@ -701,7 +701,7 @@ class WeaviateConnection(VectorDBConnection):
                 response = collection.query.near_vector(
                     near_vector=query_vector,
                     limit=n_results,
-                    return_metadata=["distance", "vector"],
+                    return_metadata=["distance"],
                     include_vector=True,
                     filters=weaviate_filter,
                 )

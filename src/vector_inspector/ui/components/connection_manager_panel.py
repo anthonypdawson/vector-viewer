@@ -1,9 +1,10 @@
 """Connection manager panel showing multiple active connections."""
 
+from typing import Any
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -25,6 +26,10 @@ from vector_inspector.core.connection_manager import (
     ConnectionState,
 )
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.ui.components.connection_manager_threads import (
+    DeleteCollectionThread,
+    RefreshCollectionsThread,
+)
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
 
@@ -336,14 +341,35 @@ class ConnectionManagerPanel(QWidget):
         # Show loading while refreshing
         loading = LoadingDialog("Refreshing collections...", self)
         loading.show_loading("Refreshing collections...")
-        QApplication.processEvents()
-        try:
-            collections = instance.list_collections()
-            self.connection_manager.update_collections(connection_id, collections)
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to refresh collections: {e}")
-        finally:
-            loading.hide_loading()
+
+        # Cancel any existing refresh thread
+        if (
+            hasattr(self, "_refresh_thread")
+            and self._refresh_thread
+            and self._refresh_thread.isRunning()
+        ):
+            self._refresh_thread.quit()
+            self._refresh_thread.wait()
+
+        # Create and start refresh thread
+        self._refresh_thread = RefreshCollectionsThread(instance, parent=self)
+        self._refresh_thread.finished.connect(
+            lambda collections: self._on_refresh_finished(connection_id, collections, loading)
+        )
+        self._refresh_thread.error.connect(lambda error: self._on_refresh_error(error, loading))
+        self._refresh_thread.start()
+
+    def _on_refresh_finished(
+        self, connection_id: str, collections: list, loading: LoadingDialog
+    ) -> None:
+        """Handle successful collections refresh."""
+        loading.hide_loading()
+        self.connection_manager.update_collections(connection_id, collections)
+
+    def _on_refresh_error(self, error_message: str, loading: LoadingDialog) -> None:
+        """Handle refresh error."""
+        loading.hide_loading()
+        QMessageBox.warning(self, "Error", f"Failed to refresh collections: {error_message}")
 
     def _disconnect_connection(self, connection_id: str):
         """Disconnect a connection."""
@@ -463,34 +489,68 @@ class ConnectionManagerPanel(QWidget):
         # Perform deletion
         loading = LoadingDialog("Deleting collection...", self)
         loading.show_loading(f"Deleting collection '{collection_name}'...")
-        try:
-            success = instance.delete_collection(collection_name)
 
-            if success:
-                # Remove embedding model info from settings
-                profile_name = instance.name
-                SettingsService().remove_embedding_model(profile_name, collection_name)
+        # Cancel any existing delete thread
+        if (
+            hasattr(self, "_delete_thread")
+            and self._delete_thread
+            and self._delete_thread.isRunning()
+        ):
+            self._delete_thread.quit()
+            self._delete_thread.wait()
 
-                # Refresh collections list
-                collections = instance.list_collections()
-                self.connection_manager.update_collections(connection_id, collections)
-
-                # Clear active collection if it was this one
-                if instance.active_collection == collection_name:
-                    self.connection_manager.set_active_collection(connection_id, None)
-
-                QMessageBox.information(
-                    self,
-                    "Collection Deleted",
-                    f"Collection '{collection_name}' has been permanently deleted.",
-                )
-            else:
-                QMessageBox.warning(
-                    self, "Deletion Failed", f"Failed to delete collection '{collection_name}'."
-                )
-        except Exception as e:
-            QMessageBox.critical(
-                self, "Deletion Error", f"Error deleting collection '{collection_name}': {e}"
+        # Create and start delete thread
+        self._delete_thread = DeleteCollectionThread(
+            instance,
+            collection_name,
+            instance.name,
+            parent=self,
+        )
+        self._delete_thread.finished.connect(
+            lambda collections: self._on_delete_finished(
+                connection_id, collection_name, collections, loading, instance
             )
-        finally:
-            loading.hide_loading()
+        )
+        self._delete_thread.error.connect(
+            lambda error: self._on_delete_error(collection_name, error, loading)
+        )
+        self._delete_thread.start()
+
+    def _on_delete_finished(
+        self,
+        connection_id: str,
+        collection_name: str,
+        collections: list,
+        loading: LoadingDialog,
+        instance: Any,
+    ) -> None:
+        """Handle successful collection deletion."""
+        loading.hide_loading()
+
+        # Remove embedding model info from settings
+        profile_name = instance.name
+        SettingsService().remove_embedding_model(profile_name, collection_name)
+
+        # Update collections list
+        self.connection_manager.update_collections(connection_id, collections)
+
+        # Clear active collection if it was this one
+        if instance.active_collection == collection_name:
+            self.connection_manager.set_active_collection(connection_id, None)
+
+        QMessageBox.information(
+            self,
+            "Collection Deleted",
+            f"Collection '{collection_name}' has been permanently deleted.",
+        )
+
+    def _on_delete_error(
+        self, collection_name: str, error_message: str, loading: LoadingDialog
+    ) -> None:
+        """Handle delete error."""
+        loading.hide_loading()
+        QMessageBox.critical(
+            self,
+            "Deletion Error",
+            f"Error deleting collection '{collection_name}': {error_message}",
+        )
