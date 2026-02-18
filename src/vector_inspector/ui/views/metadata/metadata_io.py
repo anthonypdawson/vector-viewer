@@ -177,62 +177,9 @@ def import_data(
             QMessageBox.warning(parent, "Import Failed", "Failed to parse import file.")
             return None
 
-        # Handle Qdrant-specific requirements (similar to backup/restore)
-        from vector_inspector.core.connections.qdrant_connection import QdrantConnection
-
-        if isinstance(connection, QdrantConnection):
-            # Check if embeddings are missing and need to be generated
-            if not imported_data.get("embeddings"):
-                loading_dialog.setLabelText("Generating embeddings for Qdrant...")
-                QApplication.processEvents()
-                try:
-                    from sentence_transformers import SentenceTransformer
-
-                    model = SentenceTransformer("all-MiniLM-L6-v2")
-                    documents = imported_data.get("documents", [])
-                    imported_data["embeddings"] = model.encode(
-                        documents, show_progress_bar=False
-                    ).tolist()
-                except Exception as e:
-                    QMessageBox.warning(
-                        parent,
-                        "Import Failed",
-                        f"Qdrant requires embeddings. Failed to generate: {e}",
-                    )
-                    return None
-
-            # Convert IDs to Qdrant-compatible format (integers or UUIDs)
-            # Store original IDs in metadata
-            original_ids: list[Any] = imported_data.get("ids", [])
-            qdrant_ids: list[int] = []
-            metadatas: list[dict[str, Any]] = imported_data.get("metadatas", [])
-
-            for i, orig_id in enumerate(original_ids):
-                # Try to convert to integer, otherwise use index
-                try:
-                    # If it's like "doc_123", extract the number
-                    if isinstance(orig_id, str) and "_" in orig_id:
-                        qdrant_id = int(orig_id.split("_")[-1])
-                    else:
-                        qdrant_id = int(orig_id)
-                except (ValueError, AttributeError):
-                    # Use index as ID if can't convert
-                    qdrant_id = i
-
-                qdrant_ids.append(qdrant_id)
-
-                # Store original ID in metadata
-                if i < len(metadatas):
-                    if metadatas[i] is None:
-                        metadatas[i] = {}
-                    metadatas[i]["original_id"] = orig_id
-                else:
-                    metadatas.append({"original_id": orig_id})
-
-            imported_data["ids"] = qdrant_ids
-            imported_data["metadatas"] = metadatas
-
         # Add items to collection
+        # Connection-specific preprocessing (e.g., embedding generation, ID conversion)
+        # is handled by the connection's add_items method
         success = connection.add_items(
             current_collection,
             documents=imported_data["documents"],
