@@ -702,6 +702,7 @@ class WeaviateConnection(VectorDBConnection):
                     near_vector=query_vector,
                     limit=n_results,
                     return_metadata=["distance"],
+                    include_vector=True,
                     filters=weaviate_filter,
                 )
 
