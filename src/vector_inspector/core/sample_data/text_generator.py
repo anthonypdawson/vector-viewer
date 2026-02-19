@@ -48,7 +48,23 @@ SENTENCES = [
     "provides solutions to complex real-world problems",
     "has attracted significant investment and attention",
     "will likely define the future of technology",
+    "is driving productivity gains across sectors",
+    "is unlocking new abilities for small teams",
+    "is improving decision-making through better insights",
+    "is increasingly being adopted in production systems",
+    "is enabling developers to build smarter applications",
+    "is creating new roles and job functions",
+    "is challenging existing regulatory frameworks",
+    "is lowering the barrier to entry for innovation",
+    "is powering breakthroughs in data-driven research",
+    "is helping automate repetitive tasks effectively",
+    "is evolving alongside improvements in hardware",
+    "is prompting a rethinking of traditional workflows",
+    "is bridging gaps between disciplines and teams",
+    "is influencing curriculum and education trends",
+    "is fostering research collaborations worldwide",
 ]
+
 
 MARKDOWN_SECTIONS = [
     (
