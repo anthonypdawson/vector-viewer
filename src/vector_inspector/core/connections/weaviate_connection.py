@@ -28,6 +28,7 @@ https://docs.weaviate.io/weaviate
 https://docs.weaviate.io/weaviate/client-libraries/python/notes-best-practices
 """
 
+import numbers
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -89,7 +90,7 @@ class WeaviateConnection(VectorDBConnection):
         try:
             # Import weaviate client lazily
             self._weaviate_module = get_weaviate_client()
-            weaviate = self._weaviate_module
+            weaviate: Any = self._weaviate_module
 
             # Determine connection mode
             is_embedded = self.mode == "embedded" or (
@@ -403,7 +404,7 @@ class WeaviateConnection(VectorDBConnection):
             return False
 
         try:
-            weaviate = self._weaviate_module
+            weaviate: Any = self._weaviate_module
 
             # Map distance string to Weaviate distance metric
             distance_map = {
@@ -496,7 +497,7 @@ class WeaviateConnection(VectorDBConnection):
             collection = self._client.collections.get(collection_name)
 
             # Prepare data objects for batch insert
-            weaviate = self._weaviate_module
+            weaviate: Any = self._weaviate_module
             data_objects = []
 
             for i in range(len(documents)):
@@ -506,6 +507,18 @@ class WeaviateConnection(VectorDBConnection):
                 if metadatas and i < len(metadatas):
                     # Add metadata fields as properties
                     properties.update(metadatas[i])
+
+                    # Normalize numeric metadata: convert numbers that are
+                    # integer-valued (e.g. 54.0) to plain Python ints so they
+                    # appear as "54" in Weaviate instead of "54.0".
+                    for _k, _v in list(properties.items()):
+                        try:
+                            if isinstance(_v, numbers.Number) and float(_v).is_integer():
+                                # If it has no fractional part, coerce to int
+                                properties[_k] = str(int(_v))
+                        except Exception:
+                            # Be conservative on errors and leave value as-is
+                            continue
 
                 # Handle UUID for this item
                 item_uuid = None
@@ -762,7 +775,7 @@ class WeaviateConnection(VectorDBConnection):
             return None
 
         try:
-            weaviate = self._weaviate_module
+            weaviate: Any = self._weaviate_module
             Filter = weaviate.classes.query.Filter
 
             # Simple implementation: support basic field equality and operators
