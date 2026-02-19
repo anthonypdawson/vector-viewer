@@ -65,8 +65,8 @@ dev = [
 ]
 
 [tool.ruff]
-line-length = 100
-target-version = "py311"
+line-length = 120
+target-version = "py312"
 extend-exclude = ["build", "dist", ".venv"]
 
 [tool.ruff.format]

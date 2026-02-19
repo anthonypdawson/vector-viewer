@@ -3,15 +3,15 @@
 Authoritative instructions live in the private pro repo:
 `vector-studio/copilot-instructions.md`.
 
+
+
 This file defines the rules Copilot must follow when assisting with
 Vector Inspector (VI) and Vector Studio (VS). It establishes memory
 policies, architectural boundaries, coding conventions, testing
 patterns, and implementation rules. Copilot must treat this file as
 the authoritative guide for all reasoning and code generation.
 
-============================================================
-1. COPILOT’S ROLE & SCOPE
-============================================================
+## 1. COPILOT’S ROLE & SCOPE
 
 Copilot assists with:
 - Vector Inspector (free-tier PySide6 desktop app)
@@ -31,9 +31,7 @@ Copilot must NOT:
 - Invent color schemes or visual styles
 - Break existing workflows or patterns
 
-============================================================
-2. MEMORY PERSISTENCE POLICY
-============================================================
+## 2. MEMORY PERSISTENCE POLICY
 
 Vector Studio uses an MCP (Model Context Protocol) memory server for
 persistent project knowledge. The Markdown file
@@ -47,9 +45,7 @@ persistent project knowledge. The Markdown file
 persisting, you must record it in the MCP server, and then update the
 Markdown file to reflect the current state.”
 
-------------------------------------------------------------
-2.1 REQUIRED PERSISTENCE CHECKLIST (ALWAYS PRESENT)
-------------------------------------------------------------
+### 2.1 REQUIRED PERSISTENCE CHECKLIST (ALWAYS PRESENT)
 
 Whenever a decision is made or new project information should be remembered:
 
@@ -73,15 +69,11 @@ Whenever a decision is made or new project information should be remembered:
 6. Confirm destructive changes  
    Ask before irreversible updates.
 
-============================================================
-3. VI / VS ARCHITECTURAL BOUNDARIES & UI OWNERSHIP
-============================================================
+## 3. VI / VS ARCHITECTURAL BOUNDARIES & UI OWNERSHIP
 
 This is one of the most important sections for Copilot.
 
-------------------------------------------------------------
-3.1 UI OWNERSHIP MODEL
-------------------------------------------------------------
+### 3.1 UI OWNERSHIP MODEL
 
 Vector Inspector (VI) owns ALL UI elements:
 - All QActions, QMenus, QMenuItems, QToolButtons, QDockWidgets, QWidget controls
@@ -92,9 +84,7 @@ Vector Inspector (VI) owns ALL UI elements:
 Vector Studio (VS) MUST NOT create or duplicate UI controls.  
 VS only injects behavior into existing VI controls.
 
-------------------------------------------------------------
-3.2 DISABLED STUBS IN INSPECTOR
-------------------------------------------------------------
+### 3.2 DISABLED STUBS IN INSPECTOR
 
 When a feature is Premium:
 - VI creates the UI control
@@ -104,15 +94,13 @@ When a feature is Premium:
 
 Example pattern:
 
-    actionViewSimilar->setEnabled(false);
-    actionViewSimilar->setToolTip("Requires Vector Studio");
-    connect(actionViewSimilar, &QAction::triggered, this, &MainWindow::premiumStub);
+    actionViewSimilar.setEnabled(false);
+    actionViewSimilar.setToolTip("Requires Vector Studio");
+    connect(actionViewSimilar, QAction.triggered, this, MainWindow.premiumStub);
 
 `premiumStub()` must do nothing except optionally show a simple “Requires Vector Studio” message.
 
-------------------------------------------------------------
-3.3 STUDIO BEHAVIOR INJECTION
-------------------------------------------------------------
+### 3.3 STUDIO BEHAVIOR INJECTION
 
 VS activates Premium features by:
 - Locating the existing VI control (never creating a new one)
@@ -125,9 +113,7 @@ VS MUST NOT:
 - Create new controls
 - Duplicate menu entries
 
-------------------------------------------------------------
-3.4 NO CROSS-LAYER LOGIC LEAKAGE
-------------------------------------------------------------
+### 3.4 NO CROSS-LAYER LOGIC LEAKAGE
 
 - VI contains no Premium logic.  
 - VS contains no UI definitions.
@@ -135,21 +121,15 @@ VS MUST NOT:
 All advanced workflows, algorithms, and implementations live in VS.  
 All UI surfaces live in VI.
 
-------------------------------------------------------------
-3.5 ABSOLUTE RULE
-------------------------------------------------------------
+### 3.5 ABSOLUTE RULE
 
 - Never duplicate a control.  
 - Never move UI creation into VS.  
 - Never place implementation logic in VI.  
 
-============================================================
-4. CODING SAFETY RULES & CONVENTIONS
-============================================================
+## 4. CODING SAFETY RULES & CONVENTIONS
 
-------------------------------------------------------------
-4.1 IMPORT STYLE
-------------------------------------------------------------
+### 4.1 IMPORT STYLE
 
 - Always use absolute imports within the project:
   `from vector_inspector.core.embedding_utils import ...`
@@ -157,9 +137,7 @@ All UI surfaces live in VI.
 - Use relative imports only for very small, tightly-coupled internal modules
   when clearly justified.
 
-------------------------------------------------------------
-4.2 EMBEDDING / ARRAY TRUTHINESS CHECKS
-------------------------------------------------------------
+### 4.2 EMBEDDING / ARRAY TRUTHINESS CHECKS
 
 Never use direct truthiness checks on embeddings/vectors/arrays.
 
@@ -179,9 +157,7 @@ Do NOT use:
 
 See `docs/EMBEDDING_TRUTHINESS.md` for detailed patterns and rationale.
 
-------------------------------------------------------------
-4.3 LOGGING
-------------------------------------------------------------
+### 4.3 LOGGING
 
 - Use the project's logging utility (`vector_inspector.utils.logging`) for all logging.
 - Never use raw `print()` or stdlib `logging` directly.
@@ -189,9 +165,7 @@ See `docs/EMBEDDING_TRUTHINESS.md` for detailed patterns and rationale.
 
     from vector_inspector.core.logging import log_info, log_error
 
-------------------------------------------------------------
-4.4 LAZY IMPORTS
-------------------------------------------------------------
+### 4.4 LAZY IMPORTS
 
 - Use `utils/lazy_imports.py` for heavy/optional dependencies
   (sklearn, plotly, umap-learn, hdbscan).
@@ -202,9 +176,7 @@ See `docs/EMBEDDING_TRUTHINESS.md` for detailed patterns and rationale.
 
 - Prevents slow startup times and allows graceful degradation if optional deps are missing.
 
-------------------------------------------------------------
-4.5 TYPE ANNOTATIONS
-------------------------------------------------------------
+### 4.5 TYPE ANNOTATIONS
 
 - Use the built-in generic types with PEP 585 syntax (`list`, `dict`, `set`, `tuple`) for type annotations on Python 3.9+.
   - Example: prefer `foo: list[int]` and `bar: dict[str, Any]` over `typing.List` / `typing.Dict`.
@@ -212,9 +184,75 @@ See `docs/EMBEDDING_TRUTHINESS.md` for detailed patterns and rationale.
   - Rationale: built-in generics are clearer, concise, and avoid deprecation warnings from `typing`.
   - Exception: continue to use `typing` constructs (e.g., `TypedDict`, `Protocol`, or `Literal`) when those specific types are required or when supporting older Python versions.
 
-============================================================
-5. TESTING RULES (PYTEST + QT)
-============================================================
+### 4.6 RUFF LINTING RULES
+
+This project uses Ruff for linting and formatting. Keep these settings
+synced with `pyproject.toml` so contributors and automation follow the
+same rules.
+
+- **Config (source: `pyproject.toml`)**
+
+```toml
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["build", "dist", ".venv"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "I", "UP", "B", "A", "C4", "DTZ",
+    "T20", "RET", "SIM", "ARG", "RUF",
+]
+ignore = ["E501", "I001", "UP045", "SIM105"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["vector_inspector"]
+```
+
+- **Quick rules summary**
+  - **Line length:** 120 characters.
+  - **Target Python:** 3.12 (`py312`) — runtime still supports >=3.11.
+  - **Excludes:** `build`, `dist`, `.venv`.
+  - **Formatting:** prefer double quotes, use spaces for indentation, platform line endings.
+  - **Ignored rules:** `E501` (line length enforced by config), `I001`, `UP045`, `SIM105`.
+  - **isort:** combine `as` imports and treat `vector_inspector` as first-party.
+
+**Selected rule groups (human-readable)**
+
+- `E`: pycodestyle (PEP 8) errors — style errors such as indentation, spacing, and other PEP 8 violations.
+- `F`: pyflakes checks — static issues like undefined names and unused imports.
+- `W`: pycodestyle warnings — non-fatal style warnings.
+- `I`: `isort` import-order and grouping checks.
+- `UP`: pyupgrade rules — automatic Python syntax modernizations (e.g., prefer f-strings, modern dict/set syntax).
+- `B`: Bugbear plugin — heuristics catching likely bugs and suboptimal patterns.
+- `A`: annotation checks (flake8-annotations style) — enforces presence/consistency of type annotations.
+- `C4`: complexity-related checks — code complexity metrics and related concerns.
+- `DTZ`: documentation/typing helpers (plugin group) — docstring/typing-related lint checks (project uses the DTZ group where applicable).
+- `T20`: typing/typing-safety checks (plugin group) — additional type-related checks gathered by Ruff plugins.
+- `RET`: return-value / early-return related checks — rules about return usage and control-flow returns.
+- `SIM`: simplification suggestions — replace complex constructs with simpler equivalents (e.g., simplify boolean expressions, comprehensions).
+- `ARG`: argument-related checks — issues with function arguments (shadowing, unused args, incorrect defaults).
+- `RUF`: Ruff-specific rules — core Ruff rules that don't map to upstream tools.
+
+**Ignored rule examples (why they're suppressed)**
+
+- `E501`: line-length — intentionally ignored because `line-length` is enforced centrally via the `line-length` setting.
+- `I001`: isort startup/internal informational message — suppressed to avoid noisy diagnostics.
+- `UP045`: a specific pyupgrade rule chosen to be ignored in this codebase.
+- `SIM105`: a specific simplification rule that the team has chosen not to enforce.
+
+If you want the full, line-by-line meaning for any of these codes (for example `SIM105` or `UP045`), ask Copilot which ones and it will provide the exact rule description and rationale.
+
+If you update these settings in `pyproject.toml`, please mirror the change here.
+
+## 5. TESTING RULES (PYTEST + QT)
 
 ### 5.1 Running Tests
 
@@ -247,9 +285,7 @@ See `docs/EMBEDDING_TRUTHINESS.md` for detailed patterns and rationale.
 - Mock `ConnectionInstance` when testing UI components.
 - CI uses `QT_QPA_PLATFORM=offscreen` for headless Qt testing.
 
-============================================================
-6. PROJECT OVERVIEW & ARCHITECTURE
-============================================================
+## 6. PROJECT OVERVIEW & ARCHITECTURE
 
 ### 6.1 Project Overview
 
@@ -288,9 +324,7 @@ Core Layer (`src/vector_inspector/core/`):
 3. Service layer processes results (DR, clustering, etc.).
 4. Results returned to UI for visualization (Plotly via `QWebEngineView` or matplotlib).
 
-============================================================
-7. PROJECT CONVENTIONS
-============================================================
+## 7. PROJECT CONVENTIONS
 
 ### 7.1 Provider Abstraction
 
@@ -347,9 +381,7 @@ Core Layer (`src/vector_inspector/core/`):
 - Never use `print()` or stdlib `logging` directly.
 - Ensures consistent formatting and easier log redirection.
 
-============================================================
-8. EXTENSION SYSTEM (VECTOR STUDIO)
-============================================================
+## 8. EXTENSION SYSTEM (VECTOR STUDIO)
 
 - Hook pattern: pro features register handlers without modifying free code.
 - `table_context_menu_hook.register(handler)` → adds custom menu items to table context menus.
@@ -357,9 +389,7 @@ Core Layer (`src/vector_inspector/core/`):
 - Example: Vector Studio adds “Find Similar” via `table_context_menu_hook`.
 - Handlers are exception-safe: failures are logged but do not crash the app.
 
-============================================================
-9. COMMON IMPLEMENTATION PATTERNS
-============================================================
+## 9. COMMON IMPLEMENTATION PATTERNS
 
 ### 9.1 Adding a New Vector DB Provider
 
@@ -433,9 +463,7 @@ Core Layer (`src/vector_inspector/core/`):
 8. Save pane state on close: implement `closeEvent` that calls `self.details_pane.save_state()`.
 9. See `metadata_view.py` or `search_view.py` for full examples.
 
-============================================================
-10. DEVELOPER WORKFLOWS
-============================================================
+## 10. DEVELOPER WORKFLOWS
 
 ### 10.1 Install & Run
 
@@ -455,24 +483,18 @@ Core Layer (`src/vector_inspector/core/`):
   - `release-and-publish.yml` → publishes to PyPI on tags.
   - `nuitka.yml` → experimental native compilation.
 
-============================================================
-11. RELEASE NOTES
-============================================================
+## 11. RELEASE NOTES
 
 All release notes are added in `docs/RELEASE_REASON.md`, not in this file.  
 This file is cleared when the version is incremented and a new release is created.
 
-============================================================
-12. REFERENCES
-============================================================
+## 12. REFERENCES
 
 - `docs/architecture.md` — high-level diagram and rationale.
 - `README.md` — install, usage, feature overview.
 - `docs/artifact_resolution.md` — LLM-based similarity explanation design.
 
-============================================================
-13. AUTHORITATIVE NOTE
-============================================================
+## 13. AUTHORITATIVE NOTE
 
 Authoritative instructions live in the private pro repo:
 `vector-studio/copilot-instructions.md`.
