@@ -319,19 +319,21 @@ Core Layer (`src/vector_inspector/core/`):
 
 ### 6.3 Data Flow Pattern
 
-1. UI view calls `ConnectionInstance` method (e.g., `get_all_items()`).
-2. `ConnectionInstance.__getattr__` forwards to the provider’s `VectorDBConnection`.
-3. Service layer processes results (DR, clustering, etc.).
-4. Results returned to UI for visualization (Plotly via `QWebEngineView` or matplotlib).
+1. UI view accesses connection via `app_state.provider` (a `ConnectionInstance`).
+2. UI view calls connection method (e.g., `app_state.provider.get_all_items()`).
+3. `ConnectionInstance.__getattr__` forwards to the provider's `VectorDBConnection`.
+4. Service layer processes results (DR, clustering, etc.).
+5. Results returned to UI for visualization (Plotly via `QWebEngineView` or matplotlib).
 
 ## 7. PROJECT CONVENTIONS
 
 ### 7.1 Provider Abstraction
 
 - Never call provider SDKs directly in UI or services — always use `ConnectionInstance`.
+- Access the connection via `app_state.provider` in UI components.
 - All providers implement `VectorDBConnection` (see `core/connections/base_connection.py`).
 - `ConnectionInstance.__getattr__` forwards unknown methods to the underlying `database`.
-- Example: `connection.get_all_items()` → `ChromaDBConnection.get_all_items()`.
+- Example: `app_state.provider.get_all_items()` → `ChromaDBConnection.get_all_items()`.
 - Profile names are injected onto connections: `self.database.profile_name = name`.
 
 ### 7.2 UI Design Patterns
@@ -351,14 +353,149 @@ Core Layer (`src/vector_inspector/core/`):
 
 ### 7.3 Cache Management
 
-- `CacheManager` stores per-(database, collection) state: data, scroll position,
-  filters, search query.
+- `CacheManager` is a singleton service (see section 7.4) that stores per-(database, collection) state:
+  data, scroll position, filters, search query.
+- Access via `app_state.cache_manager` (preferred) or `CacheManager()` (deprecated).
 - Cache keys: `(database_name, collection_name)` tuples.
-- Invalidation: call `cache_manager.invalidate(db, coll)` after mutations.
-- Always check `cache_manager.get(db, coll)` before loading from DB.
+- Invalidation: call `app_state.cache_manager.invalidate(db, coll)` after mutations.
+- Always check `app_state.cache_manager.get(db, coll)` before loading from DB.
 - See `metadata_view.py` `set_collection()` for cache hit/miss pattern.
 
-### 7.4 Signal/Slot Patterns (Qt)
+**Example:**
+
+```python
+# Preferred
+cached_entry = self.app_state.cache_manager.get(database, collection)
+if cached_entry:
+    # Use cached data
+    self.populate_table(cached_entry.data)
+else:
+    # Load from database
+    data = self.app_state.provider.get_all_items(collection)
+    self.app_state.cache_manager.set(database, collection, CacheEntry(data=data))
+```
+
+### 7.4 AppState Pattern (Centralized State Management)
+
+Vector Inspector uses `AppState` as a centralized state container for application-wide services and state.
+
+**Core Services (Singleton Pattern)**
+
+Three core services use singleton pattern to prevent state inconsistencies:
+
+1. `SettingsService` - Application settings persistence
+2. `CacheManager` - Per-(database, collection) caching
+3. `EmbeddingModelRegistry` - Known embedding models registry
+
+Each service implements singleton via `__new__`:
+
+```python
+class SettingsService:
+    _instance: Optional['SettingsService'] = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if '_initialized' in self.__dict__:
+            return
+        self._initialized = True
+        # ... initialization code
+```
+
+**Why Singleton?**
+
+The singleton pattern ensures that whether code uses:
+- `app_state.settings_service` (preferred)
+- `SettingsService()` (direct instantiation)
+- `get_settings_service()` (deprecated helper)
+
+All three access the **same instance**, preventing state fragmentation.
+
+**AppState Usage**
+
+All UI views and components should receive `app_state` as a required parameter:
+
+```python
+class MetadataView(QWidget):
+    def __init__(self, app_state: AppState, task_runner: ThreadedTaskRunner):
+        super().__init__()
+        self.app_state = app_state
+        self.task_runner = task_runner
+```
+
+**DO NOT** use `Optional[AppState]` with fallback logic - this is legacy code that should be removed.
+
+**Accessing Services**
+
+Prefer `app_state` properties over direct instantiation:
+
+```python
+# PREFERRED
+settings = self.app_state.settings_service
+cache = self.app_state.cache_manager
+registry = self.app_state.model_registry
+provider = self.app_state.provider
+
+# DEPRECATED (but still works due to singleton)
+settings = SettingsService()
+cache = get_cache_manager()
+```
+
+**Signal-Based Reactivity**
+
+AppState uses Qt signals for change propagation:
+
+```python
+# AppState signals
+app_state.connection_changed.connect(self._on_connection_changed)
+app_state.collection_changed.connect(self._on_collection_changed)
+
+# SettingsService signals
+app_state.settings_service.signals.setting_changed.connect(self._on_setting_changed)
+```
+
+**Feature Flags**
+
+Feature flags are properties on AppState:
+
+```python
+if self.app_state.advanced_features_enabled:
+    # Enable advanced clustering options
+    self.hdbscan_option.setEnabled(True)
+```
+
+**Backward Compatibility**
+
+Deprecated helper functions exist for utilities and standalone dialogs:
+- `get_settings_service()` → returns `SettingsService()` singleton
+- `get_cache_manager()` → returns `CacheManager()` singleton
+- `get_model_registry()` → returns `EmbeddingModelRegistry()` singleton
+
+These are maintained for minimal disruption but new code should use `app_state.*`.
+
+**Testing**
+
+Tests can reset singletons for isolation:
+
+```python
+def test_something():
+    # Reset singleton
+    SettingsService._instance = None
+    SettingsService._initialized = False
+    
+    # Create fresh instance
+    service = SettingsService()
+```
+
+**Migration Note**
+
+The codebase has been migrated from optional AppState parameters to required parameters.
+All views now require `app_state: AppState` with no `Optional` type or legacy fallback code.
+
+### 7.5 Signal/Slot Patterns (Qt)
 
 - Connect signals to private methods:
   `button.clicked.connect(self._on_click)`.
@@ -368,14 +505,27 @@ Core Layer (`src/vector_inspector/core/`):
   `thread.finished.connect(self._on_complete)` and `thread.error.connect(self._on_error)`.
 - Debouncing: use `QTimer.singleShot()` for delayed actions (e.g., filter changes).
 
-### 7.5 Settings & Paths
+### 7.6 Settings & Paths
 
-- User settings: `~/.vector-inspector/settings.json` (managed by `SettingsService`).
+- `SettingsService` is a singleton service (see section 7.4) for application settings persistence.
+- Access via `app_state.settings_service` (preferred) or `SettingsService()` (deprecated).
+- User settings stored in: `~/.vector-inspector/settings.json`.
 - Relative paths: resolved from project root (where `pyproject.toml` is).
 - Example: `./data/chroma_db` → absolute path computed from root.
 - Connection configs: saved to settings on disconnect, auto-restored on startup.
 
-### 7.6 Logging (Project-Level)
+**Example:**
+
+```python
+# Preferred
+last_connection = self.app_state.settings_service.get_last_connection()
+self.app_state.settings_service.save_last_connection(config)
+
+# Settings signals
+self.app_state.settings_service.signals.setting_changed.connect(self._on_setting_changed)
+```
+
+### 7.7 Logging (Project-Level)
 
 - Always use `vector_inspector.utils.logging`.
 - Never use `print()` or stdlib `logging` directly.
