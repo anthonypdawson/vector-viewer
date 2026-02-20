@@ -117,7 +117,7 @@ def on_import_finished(
 
     QMessageBox.information(parent, "Import Successful", f"Imported {item_count} items.")
 
-    # Invalid cache after import
+    # Invalidate cache after import
     if ctx.current_database and ctx.current_collection:
         ctx.cache_manager.invalidate(ctx.current_database, ctx.current_collection)
 

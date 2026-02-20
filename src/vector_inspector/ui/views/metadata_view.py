@@ -35,14 +35,14 @@ from vector_inspector.ui.views.metadata import (
     export_data,
     show_context_menu,
 )
-from vector_inspector.ui.views.metadata.item_update_helpers import (
-    process_item_update_success,
-)
 from vector_inspector.ui.views.metadata.cache_helpers import try_load_from_cache
 from vector_inspector.ui.views.metadata.data_loading_helpers import process_loaded_data
 from vector_inspector.ui.views.metadata.data_operations import (
     load_collection_data,
     update_collection_item,
+)
+from vector_inspector.ui.views.metadata.item_update_helpers import (
+    process_item_update_success,
 )
 from vector_inspector.ui.views.metadata.metadata_table import _show_item_details
 
@@ -81,10 +81,7 @@ class MetadataView(QWidget):
             self.collection_loader = CollectionLoader()
             self.metadata_loader = MetadataLoader()
             connection = self.app_state.provider
-        elif (
-            isinstance(app_state_or_connection, ConnectionInstance)
-            or app_state_or_connection is None
-        ):
+        elif isinstance(app_state_or_connection, ConnectionInstance) or app_state_or_connection is None:
             # Legacy pattern
             self.app_state = None
             self.task_runner = None
@@ -156,9 +153,7 @@ class MetadataView(QWidget):
 
         # Clear table
         self.table.setRowCount(0)
-        self.status_label.setText(
-            "No collection selected" if not connection else "Connected - select a collection"
-        )
+        self.status_label.setText("No collection selected" if not connection else "Connected - select a collection")
 
     def _on_collection_changed(self, collection: str) -> None:
         """React to collection change (new pattern)."""
@@ -293,9 +288,7 @@ class MetadataView(QWidget):
         # Data table - takes up most of the space
         self.table = QTableWidget()
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
-        )  # Disable inline editing
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Disable inline editing
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.doubleClicked.connect(self._on_row_double_clicked)
@@ -309,11 +302,7 @@ class MetadataView(QWidget):
         # Inline details pane
         self.details_pane = InlineDetailsPane(view_mode="data_browser")
         self.details_pane.open_full_details.connect(
-            lambda: (
-                self._on_row_double_clicked(self.table.currentIndex())
-                if self.table.currentRow() >= 0
-                else None
-            )
+            lambda: self._on_row_double_clicked(self.table.currentIndex()) if self.table.currentRow() >= 0 else None
         )
         self.details_pane.setMinimumHeight(120)
         splitter.addWidget(self.details_pane)
@@ -522,9 +511,7 @@ class MetadataView(QWidget):
             if success:
                 # Invalidate cache after adding item
                 if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(
-                        self.ctx.current_database, self.ctx.current_collection
-                    )
+                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
                 QMessageBox.information(self, "Success", "Item added successfully.")
                 # Fallback to full reload (row index is not available here)
                 self._load_data()
@@ -562,15 +549,11 @@ class MetadataView(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            success = self.ctx.connection.delete_items(
-                self.ctx.current_collection, ids=ids_to_delete
-            )
+            success = self.ctx.connection.delete_items(self.ctx.current_collection, ids=ids_to_delete)
             if success:
                 # Invalidate cache after deletion
                 if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(
-                        self.ctx.current_database, self.ctx.current_collection
-                    )
+                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
                 QMessageBox.information(self, "Success", "Items deleted successfully.")
                 self._load_data()
             else:
@@ -610,9 +593,7 @@ class MetadataView(QWidget):
     def _refresh_data(self) -> None:
         """Refresh data and invalidate cache."""
         if self.ctx.current_database and self.ctx.current_collection:
-            self.ctx.cache_manager.invalidate(
-                self.ctx.current_database, self.ctx.current_collection
-            )
+            self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
         self.ctx.current_page = 0
         self._load_data()
 
@@ -687,9 +668,7 @@ class MetadataView(QWidget):
                 # Try to preserve existing embedding for this row if present
                 from vector_inspector.utils import has_embedding
 
-                existing_embs = (
-                    self.ctx.current_data.get("embeddings", []) if self.ctx.current_data else []
-                )
+                existing_embs = self.ctx.current_data.get("embeddings", []) if self.ctx.current_data else []
                 if row < len(existing_embs):
                     existing = existing_embs[row]
                     if has_embedding(existing):
@@ -808,11 +787,7 @@ class MetadataView(QWidget):
             return
 
         row = selected_rows[0].row()
-        if (
-            row < 0
-            or row >= self.table.rowCount()
-            or row >= len(self.ctx.current_data.get("ids", []))
-        ):
+        if row < 0 or row >= self.table.rowCount() or row >= len(self.ctx.current_data.get("ids", [])):
             return
 
         # Get item data for this row

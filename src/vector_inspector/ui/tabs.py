@@ -54,9 +54,7 @@ class InspectorTabs:
         ]
 
     @staticmethod
-    def create_tab_widget(
-        tab_def: TabDefinition, connection=None, app_state=None, task_runner=None
-    ) -> QWidget:
+    def create_tab_widget(tab_def: TabDefinition, connection=None, app_state=None, task_runner=None) -> QWidget:
         """Create a widget instance from a tab definition.
 
         Args:
@@ -76,7 +74,10 @@ class InspectorTabs:
         # Try new pattern first, fall back to legacy connection pattern
         try:
             if app_state is not None and task_runner is not None:
-                return tab_def.widget_class(app_state, task_runner)
+                return tab_def.widget_class(
+                    app_state,
+                    task_runner,
+                )
         except TypeError:
             pass
 

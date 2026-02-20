@@ -93,9 +93,7 @@ class WeaviateConnection(VectorDBConnection):
             weaviate: Any = self._weaviate_module
 
             # Determine connection mode
-            is_embedded = self.mode == "embedded" or (
-                not self.url and not self.host and self.persistence_directory
-            )
+            is_embedded = self.mode == "embedded" or (not self.url and not self.host and self.persistence_directory)
 
             if is_embedded:
                 # Embedded mode: run Weaviate in-process
@@ -115,9 +113,7 @@ class WeaviateConnection(VectorDBConnection):
                 # Create embedded client
                 self._client = weaviate.WeaviateClient(
                     embedded_options=embedded_options,
-                    additional_config=weaviate.config.AdditionalConfig(
-                        timeout=(self.timeout, self.timeout)
-                    ),
+                    additional_config=weaviate.config.AdditionalConfig(timeout=(self.timeout, self.timeout)),
                 )
 
                 self._client.connect()
@@ -166,9 +162,7 @@ class WeaviateConnection(VectorDBConnection):
                 self._client = weaviate.connect_to_weaviate_cloud(
                     cluster_url=cluster_url,
                     auth_credentials=weaviate.auth.AuthApiKey(api_key=self.api_key),
-                    additional_config=weaviate.config.AdditionalConfig(
-                        timeout=(self.timeout, self.timeout)
-                    ),
+                    additional_config=weaviate.config.AdditionalConfig(timeout=(self.timeout, self.timeout)),
                 )
             else:
                 # Local or self-hosted instance
@@ -297,9 +291,7 @@ class WeaviateConnection(VectorDBConnection):
                 if vector_configs:
                     # Get first vector config (Weaviate supports named vectors)
                     first_config = (
-                        next(iter(vector_configs.values()))
-                        if isinstance(vector_configs, dict)
-                        else vector_configs
+                        next(iter(vector_configs.values())) if isinstance(vector_configs, dict) else vector_configs
                     )
 
                     # Try to get dimension from vector_index_config
@@ -354,9 +346,7 @@ class WeaviateConnection(VectorDBConnection):
                 if response.objects and len(response.objects) > 0:
                     obj = response.objects[0]
                     # Exclude internal fields and 'document'
-                    metadata_fields = [
-                        k for k in obj.properties if k != "document" and not k.startswith("_")
-                    ]
+                    metadata_fields = [k for k in obj.properties if k != "document" and not k.startswith("_")]
             except Exception as e:
                 log_error("Failed to get sample object for metadata fields: %s", e)
 
@@ -418,9 +408,7 @@ class WeaviateConnection(VectorDBConnection):
                 "hamming": weaviate.classes.config.VectorDistances.HAMMING,
             }
 
-            weaviate_distance = distance_map.get(
-                distance.lower(), weaviate.classes.config.VectorDistances.COSINE
-            )
+            weaviate_distance = distance_map.get(distance.lower(), weaviate.classes.config.VectorDistances.COSINE)
 
             # Create collection with manual vectorization (we provide embeddings)
             # Use Property to define schema
@@ -514,7 +502,7 @@ class WeaviateConnection(VectorDBConnection):
                     for _k, _v in list(properties.items()):
                         try:
                             if isinstance(_v, numbers.Number) and float(_v).is_integer():
-                                # If it has no fractional part, coerce to int
+                                # If it has no fractional part, coerce to int and then to string
                                 properties[_k] = str(int(_v))
                         except Exception:
                             # Be conservative on errors and leave value as-is
@@ -530,9 +518,7 @@ class WeaviateConnection(VectorDBConnection):
                     except (ValueError, AttributeError):
                         # Not a valid UUID - generate deterministic UUID from the string
                         # Using uuid5 ensures same string always generates same UUID
-                        namespace = uuid.UUID(
-                            "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
-                        )  # DNS namespace
+                        namespace = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # DNS namespace
                         item_uuid = uuid.uuid5(namespace, ids[i])
                 else:
                     # No ID provided - generate random UUID
@@ -1028,9 +1014,7 @@ class WeaviateConnection(VectorDBConnection):
         }
 
         # Check for embedded mode first
-        if self.mode == "embedded" or (
-            not self.url and not self.host and self.persistence_directory
-        ):
+        if self.mode == "embedded" or (not self.url and not self.host and self.persistence_directory):
             info["mode"] = "embedded"
             if self.persistence_directory:
                 info["persistence_directory"] = self.persistence_directory
@@ -1039,9 +1023,7 @@ class WeaviateConnection(VectorDBConnection):
         elif self.url:
             info["mode"] = (
                 "cloud"
-                if "weaviate.cloud" in self.url
-                or "weaviate.network" in self.url
-                or "wcd" in self.url.lower()
+                if "weaviate.cloud" in self.url or "weaviate.network" in self.url or "wcd" in self.url.lower()
                 else "remote"
             )
             info["url"] = self.url

@@ -1,10 +1,11 @@
 """Unified background task runner with progress signals and cancellation support."""
 
-import traceback
 from collections.abc import Callable
 from typing import Any, Optional
 
 from PySide6.QtCore import QObject, QThread, Signal
+
+from vector_inspector.core.logging import log_error
 
 
 class TaskRunner(QThread):
@@ -12,12 +13,12 @@ class TaskRunner(QThread):
     Generic background task runner.
 
     Signals:
-        finished: Emitted when task completes successfully (result)
+        result_ready: Emitted when task completes successfully (result)
         error: Emitted when task fails (error_message)
         progress: Emitted to report progress (message, percent)
     """
 
-    finished = Signal(object)  # result
+    result_ready = Signal(object)  # result
     error = Signal(str)  # error message
     progress = Signal(str, int)  # (message, percent)
 
@@ -46,10 +47,10 @@ class TaskRunner(QThread):
             result = self.task_func(*self.args, **self.kwargs)
 
             if not self._cancelled:
-                self.finished.emit(result)
+                self.result_ready.emit(result)
         except Exception as e:
             if not self._cancelled:
-                traceback.print_exc()
+                log_error("TaskRunner encountered an exception", exc_info=True)
                 self.error.emit(str(e))
 
     def cancel(self) -> None:
@@ -132,19 +133,19 @@ class ThreadedTaskRunner(QObject):
 
         # Connect signals
         if on_finished:
-            runner.finished.connect(on_finished)
+            runner.result_ready.connect(on_finished)
         if on_error:
             runner.error.connect(on_error)
         if on_progress:
             runner.progress.connect(on_progress)
 
-        # Auto-cleanup when finished or errored
+        # Auto-cleanup when thread finishes or errored
         def cleanup() -> None:
             if task_id in self._active_tasks:
                 del self._active_tasks[task_id]
                 runner.deleteLater()
 
-        runner.finished.connect(cleanup)
+        runner.finished.connect(cleanup)  # QThread.finished
         runner.error.connect(lambda _: cleanup())
 
         # Store and start
