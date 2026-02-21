@@ -263,7 +263,7 @@ pdm run pytest
 
 # Or use Python module directly from src directory:
 cd src
-pdm run python -m vector_viewer
+pdm run python -m vector_inspector
 ```
 
 ## Contributing
