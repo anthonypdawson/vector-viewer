@@ -270,7 +270,8 @@ class MetadataView(QWidget):
 
         # Restore splitter sizes from settings
         saved_sizes = self.settings_service.get("metadata_view_splitter_sizes", [])
-        if saved_sizes and len(saved_sizes) == 3:
+        # Only apply saved sizes if they are a list/tuple of length 3
+        if isinstance(saved_sizes, (list, tuple)) and len(saved_sizes) == 3:
             splitter.setSizes(saved_sizes)
 
         # Save splitter sizes when changed
