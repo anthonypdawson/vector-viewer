@@ -70,3 +70,16 @@ def app_state_with_fake_provider(fake_provider):
 def task_runner():
     """Provide a ThreadedTaskRunner instance for tests."""
     return ThreadedTaskRunner()
+
+
+@pytest.fixture
+def fake_settings():
+    """Fake SettingsService that suppresses the splash dialog."""
+
+    class FakeSettings:
+        def get(self, key, default=None):
+            if key == "hide_splash_window":
+                return True
+            return default
+
+    return FakeSettings()
