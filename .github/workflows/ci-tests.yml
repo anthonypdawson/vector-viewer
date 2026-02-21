@@ -1,16 +1,14 @@
 name: CI - Unit Tests
 
 on:
-  workflow_dispatch: {}
-  pull_request:
-    types: [closed]
+  workflow_dispatch: {}  
   push:
     paths:
-      - 'pyproject.yaml'
+      - 'pyproject.toml'
+      - 'tests/**'
 
 jobs:
   test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     name: Test on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
@@ -45,7 +43,6 @@ jobs:
           key: ${{ runner.os }}-pdm-${{ hashFiles('**/pdm.lock', '**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pdm-
-            ${{ runner.os }}-
 
       - name: Install dependencies (dev)
         run: pdm install -d
@@ -54,18 +51,18 @@ jobs:
         env:
           PYTHONPATH: ./src
           QT_QPA_PLATFORM: offscreen
-        run: pdm run pytest -q tests --cov=vector_inspector --cov-report=xml
+        run: pdm run pytest -q tests --cov=vector_inspector --cov-report=lcov
 
       - name: Upload coverage xml report
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.python-version }}
-          path: ./coverage.xml
+          path: ./coverage.lcov
       
       - name: Coveralls
+        if: matrix.python-version == '3.12'
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./coverage.xml
-          flag-name: ${{ matrix.python-version }}
+          file: ./coverage.lcov          
