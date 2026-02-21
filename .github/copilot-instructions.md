@@ -256,10 +256,15 @@ If you update these settings in `pyproject.toml`, please mirror the change here.
 
 ### 5.1 Running Tests
 
-    pdm run pytest --cov=vector_inspector --cov-report=html
-    pdm run pytest tests/test_metadata_navigation.py
-    pdm run pytest -n auto
-    QT_QPA_PLATFORM=offscreen pdm run pytest
+  pdm run pytest --cov=vector_inspector --cov-report=html
+  pdm run pytest tests/test_metadata_navigation.py
+  pdm run pytest -n auto
+  QT_QPA_PLATFORM=offscreen pdm run pytest
+
+Always run tests using `pdm run pytest`. Do not run tests directly with
+`python -m pytest` or the `pytest` CLI without `pdm` — the project relies on
+the `pdm` environment and dependency isolation to produce consistent test
+results across developer machines and CI.
 
 - Tests use `pytest` with `pytest-qt` for Qt widget testing.
 - `tests/conftest.py` provides `fake_provider` fixture — a mock vector DB for isolated testing.
