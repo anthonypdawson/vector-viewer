@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from vector_inspector.state import AppState
 from vector_inspector.ui.views.search_view import SearchView
 
 
@@ -33,9 +34,11 @@ def mock_connection():
 
 
 @pytest.fixture
-def search_view(qtbot, mock_connection):
+def search_view(qtbot, mock_connection, task_runner):
     """Create a search view."""
-    view = SearchView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = SearchView(app_state, task_runner)
     qtbot.addWidget(view)
     view.current_collection = "test_collection"
     view.current_database = "test_db"

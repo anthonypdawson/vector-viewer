@@ -10,9 +10,7 @@ class TabDefinition:
     widget_class: type[QWidget]
     lazy_load: bool
 
-    def __init__(
-        self, title: str, widget_class: type[QWidget], lazy_load: bool = False
-    ):
+    def __init__(self, title: str, widget_class: type[QWidget], lazy_load: bool = False):
         self.title = title
         self.widget_class = widget_class
         self.lazy_load = lazy_load
@@ -56,12 +54,13 @@ class InspectorTabs:
         ]
 
     @staticmethod
-    def create_tab_widget(tab_def: TabDefinition, connection=None) -> QWidget:
+    def create_tab_widget(tab_def: TabDefinition, app_state=None, task_runner=None) -> QWidget:
         """Create a widget instance from a tab definition.
 
         Args:
             tab_def: Tab definition
-            connection: Optional connection to pass to widget
+            app_state: AppState instance (required)
+            task_runner: TaskRunner instance (required)
 
         Returns:
             Widget instance
@@ -69,5 +68,12 @@ class InspectorTabs:
         if tab_def.lazy_load:
             # Return placeholder for lazy-loaded tabs
             return QWidget()
-        # Create widget with connection
-        return tab_def.widget_class(connection)
+
+        # Create widget with app_state and task_runner
+        if app_state is None or task_runner is None:
+            raise ValueError("app_state and task_runner are required")
+
+        return tab_def.widget_class(
+            app_state,
+            task_runner,
+        )

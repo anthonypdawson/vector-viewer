@@ -36,7 +36,7 @@ class MetadataContext:
     # UI selection state
     _select_id_after_load: Optional[str] = None
 
-    # Cache manager
+    # Cache manager (passed from AppState)
     cache_manager: Any = None
 
     def reset_pagination(self) -> None:

@@ -1,11 +1,11 @@
 """Service for importing and exporting collection data."""
 
 import json
-import csv
-from typing import Dict, Any, List, Optional
-from pathlib import Path
-import pandas as pd
+from typing import Any, Optional
+
 import numpy as np
+import pandas as pd
+
 from vector_inspector.core.logging import log_error
 
 
@@ -13,7 +13,7 @@ class ImportExportService:
     """Handles import/export operations for vector database collections."""
 
     @staticmethod
-    def export_to_json(data: Dict[str, Any], file_path: str) -> bool:
+    def export_to_json(data: dict[str, Any], file_path: str) -> bool:
         """
         Export collection data to JSON format.
 
@@ -58,7 +58,7 @@ class ImportExportService:
 
     @staticmethod
     def export_to_csv(
-        data: Dict[str, Any], file_path: str, include_embeddings: bool = False
+        data: dict[str, Any], file_path: str, include_embeddings: bool = False
     ) -> bool:
         """
         Export collection data to CSV format.
@@ -110,7 +110,7 @@ class ImportExportService:
             return False
 
     @staticmethod
-    def export_to_parquet(data: Dict[str, Any], file_path: str) -> bool:
+    def export_to_parquet(data: dict[str, Any], file_path: str) -> bool:
         """
         Export collection data to Parquet format.
 
@@ -135,7 +135,7 @@ class ImportExportService:
 
             # Add metadata fields as separate columns
             if len(metadatas) > 0 and metadatas[0]:
-                for key in metadatas[0].keys():
+                for key in metadatas[0]:
                     df_data[f"metadata_{key}"] = [m.get(key) if m else None for m in metadatas]
 
             # Add embeddings as a column (convert numpy arrays to lists for compatibility)
@@ -159,7 +159,7 @@ class ImportExportService:
             return False
 
     @staticmethod
-    def import_from_json(file_path: str) -> Optional[Dict[str, Any]]:
+    def import_from_json(file_path: str) -> Optional[dict[str, Any]]:
         """
         Import collection data from JSON format.
 
@@ -170,7 +170,7 @@ class ImportExportService:
             Dictionary with ids, documents, metadatas, embeddings or None if failed
         """
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Parse data
@@ -202,7 +202,7 @@ class ImportExportService:
             return None
 
     @staticmethod
-    def import_from_csv(file_path: str) -> Optional[Dict[str, Any]]:
+    def import_from_csv(file_path: str) -> Optional[dict[str, Any]]:
         """
         Import collection data from CSV format.
 
@@ -256,7 +256,7 @@ class ImportExportService:
             return None
 
     @staticmethod
-    def import_from_parquet(file_path: str) -> Optional[Dict[str, Any]]:
+    def import_from_parquet(file_path: str) -> Optional[dict[str, Any]]:
         """
         Import collection data from Parquet format.
 

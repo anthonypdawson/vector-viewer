@@ -51,8 +51,44 @@ def populate_table(
         metadata_keys = list(metadatas[0].keys())
         columns.extend(metadata_keys)
 
+    # Save current column order (visual indices) before changing column count
+    header = table.horizontalHeader()
+    old_column_order: dict[str, int] = {}
+    if table.columnCount() > 0:
+        for logical_index in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(logical_index)
+            if header_item:
+                column_name = header_item.text()
+                visual_index = header.visualIndex(logical_index)
+                old_column_order[column_name] = visual_index
+
     table.setColumnCount(len(columns))
     table.setHorizontalHeaderLabels(columns)
+
+    # Restore column order if columns match
+    if old_column_order:
+        # Build mapping of column name to new logical index
+        new_logical_indices: dict[str, int] = {}
+        for logical_index in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(logical_index)
+            if header_item:
+                new_logical_indices[header_item.text()] = logical_index
+
+        # Sort columns by their old visual index to restore order
+        columns_with_order = []
+        for col_name, old_visual in old_column_order.items():
+            if col_name in new_logical_indices:
+                columns_with_order.append((col_name, old_visual, new_logical_indices[col_name]))
+
+        # Sort by old visual index
+        columns_with_order.sort(key=lambda x: x[1])
+
+        # Move columns to restore order
+        for target_visual_index, (col_name, old_visual, logical_index) in enumerate(columns_with_order):
+            current_visual = header.visualIndex(logical_index)
+            if current_visual != target_visual_index:
+                header.moveSection(current_visual, target_visual_index)
+
     table.setRowCount(len(ids))
 
     # Calculate starting row number based on current page
@@ -257,9 +293,7 @@ def show_context_menu(
 
     # Add "Edit" action
     edit_action = menu.addAction("✏️ Edit")
-    edit_action.triggered.connect(
-        lambda: on_row_double_clicked_callback(table.model().index(row, 0))
-    )
+    edit_action.triggered.connect(lambda: on_row_double_clicked_callback(table.model().index(row, 0)))
 
     # Add separator
     menu.addSeparator()
@@ -349,11 +383,7 @@ def update_row_in_place(
 
     current_data = ctx.current_data
     updated_id = updated_data.get("id")
-    if (
-        not current_data
-        or not current_data.get("ids")
-        or updated_id not in current_data.get("ids", [])
-    ):
+    if not current_data or not current_data.get("ids") or updated_id not in current_data.get("ids", []):
         return False
 
     try:
@@ -361,18 +391,12 @@ def update_row_in_place(
 
         # Update in-memory lists
         if "documents" in current_data and row_idx < len(current_data["documents"]):
-            current_data["documents"][row_idx] = (
-                updated_data["document"] if updated_data["document"] else ""
-            )
+            current_data["documents"][row_idx] = updated_data["document"] if updated_data["document"] else ""
         if "metadatas" in current_data and row_idx < len(current_data["metadatas"]):
-            current_data["metadatas"][row_idx] = (
-                updated_data["metadata"] if updated_data["metadata"] else {}
-            )
+            current_data["metadatas"][row_idx] = updated_data["metadata"] if updated_data["metadata"] else {}
 
         # Update table cell text for document column
-        doc_text = (
-            str(current_data["documents"][row_idx]) if current_data["documents"][row_idx] else ""
-        )
+        doc_text = str(current_data["documents"][row_idx]) if current_data["documents"][row_idx] else ""
         if len(doc_text) > 100:
             doc_text = doc_text[:100] + "..."
         table.setItem(row_idx, 1, QTableWidgetItem(doc_text))
@@ -429,9 +453,7 @@ def find_updated_item_page(
         return None
 
     try:
-        full = ctx.connection.get_all_items(
-            ctx.current_collection, limit=None, offset=None, where=ctx.server_filter
-        )
+        full = ctx.connection.get_all_items(ctx.current_collection, limit=None, offset=None, where=ctx.server_filter)
         if full and full.get("ids"):
             all_ids = full.get("ids", [])
             if updated_id in all_ids:

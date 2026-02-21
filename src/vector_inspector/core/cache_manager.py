@@ -2,57 +2,76 @@
 Cache manager for storing databrowser and search panel state by database and collection.
 Provides fast switching between collections with automatic invalidation on refresh or settings changes.
 """
-from typing import Dict, Any, Optional, Tuple
+
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Optional
 
 
 @dataclass
 class CacheEntry:
     """Represents a cached state for a specific database and collection."""
+
     data: Any
     timestamp: datetime = field(default_factory=datetime.now)
-    
+
     # Browser state
     scroll_position: int = 0
     selected_indices: list = field(default_factory=list)
-    
+
     # Search panel state
     search_query: str = ""
-    search_filters: Dict[str, Any] = field(default_factory=dict)
+    search_filters: dict[str, Any] = field(default_factory=dict)
     search_results: Optional[Any] = None
-    
+
     # User inputs
-    user_inputs: Dict[str, Any] = field(default_factory=dict)
+    user_inputs: dict[str, Any] = field(default_factory=dict)
 
 
 class CacheManager:
     """
     Manages cache for databrowser and search panel by (database, collection) key.
     Supports invalidation on refresh or settings changes.
+
+    Uses singleton pattern to ensure only one instance exists, preventing state inconsistencies
+    when code creates instances directly vs using AppState.
     """
-    
+
+    _instance: Optional["CacheManager"] = None
+
+    def __new__(cls):
+        """Ensure only one instance exists (singleton pattern)."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        self._cache: Dict[Tuple[str, str], CacheEntry] = {}
+        """Initialize cache manager (only runs once due to singleton)."""
+        # Skip if already initialized (check instance dict only, not class dict)
+        if "_initialized" in self.__dict__:
+            return
+        self._initialized = True
+
+        self._cache: dict[tuple[str, str], CacheEntry] = {}
         self._enabled = True
-        
+
     def get(self, database: str, collection: str) -> Optional[CacheEntry]:
         """Retrieve cached entry for a database and collection."""
         if not self._enabled:
             return None
-        
+
         key = (database, collection)
         return self._cache.get(key)
-    
+
     def set(self, database: str, collection: str, entry: CacheEntry) -> None:
         """Store a cache entry for a database and collection."""
         if not self._enabled:
             return
-        
+
         key = (database, collection)
         entry.timestamp = datetime.now()
         self._cache[key] = entry
-    
+
     def update(self, database: str, collection: str, **kwargs) -> None:
         """Update specific fields in an existing cache entry."""
         key = (database, collection)
@@ -69,7 +88,7 @@ class CacheManager:
                 if hasattr(entry, field_name):
                     setattr(entry, field_name, value)
             self._cache[key] = entry
-    
+
     def invalidate(self, database: Optional[str] = None, collection: Optional[str] = None) -> None:
         """
         Invalidate cache entries.
@@ -90,25 +109,25 @@ class CacheManager:
             key = (database, collection)
             if key in self._cache:
                 del self._cache[key]
-    
+
     def clear(self) -> None:
         """Clear all cached entries."""
         self._cache.clear()
-    
+
     def enable(self) -> None:
         """Enable caching."""
         self._enabled = True
-    
+
     def disable(self) -> None:
         """Disable caching and clear all entries."""
         self._enabled = False
         self._cache.clear()
-    
+
     def is_enabled(self) -> bool:
         """Check if caching is enabled."""
         return self._enabled
-    
-    def get_cache_info(self) -> Dict[str, Any]:
+
+    def get_cache_info(self) -> dict[str, Any]:
         """Get information about the current cache state."""
         return {
             "enabled": self._enabled,
@@ -122,29 +141,22 @@ class CacheManager:
                     "has_search_results": entry.search_results is not None,
                 }
                 for (db, coll), entry in self._cache.items()
-            ]
+            ],
         }
 
 
-# Global cache manager instance
-_cache_manager: Optional[CacheManager] = None
-
-
+# Legacy global function for backward compatibility
+# DEPRECATED: New code should use app_state.cache_manager instead
 def get_cache_manager() -> CacheManager:
-    """Get or create the global cache manager instance."""
-    global _cache_manager
-    if _cache_manager is None:
-        _cache_manager = CacheManager()
-        # Initialize from settings
-        try:
-            from vector_inspector.services.settings_service import SettingsService
-            settings = SettingsService()
-            if not settings.get_cache_enabled():
-                _cache_manager.disable()
-        except Exception:
-            # If settings can't be loaded, default to enabled
-            pass
-    return _cache_manager
+    """Get the singleton cache manager instance.
+
+    DEPRECATED: This returns the singleton instance for legacy code.
+    New code should use app_state.cache_manager instead.
+
+    Note: CacheManager uses singleton pattern, so this always returns the same instance
+    that AppState uses.
+    """
+    return CacheManager()
 
 
 def invalidate_cache_on_settings_change() -> None:

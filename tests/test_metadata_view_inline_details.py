@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from PySide6.QtWidgets import QDialog
 
+from vector_inspector.state import AppState
 from vector_inspector.ui.views.metadata.context import MetadataContext
 from vector_inspector.ui.views.metadata_view import MetadataView
 
@@ -36,9 +37,11 @@ def mock_connection():
 
 
 @pytest.fixture
-def metadata_view(qtbot, mock_connection):
+def metadata_view(qtbot, task_runner, mock_connection):
     """Create a metadata view with test data."""
-    view = MetadataView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = MetadataView(app_state, task_runner)
     qtbot.addWidget(view)
     view.ctx = MetadataContext(connection=mock_connection)
     view.ctx.current_collection = "test_collection"
@@ -264,7 +267,7 @@ def test_inline_pane_updates_after_page_change(qtbot, metadata_view):
     assert "No selection" in metadata_view.details_pane.id_label.text()
 
 
-def test_inline_pane_handles_missing_embedding(qtbot, mock_connection):
+def test_inline_pane_handles_missing_embedding(qtbot, task_runner, mock_connection):
     """Test inline pane handles items without embeddings."""
     # Create data with no embeddings
     mock_connection.get_all_items.return_value = {
@@ -274,7 +277,9 @@ def test_inline_pane_handles_missing_embedding(qtbot, mock_connection):
         "embeddings": [None],
     }
 
-    view = MetadataView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = MetadataView(app_state, task_runner)
     qtbot.addWidget(view)
     view.ctx = MetadataContext(connection=mock_connection)
     view.ctx.current_data = mock_connection.get_all_items.return_value

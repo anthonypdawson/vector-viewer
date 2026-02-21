@@ -3,6 +3,8 @@ import os
 import pytest
 
 from tests.fakes.fake_provider import FakeProvider
+from vector_inspector.services import ThreadedTaskRunner
+from vector_inspector.state import AppState
 
 
 def pytest_configure(config):
@@ -54,3 +56,17 @@ def fake_provider_with_name():
         [[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]],  # embeddings
     )
     return provider, name
+
+
+@pytest.fixture
+def app_state_with_fake_provider(fake_provider):
+    """Provide an AppState instance with a FakeProvider connection."""
+    app_state = AppState()
+    app_state.provider = fake_provider
+    return app_state
+
+
+@pytest.fixture
+def task_runner():
+    """Provide a ThreadedTaskRunner instance for tests."""
+    return ThreadedTaskRunner()

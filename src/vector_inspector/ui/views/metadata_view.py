@@ -1,49 +1,48 @@
 """Metadata browsing and data view."""
 
 from datetime import UTC
-from functools import partial
 from typing import Any, Optional
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMenu,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QSplitter,
     QTableWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from vector_inspector.core.cache_manager import CacheEntry, get_cache_manager
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.logging import log_info
-from vector_inspector.services.filter_service import apply_client_side_filters
+from vector_inspector.services import CollectionLoader, MetadataLoader, ThreadedTaskRunner
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.state import AppState
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_dialog import ItemDialog
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
+from vector_inspector.ui.components.metadata_action_buttons import MetadataActionButtons
+from vector_inspector.ui.components.pagination_controls import PaginationControls
 from vector_inspector.ui.views.metadata import (
     DataImportThread,
-    DataLoadThread,
-    ItemUpdateThread,
     MetadataContext,
     export_data,
-    find_updated_item_page,
-    import_data,
-    populate_table,
     show_context_menu,
-    update_filter_fields,
-    update_pagination_controls,
-    update_row_in_place,
+)
+from vector_inspector.ui.views.metadata.cache_helpers import try_load_from_cache
+from vector_inspector.ui.views.metadata.data_loading_helpers import process_loaded_data
+from vector_inspector.ui.views.metadata.data_operations import (
+    load_collection_data,
+    update_collection_item,
+)
+from vector_inspector.ui.views.metadata.item_update_helpers import (
+    process_item_update_success,
 )
 from vector_inspector.ui.views.metadata.metadata_table import _show_item_details
 
@@ -52,32 +51,96 @@ class MetadataView(QWidget):
     """View for browsing collection data and metadata."""
 
     ctx: MetadataContext
+    app_state: AppState
+    task_runner: ThreadedTaskRunner
+    collection_loader: CollectionLoader
+    metadata_loader: MetadataLoader
     loading_dialog: LoadingDialog
     settings_service: SettingsService
-    load_thread: Optional[DataLoadThread]
-    update_thread: Optional[ItemUpdateThread]
     import_thread: Optional[DataImportThread]
     filter_reload_timer: QTimer
 
     def __init__(
-        self, connection: Optional[ConnectionInstance] = None, parent: Optional[QWidget] = None
+        self,
+        app_state: AppState,
+        task_runner: ThreadedTaskRunner,
+        parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
-        # Initialize context with connection and cache manager
-        cache_manager = get_cache_manager()
+
+        # Store AppState and task runner
+        self.app_state = app_state
+        self.task_runner = task_runner
+        self.collection_loader = CollectionLoader()
+        self.metadata_loader = MetadataLoader()
+
+        # Initialize context with connection and cache manager from AppState
         self.ctx = MetadataContext(
-            connection=connection,
-            cache_manager=cache_manager,
+            connection=self.app_state.provider,
+            cache_manager=self.app_state.cache_manager,
         )
         self.loading_dialog = LoadingDialog("Loading data...", self)
         self.settings_service = SettingsService()
-        self.load_thread = None
-        self.update_thread = None
         self.import_thread = None
         self.filter_reload_timer = QTimer()
         self.filter_reload_timer.setSingleShot(True)
         self.filter_reload_timer.timeout.connect(self._reload_with_filters)
         self._setup_ui()
+
+        # Connect to AppState signals
+        self._connect_state_signals()
+        # Update services with current connection if available
+        if self.app_state.provider:
+            self._on_provider_changed(self.app_state.provider)
+
+    def _connect_state_signals(self) -> None:
+        """Subscribe to AppState changes."""
+        # React to connection changes
+        self.app_state.provider_changed.connect(self._on_provider_changed)
+
+        # React to collection changes
+        self.app_state.collection_changed.connect(self._on_collection_changed)
+
+        # React to loading state
+        self.app_state.loading_started.connect(self._on_loading_started)
+        self.app_state.loading_finished.connect(self._on_loading_finished)
+
+        # React to errors
+        self.app_state.error_occurred.connect(self._on_error)
+
+    def _on_provider_changed(self, connection: Optional[ConnectionInstance]) -> None:
+        """React to provider/connection change."""
+        # Update services
+        if self.collection_loader:
+            self.collection_loader.set_connection(connection)
+        if self.metadata_loader:
+            self.metadata_loader.set_connection(connection)
+
+        # Update context
+        self.ctx.connection = connection
+
+        # Clear table
+        self.table.setRowCount(0)
+        self.status_label.setText("No collection selected" if not connection else "Connected - select a collection")
+
+    def _on_collection_changed(self, collection: str) -> None:
+        """React to collection change."""
+        if collection:
+            # Use AppState's database name
+            database_name = self.app_state.database or ""
+            self.set_collection(collection, database_name)
+
+    def _on_loading_started(self, message: str) -> None:
+        """React to loading started."""
+        self.loading_dialog.show_loading(message)
+
+    def _on_loading_finished(self) -> None:
+        """React to loading finished."""
+        self.loading_dialog.hide()
+
+    def _on_error(self, title: str, message: str) -> None:
+        """React to error."""
+        QMessageBox.critical(self, title, message)
 
     @property
     def connection(self) -> Optional[ConnectionInstance]:
@@ -88,6 +151,9 @@ class MetadataView(QWidget):
     def connection(self, value: Optional[ConnectionInstance]) -> None:
         """Set the current connection."""
         self.ctx.connection = value
+        # Also update app_state if using new pattern
+        if self.app_state and value != self.app_state.provider:
+            self.app_state.provider = value
 
     @property
     def current_collection(self) -> Optional[str]:
@@ -97,90 +163,49 @@ class MetadataView(QWidget):
     @current_collection.setter
     def current_collection(self, value: Optional[str]) -> None:
         """Set the current collection name."""
-        self.ctx.current_collection = value
+        if value is not None:
+            self.ctx.current_collection = value
+        # Also update app_state if using new pattern
+        if self.app_state and value and value != self.app_state.collection:
+            self.app_state.collection = value
 
     def _setup_ui(self) -> None:
         """Setup widget UI."""
         layout = QVBoxLayout(self)
 
-        # Controls
+        # Top controls row
         controls_layout = QHBoxLayout()
 
         # Pagination controls
         controls_layout.addWidget(QLabel("Page:"))
-
-        self.prev_button = QPushButton("◀ Previous")
-        self.prev_button.clicked.connect(self._previous_page)
-        self.prev_button.setEnabled(False)
-        controls_layout.addWidget(self.prev_button)
-
-        self.page_label = QLabel("0 / 0")
-        controls_layout.addWidget(self.page_label)
-
-        self.next_button = QPushButton("Next ▶")
-        self.next_button.clicked.connect(self._next_page)
-        self.next_button.setEnabled(False)
-        controls_layout.addWidget(self.next_button)
-
-        controls_layout.addWidget(QLabel("  Items per page:"))
-
-        self.page_size_spin = QSpinBox()
-        self.page_size_spin.setMinimum(10)
-        self.page_size_spin.setMaximum(500)
-        self.page_size_spin.setValue(50)
-        self.page_size_spin.setSingleStep(10)
-        self.page_size_spin.valueChanged.connect(self._on_page_size_changed)
-        controls_layout.addWidget(self.page_size_spin)
+        self.pagination = PaginationControls()
+        self.pagination.previous_clicked.connect(self._previous_page)
+        self.pagination.next_clicked.connect(self._next_page)
+        self.pagination.page_size_changed.connect(self._on_page_size_changed)
+        # Get the widgets we need to reference
+        self.prev_button = self.pagination.prev_button
+        self.next_button = self.pagination.next_button
+        self.page_label = self.pagination.page_label
+        self.page_size_spin = self.pagination.page_size_spin
+        controls_layout.addWidget(self.pagination)
 
         controls_layout.addStretch()
 
-        # Refresh button
-        self.refresh_button = QPushButton("🔄 Refresh")
-        self.refresh_button.clicked.connect(self._refresh_data)
-        self.refresh_button.setToolTip("Refresh data and clear cache")
-        controls_layout.addWidget(self.refresh_button)
-
-        # Add/Delete buttons
-        self.add_button = QPushButton("Add Item")
-        self.add_button.clicked.connect(self._add_item)
-        controls_layout.addWidget(self.add_button)
-
-        self.delete_button = QPushButton("Delete Selected")
-        self.delete_button.clicked.connect(self._delete_selected)
-        controls_layout.addWidget(self.delete_button)
-
-        # Checkbox: generate embeddings on edit
-        self.generate_on_edit_checkbox = QCheckBox("Generate embeddings on edit")
-        # Load persisted preference (default False)
-        try:
-            pref = bool(self.settings_service.get("generate_embeddings_on_edit", False))
-        except Exception:
-            pref = False
-        self.generate_on_edit_checkbox.setChecked(pref)
-        self.generate_on_edit_checkbox.toggled.connect(
-            lambda v: self.settings_service.set("generate_embeddings_on_edit", bool(v))
-        )
-        controls_layout.addWidget(self.generate_on_edit_checkbox)
-
-        # Export button with menu
-        self.export_button = QPushButton("Export...")
-        self.export_button.setStyleSheet("QPushButton::menu-indicator { width: 0px; }")
-        export_menu = QMenu(self)
-        export_menu.addAction("Export to JSON", lambda: self._export_data("json"))
-        export_menu.addAction("Export to CSV", lambda: self._export_data("csv"))
-        export_menu.addAction("Export to Parquet", lambda: self._export_data("parquet"))
-        self.export_button.setMenu(export_menu)
-        controls_layout.addWidget(self.export_button)
-
-        # Import button with menu
-        self.import_button = QPushButton("Import...")
-        self.import_button.setStyleSheet("QPushButton::menu-indicator { width: 0px; }")
-        import_menu = QMenu(self)
-        import_menu.addAction("Import from JSON", lambda: self._import_data("json"))
-        import_menu.addAction("Import from CSV", lambda: self._import_data("csv"))
-        import_menu.addAction("Import from Parquet", lambda: self._import_data("parquet"))
-        self.import_button.setMenu(import_menu)
-        controls_layout.addWidget(self.import_button)
+        # Action buttons
+        self.action_buttons = MetadataActionButtons()
+        self.action_buttons.refresh_clicked.connect(self._refresh_data)
+        self.action_buttons.add_clicked.connect(self._add_item)
+        self.action_buttons.delete_clicked.connect(self._delete_selected)
+        self.action_buttons.export_requested.connect(self._export_data)
+        self.action_buttons.import_requested.connect(self._import_data)
+        # Get widgets we need to reference
+        self.refresh_button = self.action_buttons.refresh_button
+        self.add_button = self.action_buttons.add_button
+        self.delete_button = self.action_buttons.delete_button
+        self.generate_on_edit_checkbox = self.action_buttons.generate_on_edit_checkbox
+        self.export_button = self.action_buttons.export_button
+        self.import_button = self.action_buttons.import_button
+        controls_layout.addWidget(self.action_buttons)
 
         layout.addLayout(controls_layout)
 
@@ -218,11 +243,10 @@ class MetadataView(QWidget):
         # Data table - takes up most of the space
         self.table = QTableWidget()
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
-        )  # Disable inline editing
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Disable inline editing
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionsMovable(True)  # Allow column reordering
         self.table.doubleClicked.connect(self._on_row_double_clicked)
         # Enable context menu
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -233,7 +257,9 @@ class MetadataView(QWidget):
 
         # Inline details pane
         self.details_pane = InlineDetailsPane(view_mode="data_browser")
-        self.details_pane.open_full_details.connect(self._open_full_details_from_pane)
+        self.details_pane.open_full_details.connect(
+            lambda: self._on_row_double_clicked(self.table.currentIndex()) if self.table.currentRow() >= 0 else None
+        )
         self.details_pane.setMinimumHeight(120)
         splitter.addWidget(self.details_pane)
 
@@ -244,12 +270,15 @@ class MetadataView(QWidget):
 
         # Restore splitter sizes from settings
         saved_sizes = self.settings_service.get("metadata_view_splitter_sizes", [])
-        if saved_sizes and len(saved_sizes) == 3:
+        # Only apply saved sizes if they are a list/tuple of length 3
+        if isinstance(saved_sizes, (list, tuple)) and len(saved_sizes) == 3:
             splitter.setSizes(saved_sizes)
 
         # Save splitter sizes when changed
-        splitter.splitterMoved.connect(lambda: self._save_splitter_sizes(splitter))
         self.main_splitter = splitter
+        splitter.splitterMoved.connect(
+            lambda: self.settings_service.set("metadata_view_splitter_sizes", splitter.sizes())
+        )
 
         # Add splitter to main layout
         layout.addWidget(splitter, stretch=1)
@@ -266,7 +295,6 @@ class MetadataView(QWidget):
         if database_name:  # Only update if non-empty
             self.ctx.current_database = database_name
 
-        # Debug: Check cache status
         log_info(
             "[MetadataView] Setting collection: db='%s', coll='%s'",
             self.ctx.current_database,
@@ -274,61 +302,18 @@ class MetadataView(QWidget):
         )
         log_info("[MetadataView] Cache enabled: %s", self.ctx.cache_manager.is_enabled())
 
-        # Check cache first
-        cached = self.ctx.cache_manager.get(self.ctx.current_database, self.ctx.current_collection)
-        if cached and cached.data:
-            log_info("[MetadataView] ✓ Cache HIT! Loading from cache.")
-            # Restore from cache
-            self.ctx.current_page = 0
-            self.ctx.current_data = cached.data
-            populate_table(self.table, self.ctx)
-
-            # For cached data, check if it's less than page_size (no next page)
-            # or if it might be the full dataset (client-side filtered)
-            cached_count = len(cached.data.get("ids", []))
-            if cached_count < self.ctx.page_size:
-                # Definitely no next page
-                update_pagination_controls(
-                    self.ctx,
-                    self.page_label,
-                    self.prev_button,
-                    self.next_button,
-                    has_next_page=False,
-                )
-            elif cached.search_query:
-                # Has filters, likely the full filtered dataset
-                update_pagination_controls(
-                    self.ctx,
-                    self.page_label,
-                    self.prev_button,
-                    self.next_button,
-                    total_count=cached_count,
-                )
-            else:
-                # Best guess: enable Next if we have a full page
-                update_pagination_controls(
-                    self.ctx,
-                    self.page_label,
-                    self.prev_button,
-                    self.next_button,
-                    has_next_page=(cached_count >= self.ctx.page_size),
-                )
-
-            update_filter_fields(self.filter_builder, cached.data)
-
-            # Restore UI state
-            if cached.scroll_position:
-                self.table.verticalScrollBar().setValue(cached.scroll_position)
-            if cached.search_query:
-                # Restore filter state if applicable
-                pass
-
-            self.status_label.setText(
-                f"✓ Loaded from cache - {len(cached.data.get('ids', []))} items"
-            )
+        # Try loading from cache first
+        if try_load_from_cache(
+            self.ctx,
+            self.table,
+            self.page_label,
+            self.prev_button,
+            self.next_button,
+            self.filter_builder,
+            self.status_label,
+        ):
             return
 
-        log_info("[MetadataView] ✗ Cache MISS. Loading from database...")
         # Not in cache, load from database
         self.ctx.current_page = 0
 
@@ -365,11 +350,6 @@ class MetadataView(QWidget):
             self.table.setRowCount(0)
             return
 
-        # Cancel any existing load thread
-        if self.load_thread and self.load_thread.isRunning():
-            self.load_thread.quit()
-            self.load_thread.wait()
-
         offset = self.ctx.current_page * self.ctx.page_size
 
         # Get filters split into server-side and client-side
@@ -389,196 +369,43 @@ class MetadataView(QWidget):
             # Request one extra item to check if there's more data beyond this page
             req_limit = self.ctx.page_size + 1
 
-        # Start background thread to load data
+        # Start background task to load data
         self.ctx.server_filter = server_filter
-        self.load_thread = DataLoadThread(
-            self.ctx,
-            req_limit,
-            req_offset,
-        )
-        self.load_thread.finished.connect(self._on_data_loaded)
-        self.load_thread.error.connect(self._on_load_error)
-        self.load_thread.start()
+
+        # Use TaskRunner if available, otherwise fall back to legacy threading
+        if self.task_runner:
+            self.task_runner.run_task(
+                lambda: load_collection_data(
+                    self.ctx.connection,
+                    self.ctx.current_collection,
+                    req_limit,
+                    req_offset,
+                    server_filter,
+                ),
+                on_finished=self._on_data_loaded,
+                on_error=self._on_load_error,
+            )
+        else:
+            # Legacy path for backward compatibility
+            from vector_inspector.ui.views.metadata import DataLoadThread
+
+            load_thread = DataLoadThread(self.ctx, req_limit, req_offset)
+            load_thread.finished.connect(self._on_data_loaded)
+            load_thread.error.connect(self._on_load_error)
+            load_thread.start()
 
     def _on_data_loaded(self, data: dict[str, Any]) -> None:
         """Handle data loaded from background thread."""
-        # If no data returned
-        if not data or not data.get("ids"):
-            # If we're on a page beyond 0 and got no data, go back to previous page
-            if self.ctx.current_page > 0:
-                self.ctx.current_page -= 1
-                self.status_label.setText("No more data available")
-                update_pagination_controls(
-                    self.ctx,
-                    self.page_label,
-                    self.prev_button,
-                    self.next_button,
-                )
-            else:
-                self.status_label.setText("No data after filtering")
-            self.table.setRowCount(0)
-            return
-
-        # Apply client-side filters across the full dataset if present
-        full_data = data
-        if self.ctx.client_filters:
-            full_data = apply_client_side_filters(data, self.ctx.client_filters)
-
-        if not full_data or not full_data.get("ids"):
-            self.status_label.setText("No data after filtering")
-            self.table.setRowCount(0)
-            return
-
-        # If client-side filtering was used, perform pagination locally
-        if self.ctx.client_filters:
-            total_count = len(full_data.get("ids", []))
-            start = self.ctx.current_page * self.ctx.page_size
-            end = start + self.ctx.page_size
-
-            page_data = {}
-            for key in ("ids", "documents", "metadatas", "embeddings"):
-                lst = full_data.get(key, [])
-                page_data[key] = lst[start:end]
-
-            # Keep the full filtered data and expose the current page
-            self.ctx.current_data_full = full_data
-            self.ctx.current_data = page_data
-
-            populate_table(self.table, self.ctx)
-
-            # After populating table, check if we should select a specific item
-            if self.ctx._select_id_after_load:
-                try:
-                    sel_id = self.ctx._select_id_after_load
-                    ids = self.ctx.current_data.get("ids", []) if self.ctx.current_data else []
-                    if ids and sel_id in ids:
-                        row_idx = ids.index(sel_id)
-                        self.table.selectRow(row_idx)
-                        self.table.scrollToItem(self.table.item(row_idx, 0))
-                    self.ctx._select_id_after_load = None
-                except Exception:
-                    self.ctx._select_id_after_load = None
-
-            update_pagination_controls(
-                self.ctx,
-                self.page_label,
-                self.prev_button,
-                self.next_button,
-                total_count=total_count,
-            )
-
-            # Update filter fields based on the full filtered dataset
-            update_filter_fields(self.filter_builder, full_data)
-
-            # Save full filtered dataset to cache
-            if self.ctx.current_database and self.ctx.current_collection:
-                log_info(
-                    "[MetadataView] Saving filtered full dataset to cache: db='%s', coll='%s'",
-                    self.ctx.current_database,
-                    self.ctx.current_collection,
-                )
-                cache_entry = CacheEntry(
-                    data=full_data,
-                    scroll_position=self.table.verticalScrollBar().value(),
-                    search_query=(
-                        self.filter_builder.to_dict()
-                        if callable(getattr(self.filter_builder, "to_dict", None))
-                        else ""
-                    ),
-                )
-                self.ctx.cache_manager.set(
-                    self.ctx.current_database, self.ctx.current_collection, cache_entry
-                )
-            return
-
-        # No client-side filters: display server-paginated data
-        # Check if we fetched more items than page_size (to detect next page)
-        item_count = len(data.get("ids", []))
-        has_next_page = item_count > self.ctx.page_size
-
-        # If we got more than page_size, trim to page_size
-        if has_next_page:
-            trimmed_data = {}
-            for key in ("ids", "documents", "metadatas", "embeddings"):
-                lst = data.get(key, [])
-                # Avoid truth-value check on numpy arrays or other array-like objects
-                try:
-                    has_items = lst is not None and len(lst) > 0
-                except Exception:
-                    # Fallback: treat as non-empty if truthy without raising
-                    has_items = bool(lst)
-
-                if has_items:
-                    try:
-                        trimmed_data[key] = lst[: self.ctx.page_size]
-                    except Exception:
-                        # If slicing fails, convert to list then slice
-                        try:
-                            trimmed_data[key] = list(lst)[: self.ctx.page_size]
-                        except Exception:
-                            trimmed_data[key] = []
-                else:
-                    trimmed_data[key] = []
-            data = trimmed_data
-
-        self.ctx.current_data = data
-        populate_table(self.table, self.ctx)
-
-        # After populating table with new page data, check if we should select a specific item
-        if self.ctx._select_id_after_load:
-            try:
-                sel_id = self.ctx._select_id_after_load
-                ids = self.ctx.current_data.get("ids", []) if self.ctx.current_data else []
-                if ids and sel_id in ids:
-                    row_idx = ids.index(sel_id)
-                    # select and scroll to the row
-                    self.table.selectRow(row_idx)
-                    self.table.scrollToItem(self.table.item(row_idx, 0))
-                # clear the flag
-                self.ctx._select_id_after_load = None
-            except Exception:
-                self.ctx._select_id_after_load = None
-
-        update_pagination_controls(
+        process_loaded_data(
+            data,
+            self.table,
             self.ctx,
+            self.status_label,
             self.page_label,
             self.prev_button,
             self.next_button,
-            has_next_page=has_next_page,
+            self.filter_builder,
         )
-
-        # Update filter builder with available metadata fields
-        update_filter_fields(self.filter_builder, data)
-
-        # Save to cache
-        if self.ctx.current_database and self.ctx.current_collection:
-            log_info(
-                "[MetadataView] Saving to cache: db='%s', coll='%s'",
-                self.ctx.current_database,
-                self.ctx.current_collection,
-            )
-            cache_entry = CacheEntry(
-                data=data,
-                scroll_position=self.table.verticalScrollBar().value(),
-                search_query=(
-                    self.filter_builder.to_dict()
-                    if callable(getattr(self.filter_builder, "to_dict", None))
-                    else ""
-                ),
-            )
-            self.ctx.cache_manager.set(
-                self.ctx.current_database, self.ctx.current_collection, cache_entry
-            )
-            log_info(
-                "[MetadataView] ✓ Saved to cache. Total entries: %d",
-                len(self.ctx.cache_manager._cache),
-            )
-        else:
-            log_info(
-                "[MetadataView] ✗ NOT saving to cache - db='%s', coll='%s'",
-                self.ctx.current_database,
-                self.ctx.current_collection,
-            )
 
     def _on_load_error(self, error_msg: str) -> None:
         """Handle error from background thread."""
@@ -640,9 +467,7 @@ class MetadataView(QWidget):
             if success:
                 # Invalidate cache after adding item
                 if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(
-                        self.ctx.current_database, self.ctx.current_collection
-                    )
+                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
                 QMessageBox.information(self, "Success", "Item added successfully.")
                 # Fallback to full reload (row index is not available here)
                 self._load_data()
@@ -680,15 +505,11 @@ class MetadataView(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            success = self.ctx.connection.delete_items(
-                self.ctx.current_collection, ids=ids_to_delete
-            )
+            success = self.ctx.connection.delete_items(self.ctx.current_collection, ids=ids_to_delete)
             if success:
                 # Invalidate cache after deletion
                 if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(
-                        self.ctx.current_database, self.ctx.current_collection
-                    )
+                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
                 QMessageBox.information(self, "Success", "Items deleted successfully.")
                 self._load_data()
             else:
@@ -728,9 +549,7 @@ class MetadataView(QWidget):
     def _refresh_data(self) -> None:
         """Refresh data and invalidate cache."""
         if self.ctx.current_database and self.ctx.current_collection:
-            self.ctx.cache_manager.invalidate(
-                self.ctx.current_database, self.ctx.current_collection
-            )
+            self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
         self.ctx.current_page = 0
         self._load_data()
 
@@ -805,115 +624,57 @@ class MetadataView(QWidget):
                 # Try to preserve existing embedding for this row if present
                 from vector_inspector.utils import has_embedding
 
-                existing_embs = (
-                    self.ctx.current_data.get("embeddings", []) if self.ctx.current_data else []
-                )
+                existing_embs = self.ctx.current_data.get("embeddings", []) if self.ctx.current_data else []
                 if row < len(existing_embs):
                     existing = existing_embs[row]
                     if has_embedding(existing):
                         embeddings_arg = [existing]
 
-            # Cancel any existing update thread
-            if self.update_thread and self.update_thread.isRunning():
-                self.update_thread.quit()
-                self.update_thread.wait()
-
-            # Create and start update thread
-            self.update_thread = ItemUpdateThread(
-                self.ctx.connection,
-                self.ctx.current_collection,
-                updated_data,
-                embeddings_arg,
-                parent=self,
-            )
-            self.update_thread.finished.connect(self._on_item_update_finished)
-            self.update_thread.error.connect(self._on_item_update_error)
-
             # Show loading dialog during update
             self.loading_dialog.show_loading("Updating item...")
-            self.update_thread.start()
+
+            # Use TaskRunner if available, otherwise fall back to legacy threading
+            if self.task_runner:
+                self.task_runner.run_task(
+                    lambda: update_collection_item(
+                        self.ctx.connection,
+                        self.ctx.current_collection,
+                        updated_data,
+                        embeddings_arg,
+                    ),
+                    on_finished=self._on_item_update_finished,
+                    on_error=self._on_item_update_error,
+                )
+            else:
+                # Legacy path for backward compatibility
+                from vector_inspector.ui.views.metadata import ItemUpdateThread
+
+                update_thread = ItemUpdateThread(
+                    self.ctx.connection,
+                    self.ctx.current_collection,
+                    updated_data,
+                    embeddings_arg,
+                    parent=self,
+                )
+                update_thread.finished.connect(self._on_item_update_finished)
+                update_thread.error.connect(self._on_item_update_error)
+                update_thread.start()
 
     def _on_item_update_finished(self, updated_data: dict[str, Any]) -> None:
         """Handle successful item update."""
         self.loading_dialog.hide_loading()
 
-        # Invalidate cache after updating item
-        if self.ctx.current_database and self.ctx.current_collection:
-            self.ctx.cache_manager.invalidate(
-                self.ctx.current_database, self.ctx.current_collection
-            )
-
-        # Show info about embedding regeneration/preservation when applicable
         try:
             generate_on_edit = bool(self.generate_on_edit_checkbox.isChecked())
         except Exception:
             generate_on_edit = False
 
-        regen_count = 0
-        try:
-            regen_count = int(
-                getattr(self.ctx.connection, "_last_regenerated_count", 0) or 0
-            )
-        except Exception:
-            regen_count = 0
-
-        if generate_on_edit:
-            if regen_count > 0:
-                QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Item updated and embeddings regenerated ({regen_count}).",
-                )
-            else:
-                QMessageBox.information(
-                    self, "Success", "Item updated. No embeddings were regenerated."
-                )
-        else:
-            # embedding preservation mode
-            if regen_count == 0:
-                QMessageBox.information(
-                    self, "Success", "Item updated and existing embedding preserved."
-                )
-            else:
-                QMessageBox.information(
-                    self,
-                    "Success",
-                    "Item updated.",  # Fallback message
-                )
-
-        # If embeddings were regenerated, server ordering may have changed.
-        # Locate the updated item on the server (respecting server-side filters),
-        # compute its page and load that page while selecting the row. This
-        # ensures the edited item becomes visible even if the backend moved it.
-        try:
-            # Quick in-place update: if the updated item is still on the
-            # currently-visible page, update the in-memory page and
-            # table cells and emit `dataChanged` so the view refreshes
-            # immediately without a full reload.
-            if update_row_in_place(self.table, self.ctx, updated_data):
-                return
-
-            # If in-place update failed, try to find the item on the server
-            server_filter = None
-            if self.filter_group.isChecked() and self.filter_builder.has_filters():
-                server_filter, _ = self.filter_builder.get_filters_split()
-            self.ctx.server_filter = server_filter
-
-            target_page = find_updated_item_page(
-                self.ctx,
-                updated_data.get("id"),
-            )
-            if target_page is not None:
-                # set selection flag and load target page
-                self.ctx._select_id_after_load = updated_data.get("id")
-                self.ctx.current_page = target_page
-                self._load_data()
-                return
-        except Exception:
-            pass
-
-        # Fallback: reload current page so UI reflects server state
-        self._load_data()
+        process_item_update_success(
+            updated_data,
+            self.ctx,
+            self,
+            generate_on_edit,
+        )
 
     def _on_item_update_error(self, error_message: str) -> None:
         """Handle item update error."""
@@ -982,38 +743,23 @@ class MetadataView(QWidget):
             return
 
         row = selected_rows[0].row()
-        if row < 0 or row >= self.table.rowCount():
+        if row < 0 or row >= self.table.rowCount() or row >= len(self.ctx.current_data.get("ids", [])):
             return
 
         # Get item data for this row
-        ids = self.ctx.current_data.get("ids", [])
-        documents = self.ctx.current_data.get("documents", [])
-        metadatas = self.ctx.current_data.get("metadatas", [])
-        embeddings = self.ctx.current_data.get("embeddings", [])
-
-        if row >= len(ids):
-            return
-
         item_data = {
-            "id": ids[row],
-            "document": documents[row] if row < len(documents) else "",
-            "metadata": metadatas[row] if row < len(metadatas) else {},
-            "embedding": embeddings[row] if row < len(embeddings) else None,
+            "id": self.ctx.current_data["ids"][row],
+            "document": self.ctx.current_data.get("documents", [])[row]
+            if row < len(self.ctx.current_data.get("documents", []))
+            else "",
+            "metadata": self.ctx.current_data.get("metadatas", [])[row]
+            if row < len(self.ctx.current_data.get("metadatas", []))
+            else {},
+            "embedding": self.ctx.current_data.get("embeddings", [])[row]
+            if row < len(self.ctx.current_data.get("embeddings", []))
+            else None,
         }
-
         self.details_pane.update_item(item_data)
-
-    def _open_full_details_from_pane(self) -> None:
-        """Open full details dialog for currently selected row."""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if selected_rows:
-            row = selected_rows[0].row()
-            self._on_row_double_clicked(self.table.model().index(row, 0))
-
-    def _save_splitter_sizes(self, splitter: QSplitter) -> None:
-        """Save splitter sizes to settings."""
-        sizes = splitter.sizes()
-        self.settings_service.set("metadata_view_splitter_sizes", sizes)
 
     def _show_context_menu(self, position: Any) -> None:
         """Show context menu for table rows."""
@@ -1026,49 +772,19 @@ class MetadataView(QWidget):
 
     def _import_data(self, format_type: str) -> None:
         """Import data from file into collection."""
-        if not self.ctx.current_collection:
-            QMessageBox.warning(self, "No Collection", "Please select a collection first.")
-            return
+        from vector_inspector.ui.views.metadata.import_export_helpers import start_import
 
-        # Select file to import
-        file_filters: dict[str, str] = {
-            "json": "JSON Files (*.json)",
-            "csv": "CSV Files (*.csv)",
-            "parquet": "Parquet Files (*.parquet)",
-        }
-
-        # Get last used directory from settings
-        last_dir = self.settings_service.get("last_import_export_dir", "")
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, f"Import from {format_type.upper()}", last_dir, file_filters[format_type]
-        )
-
-        if not file_path:
-            return
-
-        # Cancel any existing import thread
-        if self.import_thread and self.import_thread.isRunning():
-            self.import_thread.quit()
-            self.import_thread.wait()
-
-        # Show loading dialog
-        self.loading_dialog.show_loading("Importing data...")
-
-        # Start import thread
-        self.import_thread = DataImportThread(
-            self.ctx.connection,
-            self.ctx.current_collection,
-            file_path,
+        start_import(
+            self,
+            self.ctx,
             format_type,
-            parent=self,
+            self.settings_service,
+            self.loading_dialog,
+            "import_thread",
+            self._on_import_finished,
+            self._on_import_error,
+            self._on_import_progress,
         )
-        self.import_thread.finished.connect(
-            partial(self._on_import_finished, file_path=file_path)
-        )
-        self.import_thread.error.connect(self._on_import_error)
-        self.import_thread.progress.connect(self._on_import_progress)
-        self.import_thread.start()
 
     def _on_import_progress(self, message: str) -> None:
         """Handle import progress update."""
@@ -1076,26 +792,24 @@ class MetadataView(QWidget):
 
     def _on_import_finished(self, imported_data: dict, item_count: int, file_path: str) -> None:
         """Handle import completion."""
-        self.loading_dialog.hide_loading()
+        from vector_inspector.ui.views.metadata.import_export_helpers import on_import_finished
 
-        # Save the directory for next time
-        from pathlib import Path
-
-        self.settings_service.set("last_import_export_dir", str(Path(file_path).parent))
-
-        QMessageBox.information(self, "Import Successful", f"Imported {item_count} items.")
-
-        # Invalidate cache after import
-        if self.ctx.current_database and self.ctx.current_collection:
-            self.ctx.cache_manager.invalidate(
-                self.ctx.current_database, self.ctx.current_collection
-            )
-        self._load_data()
+        on_import_finished(
+            self,
+            self.ctx,
+            self.settings_service,
+            self.loading_dialog,
+            self._load_data,
+            imported_data,
+            item_count,
+            file_path,
+        )
 
     def _on_import_error(self, error_message: str) -> None:
         """Handle import error."""
-        self.loading_dialog.hide_loading()
-        QMessageBox.warning(self, "Import Failed", error_message)
+        from vector_inspector.ui.views.metadata.import_export_helpers import on_import_error
+
+        on_import_error(self.loading_dialog, self, error_message)
 
     def closeEvent(self, event):
         """Save state before closing."""

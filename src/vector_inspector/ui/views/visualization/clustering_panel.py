@@ -13,12 +13,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vector_inspector.core.feature_flags import are_advanced_features_enabled, get_feature_tooltip
+# Feature flags accessed via app_state (passed from parent)
 
 
 class ClusteringPanel(QGroupBox):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, app_state=None):
         super().__init__("Clustering", parent)
+        self.app_state = app_state
         self._setup_ui()
 
     def _setup_ui(self):
@@ -235,9 +236,7 @@ class ClusteringPanel(QGroupBox):
         self.cluster_dbscan_adv_metric_label = QLabel("metric:")
         adv_row.addWidget(self.cluster_dbscan_adv_metric_label)
         self.cluster_dbscan_adv_metric_combo = QComboBox()
-        self.cluster_dbscan_adv_metric_combo.addItems(
-            ["euclidean", "manhattan", "cosine", "l1", "l2"]
-        )
+        self.cluster_dbscan_adv_metric_combo.addItems(["euclidean", "manhattan", "cosine", "l1", "l2"])
         adv_row.addWidget(self.cluster_dbscan_adv_metric_combo)
 
         self.cluster_dbscan_adv_algo_label = QLabel("algorithm:")
@@ -266,9 +265,7 @@ class ClusteringPanel(QGroupBox):
         self.cluster_optics_adv_metric_label = QLabel("metric:")
         adv_row.addWidget(self.cluster_optics_adv_metric_label)
         self.cluster_optics_adv_metric_combo = QComboBox()
-        self.cluster_optics_adv_metric_combo.addItems(
-            ["euclidean", "manhattan", "cosine", "l1", "l2"]
-        )
+        self.cluster_optics_adv_metric_combo.addItems(["euclidean", "manhattan", "cosine", "l1", "l2"])
         adv_row.addWidget(self.cluster_optics_adv_metric_combo)
 
         self.cluster_optics_adv_xi_label = QLabel("xi:")
@@ -390,8 +387,12 @@ class ClusteringPanel(QGroupBox):
 
     def _apply_feature_gating(self):
         """Apply feature flag gating to advanced controls."""
-        if not are_advanced_features_enabled():
-            tooltip = get_feature_tooltip("Advanced clustering parameters")
+        if not self.app_state or not self.app_state.advanced_features_enabled:
+            tooltip = (
+                self.app_state.get_feature_tooltip("Advanced clustering parameters")
+                if self.app_state
+                else "Advanced clustering parameters available in Vector Studio"
+            )
             # Disable all advanced controls and set tooltip
             for algorithm_controls in self._controls.values():
                 for label, widget in algorithm_controls.get("advanced", []):
@@ -441,7 +442,7 @@ class ClusteringPanel(QGroupBox):
         """
         algorithm = self.cluster_algorithm_combo.currentText()
         params = {}
-        advanced_enabled = are_advanced_features_enabled()
+        advanced_enabled = self.app_state.advanced_features_enabled if self.app_state else False
 
         if algorithm == "HDBSCAN":
             params["min_cluster_size"] = self.cluster_hdb_min_size_spin.value()

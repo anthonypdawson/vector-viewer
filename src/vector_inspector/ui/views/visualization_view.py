@@ -21,9 +21,12 @@ from PySide6.QtWidgets import (
 )
 
 from vector_inspector.core.connection_manager import ConnectionInstance
-from vector_inspector.core.feature_flags import are_advanced_features_enabled, get_feature_tooltip
+
+# Feature flags now accessed via app_state.advanced_features_enabled
 from vector_inspector.core.logging import log_error, log_info
+from vector_inspector.services import ClusterRunner, ThreadedTaskRunner
 from vector_inspector.services.visualization_service import VisualizationService
+from vector_inspector.state import AppState
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 from vector_inspector.ui.views.visualization import ClusteringPanel, DRPanel, PlotPanel
 
@@ -118,9 +121,24 @@ class VisualizationView(QWidget):
     # Signal emitted when user wants to view a point in data browser
     view_in_data_browser_requested = Signal(str)  # item_id
 
-    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
+    app_state: AppState
+    task_runner: ThreadedTaskRunner
+    cluster_runner: ClusterRunner
+
+    def __init__(
+        self,
+        app_state: AppState,
+        task_runner: ThreadedTaskRunner,
+        parent=None,
+    ):
         super().__init__(parent)
-        self.connection = connection
+
+        # Store AppState and task runner
+        self.app_state = app_state
+        self.task_runner = task_runner
+        self.cluster_runner = ClusterRunner()
+        self.connection = self.app_state.provider
+
         self.current_collection = ""
         self.current_data = None
         self.reduced_data = None
@@ -133,6 +151,49 @@ class VisualizationView(QWidget):
         self.loading_dialog = LoadingDialog("Loading visualization...", self)
         self._setup_ui()
         self._connect_plot_signals()
+
+        # Connect to AppState signals
+        self._connect_state_signals()
+        # Update services with current connection if available
+        if self.app_state.provider:
+            self._on_provider_changed(self.app_state.provider)
+
+    def _connect_state_signals(self) -> None:
+        """Subscribe to AppState changes."""
+        # React to connection changes
+        self.app_state.provider_changed.connect(self._on_provider_changed)
+
+        # React to collection changes
+        self.app_state.collection_changed.connect(self._on_collection_changed)
+
+        # React to loading state
+        self.app_state.loading_started.connect(self._on_loading_started)
+        self.app_state.loading_finished.connect(self._on_loading_finished)
+
+        # React to errors
+        self.app_state.error_occurred.connect(self._on_error)
+
+    def _on_provider_changed(self, connection: Optional[ConnectionInstance]) -> None:
+        """React to provider/connection change."""
+        # Update connection
+        self.connection = connection
+
+    def _on_collection_changed(self, collection: str) -> None:
+        """React to collection change."""
+        if collection:
+            self.set_collection(collection)
+
+    def _on_loading_started(self, message: str) -> None:
+        """React to loading started."""
+        self.loading_dialog.show_loading(message)
+
+    def _on_loading_finished(self) -> None:
+        """React to loading finished."""
+        self.loading_dialog.hide()
+
+    def _on_error(self, title: str, message: str) -> None:
+        """React to error."""
+        QMessageBox.critical(self, title, message)
 
     def _connect_plot_signals(self):
         """Connect plot panel signals."""
@@ -147,7 +208,7 @@ class VisualizationView(QWidget):
         self.sample_spin = QSpinBox()
         self.sample_spin.setMinimum(10)
         # Feature gating: limit sample size in free version
-        if are_advanced_features_enabled():
+        if self.app_state.advanced_features_enabled:
             self.sample_spin.setMaximum(10000)
         else:
             self.sample_spin.setMaximum(500)
@@ -160,9 +221,9 @@ class VisualizationView(QWidget):
         layout.addLayout(shared_layout)
 
         # Feature gating: disable "Use all data" in free version
-        if not are_advanced_features_enabled():
+        if not self.app_state.advanced_features_enabled:
             self.use_all_checkbox.setEnabled(False)
-            self.use_all_checkbox.setToolTip(get_feature_tooltip())
+            self.use_all_checkbox.setToolTip(self.app_state.get_feature_tooltip())
 
         def on_use_all_changed():
             self.sample_spin.setEnabled(not self.use_all_checkbox.isChecked())
@@ -170,7 +231,7 @@ class VisualizationView(QWidget):
         self.use_all_checkbox.stateChanged.connect(on_use_all_changed)
 
         # Modular panels
-        self.clustering_panel = ClusteringPanel(self)
+        self.clustering_panel = ClusteringPanel(self, app_state=self.app_state)
         layout.addWidget(self.clustering_panel)
 
         self.dr_panel = DRPanel(self)
@@ -296,9 +357,7 @@ class VisualizationView(QWidget):
         """Save current plot HTML to temp file for browser viewing."""
         html = self.plot_panel.get_current_html()
         if html:
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=".html", mode="w", encoding="utf-8"
-            ) as temp_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".html", mode="w", encoding="utf-8") as temp_file:
                 temp_file.write(html)
                 temp_file.flush()
                 self.temp_html_files.append(temp_file.name)
@@ -375,9 +434,7 @@ class VisualizationView(QWidget):
         self.loading_dialog.show_loading("Running clustering...")
         self.clustering_panel.cluster_button.setEnabled(False)
 
-        self.clustering_thread = ClusteringThread(
-            self.current_data["embeddings"], algorithm, params
-        )
+        self.clustering_thread = ClusteringThread(self.current_data["embeddings"], algorithm, params)
         self.clustering_thread.finished.connect(self._on_clustering_finished)
         self.clustering_thread.error.connect(self._on_clustering_error)
         self.clustering_thread.start()
@@ -470,9 +527,7 @@ class VisualizationView(QWidget):
                 )
         except Exception as e:
             log_error("Error saving cluster labels to metadata: %s", e)
-            QMessageBox.warning(
-                self, "Warning", f"Clustering complete, but error saving labels to metadata: {e!s}"
-            )
+            QMessageBox.warning(self, "Warning", f"Clustering complete, but error saving labels to metadata: {e!s}")
 
     def _on_clustering_error(self, error_msg: str):
         """Handle clustering error."""

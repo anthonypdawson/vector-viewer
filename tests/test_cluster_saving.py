@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from vector_inspector.state import AppState
+
 
 @pytest.fixture
 def qapp():
@@ -47,13 +49,15 @@ def sample_cluster_data():
     }
 
 
-def test_save_cluster_labels_to_metadata_success(qapp, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_to_metadata_success(qapp, task_runner, mock_connection, sample_cluster_data):
     """Test successfully saving cluster labels to metadata."""
     import numpy as np
 
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])
@@ -82,15 +86,15 @@ def test_save_cluster_labels_to_metadata_success(qapp, mock_connection, sample_c
     assert "existing" in metadatas[0]  # Preserves existing metadata
 
 
-def test_save_cluster_labels_preserves_existing_metadata(
-    qapp, mock_connection, sample_cluster_data
-):
+def test_save_cluster_labels_preserves_existing_metadata(qapp, task_runner, mock_connection, sample_cluster_data):
     """Test that saving cluster labels preserves existing metadata fields."""
     import numpy as np
 
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])
@@ -106,13 +110,15 @@ def test_save_cluster_labels_preserves_existing_metadata(
     assert metadatas[3]["existing"] == "data4"
 
 
-def test_save_cluster_labels_adds_updated_at(qapp, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_adds_updated_at(qapp, task_runner, mock_connection, sample_cluster_data):
     """Test that saving cluster labels adds updated_at timestamp."""
     import numpy as np
 
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])
@@ -130,13 +136,15 @@ def test_save_cluster_labels_adds_updated_at(qapp, mock_connection, sample_clust
         assert before <= metadata["updated_at"] <= after
 
 
-def test_save_cluster_labels_no_connection(qapp):
+def test_save_cluster_labels_no_connection(qapp, task_runner):
     """Test error handling when no connection is available."""
     import numpy as np
 
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=None)
+    app_state = AppState()
+    app_state.provider = None
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = {"ids": ["id1", "id2"], "metadatas": [{}, {}]}
     view.cluster_labels = np.array([0, 1])
@@ -146,13 +154,15 @@ def test_save_cluster_labels_no_connection(qapp):
     # No exception means success
 
 
-def test_save_cluster_labels_no_collection(qapp, mock_connection):
+def test_save_cluster_labels_no_collection(qapp, task_runner, mock_connection):
     """Test error handling when no collection is selected."""
     import numpy as np
 
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = None
     view.current_data = {"ids": ["id1", "id2"], "metadatas": [{}, {}]}
     view.cluster_labels = np.array([0, 1])
@@ -164,13 +174,15 @@ def test_save_cluster_labels_no_collection(qapp, mock_connection):
     mock_connection.update_items.assert_not_called()
 
 
-def test_save_cluster_labels_no_cluster_data(qapp, mock_connection):
+def test_save_cluster_labels_no_cluster_data(qapp, task_runner, mock_connection):
     """Test handling when no cluster labels are available."""
     import numpy as np
 
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = {
         "ids": ["id1"],
@@ -186,7 +198,7 @@ def test_save_cluster_labels_no_cluster_data(qapp, mock_connection):
     mock_connection.update_items.assert_not_called()
 
 
-def test_save_cluster_labels_update_fails(qapp, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_update_fails(qapp, task_runner, mock_connection, sample_cluster_data):
     """Test error handling when update_items fails."""
     import numpy as np
 
@@ -195,7 +207,9 @@ def test_save_cluster_labels_update_fails(qapp, mock_connection, sample_cluster_
     # Make update_items return False (failure)
     mock_connection.update_items.return_value = False
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])
@@ -227,13 +241,15 @@ def test_clustering_panel_save_checkbox_default_unchecked(qapp):
     assert panel.save_to_metadata_checkbox.isChecked() is False
 
 
-def test_save_cluster_labels_handles_noise_points(qapp, mock_connection):
+def test_save_cluster_labels_handles_noise_points(qapp, task_runner, mock_connection):
     """Test that noise points (label -1) are saved correctly."""
     import numpy as np
 
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = {
         "ids": ["id1", "id2", "id3"],
@@ -249,11 +265,13 @@ def test_save_cluster_labels_handles_noise_points(qapp, mock_connection):
     assert metadatas[1]["cluster"] == -1
 
 
-def test_save_cluster_labels_handles_numpy_array(qapp, mock_connection):
+def test_save_cluster_labels_handles_numpy_array(qapp, task_runner, mock_connection):
     """Test that cluster labels as numpy array are handled correctly."""
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = {
         "ids": ["id1", "id2"],
@@ -271,11 +289,13 @@ def test_save_cluster_labels_handles_numpy_array(qapp, mock_connection):
 
 
 @patch("vector_inspector.ui.views.visualization_view.QMessageBox")
-def test_run_clustering_calls_save_when_checkbox_enabled(mock_msg, qapp, mock_connection):
+def test_run_clustering_calls_save_when_checkbox_enabled(mock_msg, qapp, task_runner, mock_connection):
     """Test that clustering triggers save when checkbox is enabled."""
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = {
         "ids": ["id1", "id2", "id3", "id4"],
@@ -302,11 +322,13 @@ def test_run_clustering_calls_save_when_checkbox_enabled(mock_msg, qapp, mock_co
 
 
 @patch("vector_inspector.ui.views.visualization_view.QMessageBox")
-def test_run_clustering_skips_save_when_checkbox_disabled(mock_msg, qapp, mock_connection):
+def test_run_clustering_skips_save_when_checkbox_disabled(mock_msg, qapp, task_runner, mock_connection):
     """Test that clustering skips save when checkbox is disabled."""
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = VisualizationView(app_state, task_runner)
     view.current_collection = "test_coll"
     view.current_data = {
         "ids": ["id1", "id2", "id3", "id4"],

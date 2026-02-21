@@ -11,6 +11,9 @@ import uuid
 from vector_inspector.core.logging import log_error
 
 # Module-level singleton to avoid creating TelemetryService on every exception
+# Note: These module-level variables are acceptable here (not typical "global state")
+# because they're implementation details for exception handling performance and
+# avoiding re-entrancy issues during cascading failures.
 _telemetry_singleton = None
 _app_version = None
 

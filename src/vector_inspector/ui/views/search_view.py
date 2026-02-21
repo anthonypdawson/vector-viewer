@@ -25,11 +25,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vector_inspector.core.cache_manager import get_cache_manager
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.logging import log_info
+from vector_inspector.services import SearchRunner, ThreadedTaskRunner
 from vector_inspector.services.filter_service import apply_client_side_filters
 from vector_inspector.services.telemetry_service import TelemetryService
+from vector_inspector.state import AppState
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
@@ -40,6 +41,9 @@ from vector_inspector.ui.views.search_threads import SearchThread
 class SearchView(QWidget):
     """View for performing similarity searches."""
 
+    app_state: AppState
+    task_runner: ThreadedTaskRunner
+    search_runner: SearchRunner
     breadcrumb_label: QLabel
     query_input: QTextEdit
     results_table: QTableWidget
@@ -59,16 +63,80 @@ class SearchView(QWidget):
     _full_breadcrumb: str
     _elide_mode: str
 
-    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
+    def __init__(
+        self,
+        app_state: AppState,
+        task_runner: ThreadedTaskRunner,
+        parent=None,
+    ):
         super().__init__(parent)
-        self.connection = connection
+
+        # Store AppState and task runner
+        self.app_state = app_state
+        self.task_runner = task_runner
+        self.search_runner = SearchRunner()
+        self.connection = self.app_state.provider
+        self.cache_manager = self.app_state.cache_manager
+
         self.current_collection = ""
         self.current_database = ""
         self.search_results = None
         self.loading_dialog = LoadingDialog("Searching...", self)
         self.search_thread = None
-        self.cache_manager = get_cache_manager()
+
         self._setup_ui()
+
+        # Connect to AppState signals
+        self._connect_state_signals()
+        # Update services with current connection if available
+        if self.app_state.provider:
+            self._on_provider_changed(self.app_state.provider)
+
+    def _connect_state_signals(self) -> None:
+        """Subscribe to AppState changes."""
+        # React to connection changes
+        self.app_state.provider_changed.connect(self._on_provider_changed)
+
+        # React to collection changes
+        self.app_state.collection_changed.connect(self._on_collection_changed)
+
+        # React to loading state
+        self.app_state.loading_started.connect(self._on_loading_started)
+        self.app_state.loading_finished.connect(self._on_loading_finished)
+
+        # React to errors
+        self.app_state.error_occurred.connect(self._on_error)
+
+    def _on_provider_changed(self, connection: Optional[ConnectionInstance]) -> None:
+        """React to provider/connection change."""
+        # Update services
+        self.search_runner.set_connection(connection)
+
+        # Update connection
+        self.connection = connection
+
+        # Clear results
+        self.results_table.setRowCount(0)
+        self.results_status.setText("No search performed" if not connection else "Connected - enter query")
+
+    def _on_collection_changed(self, collection: str) -> None:
+        """React to collection change."""
+        if collection:
+            # Use AppState's database name
+            database_name = self.app_state.database or ""
+            self.set_collection(collection, database_name)
+
+    def _on_loading_started(self, message: str) -> None:
+        """React to loading started."""
+        self.loading_dialog.show_loading(message)
+
+    def _on_loading_finished(self) -> None:
+        """React to loading finished."""
+        self.loading_dialog.hide()
+
+    def _on_error(self, title: str, message: str) -> None:
+        """React to error."""
+        QMessageBox.critical(self, title, message)
 
     def _setup_ui(self):
         """Setup widget UI."""
@@ -86,9 +154,7 @@ class SearchView(QWidget):
         layout = QVBoxLayout(self)
 
         # Breadcrumb bar (for pro features)
-        self.breadcrumb_label.setStyleSheet(
-            "color: #2980b9; font-weight: bold; padding: 2px 0 4px 0;"
-        )
+        self.breadcrumb_label.setStyleSheet("color: #2980b9; font-weight: bold; padding: 2px 0 4px 0;")
         # Configure breadcrumb label sizing
         self.breadcrumb_label.setWordWrap(False)
         self.breadcrumb_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -149,7 +215,7 @@ class SearchView(QWidget):
         self.filter_group.setLayout(filter_group_layout)
         # Hide content when unchecked, show when checked
         self.filter_group.toggled.connect(self.filter_builder.setVisible)
-        self.filter_builder.setVisible(False)  # Start hidden
+        self.filter_builder.setVisible(False)  # Start not visible
         query_layout.addWidget(self.filter_group)
 
         # Add stretch to push content to top
@@ -175,6 +241,7 @@ class SearchView(QWidget):
 
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.results_table.setAlternatingRowColors(True)
+        self.results_table.horizontalHeader().setSectionsMovable(True)  # Allow column reordering
         # Enable context menu
         self.results_table.setContextMenuPolicy(Qt.CustomContextMenu)
         # Enable double-click to view details
@@ -423,9 +490,7 @@ class SearchView(QWidget):
                         "result_count": result_count,
                         "latency_ms": duration_ms,
                         "correlation_id": self._search_correlation_id,
-                        "has_filters": bool(
-                            self._search_server_filter or self._search_client_filters
-                        ),
+                        "has_filters": bool(self._search_server_filter or self._search_client_filters),
                         "success": True,
                     },
                 }
@@ -435,11 +500,7 @@ class SearchView(QWidget):
             pass  # Best effort telemetry
 
         # Check if results have the expected structure
-        if (
-            not results.get("ids")
-            or not isinstance(results["ids"], list)
-            or len(results["ids"]) == 0
-        ):
+        if not results.get("ids") or not isinstance(results["ids"], list) or len(results["ids"]) == 0:
             self.results_status.setText("No results found or query failed")
             self.results_table.setRowCount(0)
             if hasattr(self, "details_pane"):
@@ -482,9 +543,7 @@ class SearchView(QWidget):
                 search_results=results,
                 user_inputs={
                     "n_results": self._search_n_results,
-                    "filters": self.filter_builder.to_dict()
-                    if hasattr(self.filter_builder, "to_dict")
-                    else {},
+                    "filters": self.filter_builder.to_dict() if hasattr(self.filter_builder, "to_dict") else {},
                 },
             )
 
@@ -511,9 +570,7 @@ class SearchView(QWidget):
                         "result_count": 0,
                         "latency_ms": duration_ms,
                         "correlation_id": self._search_correlation_id,
-                        "has_filters": bool(
-                            self._search_server_filter or self._search_client_filters
-                        ),
+                        "has_filters": bool(self._search_server_filter or self._search_client_filters),
                         "success": False,
                     },
                 }
@@ -654,11 +711,7 @@ class SearchView(QWidget):
                         include=["embeddings", "documents"],
                     )
 
-                    if (
-                        item_data
-                        and item_data.get("embeddings")
-                        and len(item_data["embeddings"]) > 0
-                    ):
+                    if item_data and item_data.get("embeddings") and len(item_data["embeddings"]) > 0:
                         vector = item_data["embeddings"][0]
                         vector_list = vector.tolist() if hasattr(vector, "tolist") else list(vector)
 
@@ -725,14 +778,10 @@ class SearchView(QWidget):
 
         # Add standard "View Details" action
         view_action = menu.addAction("👁️ View Details")
-        view_action.triggered.connect(
-            lambda: self._on_row_double_clicked(self.results_table.model().index(row, 0))
-        )
+        view_action.triggered.connect(lambda: self._on_row_double_clicked(self.results_table.model().index(row, 0)))
 
         # Add "Copy vector to JSON" action
-        selected_rows = [
-            index.row() for index in self.results_table.selectionModel().selectedRows()
-        ]
+        selected_rows = [index.row() for index in self.results_table.selectionModel().selectedRows()]
         if not selected_rows:
             selected_rows = [row]
 
@@ -801,14 +850,48 @@ class SearchView(QWidget):
             metadata_keys = list(metadatas[0].keys())
             columns.extend(metadata_keys)
 
+        # Save current column order (visual indices) before changing column count
+        header = self.results_table.horizontalHeader()
+        old_column_order: dict[str, int] = {}
+        if self.results_table.columnCount() > 0:
+            for logical_index in range(self.results_table.columnCount()):
+                header_item = self.results_table.horizontalHeaderItem(logical_index)
+                if header_item:
+                    column_name = header_item.text()
+                    visual_index = header.visualIndex(logical_index)
+                    old_column_order[column_name] = visual_index
+
         self.results_table.setColumnCount(len(columns))
         self.results_table.setHorizontalHeaderLabels(columns)
+
+        # Restore column order if columns match
+        if old_column_order:
+            # Build mapping of column name to new logical index
+            new_logical_indices: dict[str, int] = {}
+            for logical_index in range(self.results_table.columnCount()):
+                header_item = self.results_table.horizontalHeaderItem(logical_index)
+                if header_item:
+                    new_logical_indices[header_item.text()] = logical_index
+
+            # Sort columns by their old visual index to restore order
+            columns_with_order = []
+            for col_name, old_visual in old_column_order.items():
+                if col_name in new_logical_indices:
+                    columns_with_order.append((col_name, old_visual, new_logical_indices[col_name]))
+
+            # Sort by old visual index
+            columns_with_order.sort(key=lambda x: x[1])
+
+            # Move columns to restore order
+            for target_visual_index, (col_name, old_visual, logical_index) in enumerate(columns_with_order):
+                current_visual = header.visualIndex(logical_index)
+                if current_visual != target_visual_index:
+                    header.moveSection(current_visual, target_visual_index)
+
         self.results_table.setRowCount(len(ids))
 
         # Populate rows
-        for row, (id_val, doc, meta, dist) in enumerate(
-            zip(ids, documents, metadatas, distances, strict=True)
-        ):
+        for row, (id_val, doc, meta, dist) in enumerate(zip(ids, documents, metadatas, distances, strict=True)):
             # Rank
             self.results_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
 

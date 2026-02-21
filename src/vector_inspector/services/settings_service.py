@@ -14,11 +14,14 @@ from vector_inspector.core.logging import log_error
 class SettingsService:
     """Handles loading and saving application settings.
 
-    This is a singleton - all instances share the same settings data.
+    This should be owned by AppState to ensure a single instance per application.
+    Legacy code may still create instances directly, but new code should use app_state.settings_service.
+
+    Uses singleton pattern to ensure only one instance exists, preventing state inconsistencies
+    when code creates instances directly vs using AppState.
     """
 
-    _instance = None
-    _initialized = False
+    _instance: Optional["SettingsService"] = None
 
     def __new__(cls):
         """Ensure only one instance exists (singleton pattern)."""
@@ -27,22 +30,18 @@ class SettingsService:
         return cls._instance
 
     def __init__(self):
-        """Initialize settings service."""
-        # Only initialize once
-        if SettingsService._initialized:
+        """Initialize settings service (only runs once due to singleton)."""
+        # Skip if already initialized (check instance dict only, not class dict)
+        if "_initialized" in self.__dict__:
             return
-        SettingsService._initialized = True
+        self._initialized = True
 
         # Expose a shared QObject-based signal emitter so UI can react to
         # settings changes without polling.
         class _Signals(QObject):
             setting_changed = Signal(str, object)
 
-        # singleton-like per-process signals instance
-        try:
-            self.signals
-        except Exception:
-            self.signals = _Signals()
+        self.signals = _Signals()
 
         self.settings_dir = Path.home() / ".vector-inspector"
         self.settings_file = self.settings_dir / "settings.json"
@@ -144,16 +143,14 @@ class SettingsService:
         return self.settings.get("cache_enabled", True)
 
     def set_cache_enabled(self, enabled: bool):
-        """Set whether caching is enabled."""
-        self.set("cache_enabled", enabled)
-        # Update cache manager state
-        from vector_inspector.core.cache_manager import get_cache_manager
+        """Set whether caching is enabled.
 
-        cache = get_cache_manager()
-        if enabled:
-            cache.enable()
-        else:
-            cache.disable()
+        NOTE: The cache_manager state should be updated by AppState or MainWindow,
+        not directly by SettingsService (to avoid circular dependency).
+        """
+        self.set("cache_enabled", enabled)
+        # Cache manager state will be updated by the caller (AppState or MainWindow)
+        # who has access to both settings_service and cache_manager
 
     def get_telemetry_enabled(self) -> bool:
         """Get whether telemetry is enabled (default: True)."""
@@ -255,9 +252,7 @@ class SettingsService:
 
         # Remove all keys that start with profile_name:
         prefix = f"{profile_name}:"
-        keys_to_remove = [
-            key for key in self.settings["collection_embedding_models"] if key.startswith(prefix)
-        ]
+        keys_to_remove = [key for key in self.settings["collection_embedding_models"] if key.startswith(prefix)]
 
         for key in keys_to_remove:
             self.settings["collection_embedding_models"].pop(key, None)

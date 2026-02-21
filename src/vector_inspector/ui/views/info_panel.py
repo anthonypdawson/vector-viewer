@@ -14,13 +14,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vector_inspector.core.cache_manager import get_cache_manager
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 from vector_inspector.core.connections.weaviate_connection import WeaviateConnection
 from vector_inspector.core.logging import log_info
+from vector_inspector.services import ThreadedTaskRunner
+from vector_inspector.state import AppState
 
 
 class ModelConfigPreparationThread(QThread):
@@ -88,6 +89,8 @@ class CollectionInfoLoadThread(QThread):
 class InfoPanel(QWidget):
     """Panel for displaying database and collection information."""
 
+    app_state: AppState
+    task_runner: ThreadedTaskRunner
     connection: Optional[ConnectionInstance]
     connection_id: str
     current_collection: str
@@ -111,16 +114,48 @@ class InfoPanel(QWidget):
     model_config_thread: Optional[ModelConfigPreparationThread]
     collection_info_thread: Optional[CollectionInfoLoadThread]
 
-    def __init__(self, connection: Optional[ConnectionInstance] = None, parent=None):
+    def __init__(self, app_state: AppState, task_runner: ThreadedTaskRunner, parent=None):
         super().__init__(parent)
-        self.connection = connection
+
+        # Store AppState and task runner
+        self.app_state = app_state
+        self.task_runner = task_runner
+        self.connection = self.app_state.provider
+        self.cache_manager = self.app_state.cache_manager
+
         self.connection_id = ""
         self.current_collection = ""
         self.current_database = ""
-        self.cache_manager = get_cache_manager()
+
         self.model_config_thread = None
         self.collection_info_thread = None
         self._setup_ui()
+
+        # Connect to AppState signals
+        self._connect_state_signals()
+        # Update with current connection if available
+        if self.app_state.provider:
+            self._on_provider_changed(self.app_state.provider)
+
+    def _connect_state_signals(self) -> None:
+        """Subscribe to AppState changes."""
+        # React to connection changes
+        self.app_state.provider_changed.connect(self._on_provider_changed)
+
+        # React to collection changes
+        self.app_state.collection_changed.connect(self._on_collection_changed)
+
+    def _on_provider_changed(self, connection: Optional[ConnectionInstance]) -> None:
+        """React to provider/connection change."""
+        self.connection = connection
+        self.refresh_database_info()
+
+    def _on_collection_changed(self, collection: str) -> None:
+        """React to collection change."""
+        if collection:
+            # Use AppState's database name
+            database_name = self.app_state.database or ""
+            self.set_collection(collection, database_name)
 
     def _setup_ui(self):
         """Setup widget UI."""
@@ -237,9 +272,7 @@ class InfoPanel(QWidget):
         from vector_inspector.services.settings_service import SettingsService
 
         # Ensure we have a valid connection_id
-        effective_connection_id = self.connection_id or (
-            self.connection.id if self.connection else None
-        )
+        effective_connection_id = self.connection_id or (self.connection.id if self.connection else None)
 
         if not effective_connection_id:
             log_info("Cannot clear embedding model: no connection_id available")
@@ -272,9 +305,7 @@ class InfoPanel(QWidget):
         from vector_inspector.services.settings_service import SettingsService
 
         # Ensure we have valid identifiers
-        effective_connection_id = self.connection_id or (
-            self.connection.id if self.connection else None
-        )
+        effective_connection_id = self.connection_id or (self.connection.id if self.connection else None)
 
         if not effective_connection_id or not self.current_collection:
             self.clear_embedding_btn.setEnabled(False)
@@ -331,9 +362,7 @@ class InfoPanel(QWidget):
         # Get provider name
         # Extract the underlying database connection from ConnectionInstance wrapper.
         backend = getattr(self.connection, "database", self.connection)
-        provider_name = (
-            backend.__class__.__name__.replace("Connection", "") if backend else "Unknown"
-        )
+        provider_name = backend.__class__.__name__.replace("Connection", "") if backend else "Unknown"
         self._update_label(self.provider_label, provider_name)
 
         # Get connection details
@@ -409,9 +438,7 @@ class InfoPanel(QWidget):
             self._update_label(self.api_key_label, "Unknown")
 
         # Status
-        self._update_label(
-            self.status_label, "Connected" if self.connection.is_connected else "Disconnected"
-        )
+        self._update_label(self.status_label, "Connected" if self.connection.is_connected else "Disconnected")
 
         # Count collections
         try:
@@ -437,9 +464,7 @@ class InfoPanel(QWidget):
             self.collection_info_thread.wait()
 
         # Start thread to load collection info
-        self.collection_info_thread = CollectionInfoLoadThread(
-            self.connection, self.current_collection, self
-        )
+        self.collection_info_thread = CollectionInfoLoadThread(self.connection, self.current_collection, self)
         self.collection_info_thread.finished.connect(self._on_collection_info_loaded)
         self.collection_info_thread.error.connect(self._on_collection_info_error)
         self.collection_info_thread.start()
@@ -483,9 +508,7 @@ class InfoPanel(QWidget):
         self._update_label(self.vector_dim_label, str(vector_dim))
 
         # Enable configure button if we have a valid dimension
-        self.configure_embedding_btn.setEnabled(
-            vector_dim != "Unknown" and isinstance(vector_dim, int)
-        )
+        self.configure_embedding_btn.setEnabled(vector_dim != "Unknown" and isinstance(vector_dim, int))
 
         # Update embedding model display
         self._update_embedding_model_display(collection_info)
@@ -506,9 +529,7 @@ class InfoPanel(QWidget):
         if metadata_fields:
             schema_text = "\n".join([f"• {field}" for field in sorted(metadata_fields)])
             self.schema_label.setText(schema_text)
-            self.schema_label.setStyleSheet(
-                "color: white; padding-left: 20px; font-family: monospace;"
-            )
+            self.schema_label.setStyleSheet("color: white; padding-left: 20px; font-family: monospace;")
         else:
             self.schema_label.setText("No metadata fields found")
             self.schema_label.setStyleSheet("color: gray; padding-left: 20px;")
@@ -536,9 +557,7 @@ class InfoPanel(QWidget):
                     details_list.append(f"• HNSW ef_construct: {hnsw.get('ef_construct', 'N/A')}")
                 if "optimizer_config" in config:
                     opt = config["optimizer_config"]
-                    details_list.append(
-                        f"• Indexing threshold: {opt.get('indexing_threshold', 'N/A')}"
-                    )
+                    details_list.append(f"• Indexing threshold: {opt.get('indexing_threshold', 'N/A')}")
 
         elif isinstance(backend, PineconeConnection):
             details_list.append("• Provider: Pinecone")
@@ -570,9 +589,7 @@ class InfoPanel(QWidget):
 
         if details_list:
             self.provider_details_label.setText("\n".join(details_list))
-            self.provider_details_label.setStyleSheet(
-                "color: white; padding-left: 20px; font-family: monospace;"
-            )
+            self.provider_details_label.setStyleSheet("color: white; padding-left: 20px; font-family: monospace;")
         else:
             self.provider_details_label.setText("No additional details available")
             self.provider_details_label.setStyleSheet("color: gray; padding-left: 20px;")
@@ -626,9 +643,7 @@ class InfoPanel(QWidget):
 
         # Ensure we have a valid connection_id for settings lookup
         # Fallback to connection.id if connection_id not set
-        effective_connection_id = self.connection_id or (
-            self.connection.id if self.connection else None
-        )
+        effective_connection_id = self.connection_id or (self.connection.id if self.connection else None)
 
         # Try to get from connection using the helper method
         if self.connection and self.current_collection:
@@ -666,9 +681,7 @@ class InfoPanel(QWidget):
             return
 
         # Ensure we have a valid connection_id
-        effective_connection_id = self.connection_id or (
-            self.connection.id if self.connection else None
-        )
+        effective_connection_id = self.connection_id or (self.connection.id if self.connection else None)
 
         if not effective_connection_id:
             return
@@ -685,20 +698,14 @@ class InfoPanel(QWidget):
         loading.show_loading("Preparing model configuration...")
 
         # Start thread to load collection info
-        self.model_config_thread = ModelConfigPreparationThread(
-            self.connection, self.current_collection, self
-        )
+        self.model_config_thread = ModelConfigPreparationThread(self.connection, self.current_collection, self)
         self.model_config_thread.finished.connect(
             lambda info: self._on_model_config_loaded(info, loading, effective_connection_id)
         )
-        self.model_config_thread.error.connect(
-            lambda err: self._on_model_config_error(err, loading)
-        )
+        self.model_config_thread.error.connect(lambda err: self._on_model_config_error(err, loading))
         self.model_config_thread.start()
 
-    def _on_model_config_loaded(
-        self, collection_info: dict, loading, effective_connection_id: str
-    ) -> None:
+    def _on_model_config_loaded(self, collection_info: dict, loading, effective_connection_id: str) -> None:
         """Handle model configuration data loaded."""
         loading.hide_loading()
 

@@ -8,6 +8,8 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QObject, Signal
 
+from vector_inspector.state import AppState
+
 
 @pytest.fixture
 def plot_panel(qtbot):
@@ -180,11 +182,13 @@ def test_selection_container_hidden_3d_plot():
     assert is_2d is False
 
 
-def test_visualization_view_forwards_signal(qtbot):
+def test_visualization_view_forwards_signal(qtbot, task_runner):
     """Test that VisualizationView forwards view_in_data_browser signal."""
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
-    view = VisualizationView(connection=None)
+    app_state = AppState()
+    app_state.provider = None
+    view = VisualizationView(app_state, task_runner)
     qtbot.addWidget(view)
 
     # Check that signal exists on view

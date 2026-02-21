@@ -2,15 +2,22 @@
 
 This module provides hooks and callbacks that allow pro versions
 or plugins to extend core functionality without modifying the base code.
+
+Note: The module-level hook instances are intentional architectural extension points,
+not user state. They provide a plugin system similar to event emitters or decorators.
 """
 
-from typing import Any, ClassVar
 from collections.abc import Callable
+from typing import Any, ClassVar
+
 from PySide6.QtWidgets import QMenu, QTableWidget
 
 
 class TableContextMenuHook:
-    """Hook for adding custom context menu items to table widgets."""
+    """Hook for adding custom context menu items to table widgets.
+
+    Uses class-level handler registry - this is an acceptable pattern for
+    a hook/plugin system, not typical "global state"."""
 
     _handlers: ClassVar[list[Callable]] = []
 
@@ -67,7 +74,10 @@ table_context_menu_hook = TableContextMenuHook()
 
 
 class SettingsPanelHook:
-    """Hook for adding custom sections to the Settings/Preferences dialog."""
+    """Hook for adding custom sections to the Settings/Preferences dialog.
+
+    Uses class-level handler registry - this is an acceptable pattern for
+    a hook/plugin system, not typical "global state"."""
 
     _handlers: ClassVar[list[Callable]] = []
 

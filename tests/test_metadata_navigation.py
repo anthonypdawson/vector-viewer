@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from vector_inspector.state import AppState
 from vector_inspector.ui.views.metadata.context import MetadataContext
 
 
@@ -46,11 +47,13 @@ def metadata_context(mock_connection):
     return ctx
 
 
-def test_select_item_by_id_on_current_page(qapp, metadata_context):
+def test_select_item_by_id_on_current_page(qapp, task_runner, metadata_context):
     """Test selecting an item that's on the current page."""
     from vector_inspector.ui.views.metadata_view import MetadataView
 
-    view = MetadataView(connection=metadata_context.connection)
+    app_state = AppState()
+    app_state.provider = metadata_context.connection
+    view = MetadataView(app_state, task_runner)
     view.ctx = metadata_context
 
     # Populate table
@@ -68,11 +71,13 @@ def test_select_item_by_id_on_current_page(qapp, metadata_context):
     assert selected_rows[0].row() == 1
 
 
-def test_select_item_by_id_not_found(qapp, metadata_context):
+def test_select_item_by_id_not_found(qapp, task_runner, metadata_context):
     """Test selecting an item that doesn't exist."""
     from vector_inspector.ui.views.metadata_view import MetadataView
 
-    view = MetadataView(connection=metadata_context.connection)
+    app_state = AppState()
+    app_state.provider = metadata_context.connection
+    view = MetadataView(app_state, task_runner)
     view.ctx = metadata_context
 
     # Try to select non-existent item
@@ -81,11 +86,13 @@ def test_select_item_by_id_not_found(qapp, metadata_context):
     assert result is False
 
 
-def test_select_item_by_id_no_data(qapp):
+def test_select_item_by_id_no_data(qapp, task_runner):
     """Test selecting an item when no data is loaded."""
     from vector_inspector.ui.views.metadata_view import MetadataView
 
-    view = MetadataView(connection=None)
+    app_state = AppState()
+    app_state.provider = None
+    view = MetadataView(app_state, task_runner)
     view.ctx = MetadataContext(connection=None)
     view.ctx.current_data = None
 
@@ -95,14 +102,16 @@ def test_select_item_by_id_no_data(qapp):
 
 
 @patch("vector_inspector.ui.views.metadata.find_updated_item_page")
-def test_select_item_by_id_different_page(mock_find_page, qapp, metadata_context):
+def test_select_item_by_id_different_page(mock_find_page, qapp, task_runner, metadata_context):
     """Test selecting an item that's on a different page."""
     from vector_inspector.ui.views.metadata_view import MetadataView
 
     # Mock find_updated_item_page to return page 2
     mock_find_page.return_value = 2
 
-    view = MetadataView(connection=metadata_context.connection)
+    app_state = AppState()
+    app_state.provider = metadata_context.connection
+    view = MetadataView(app_state, task_runner)
     view.ctx = metadata_context
     view.ctx.current_page = 0
 
@@ -161,7 +170,7 @@ def test_context_select_id_after_load_flag():
     assert ctx._select_id_after_load is None
 
 
-def test_main_window_handles_view_in_data_browser_signal(qapp):
+def test_main_window_handles_view_in_data_browser_signal(qapp, task_runner):
     """Test that MainWindow connects and handles view_in_data_browser signal."""
     # This test requires full MainWindow initialization which is complex
     # Test the core behavior: metadata_view.select_item_by_id is called
@@ -169,7 +178,9 @@ def test_main_window_handles_view_in_data_browser_signal(qapp):
 
     # Create a metadata view
     mock_connection = MagicMock()
-    view = MetadataView(connection=mock_connection)
+    app_state = AppState()
+    app_state.provider = mock_connection
+    view = MetadataView(app_state, task_runner)
     view.ctx = MetadataContext(connection=mock_connection)
     view.ctx.current_collection = "test_coll"
     view.ctx.current_data = {
@@ -211,11 +222,13 @@ def test_pagination_preserves_selection_state():
     assert ctx.current_page == 3
 
 
-def test_select_item_scrolls_into_view(qapp, metadata_context):
+def test_select_item_scrolls_into_view(qapp, task_runner, metadata_context):
     """Test that selecting an item scrolls it into view."""
     from vector_inspector.ui.views.metadata_view import MetadataView
 
-    view = MetadataView(connection=metadata_context.connection)
+    app_state = AppState()
+    app_state.provider = metadata_context.connection
+    view = MetadataView(app_state, task_runner)
     view.ctx = metadata_context
 
     # Populate table
@@ -234,7 +247,7 @@ def test_select_item_scrolls_into_view(qapp, metadata_context):
     view.table.scrollToItem.assert_called_once()
 
 
-def test_cross_page_navigation_with_filters(qapp):
+def test_cross_page_navigation_with_filters(qapp, task_runner):
     """Test that cross-page navigation works with active filters."""
     from vector_inspector.ui.views.metadata_view import MetadataView
 
@@ -245,7 +258,9 @@ def test_cross_page_navigation_with_filters(qapp):
         "documents": [f"doc{i}" for i in range(30)],
     }
 
-    view = MetadataView(connection=mock_conn)
+    app_state = AppState()
+    app_state.provider = mock_conn
+    view = MetadataView(app_state, task_runner)
     view.ctx = MetadataContext(connection=mock_conn)
     view.ctx.current_collection = "coll"
     view.ctx.page_size = 10
