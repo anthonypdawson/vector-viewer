@@ -1,6 +1,6 @@
 [project]
 name = "vector-inspector"
-version = "0.4.1"
+version = "0.4.2"
 description = "A comprehensive desktop application for visualizing, querying, and managing vector database data"
 authors = [
     {name = "Anthony Dawson", email = "anthonypdawson+github@gmail.com"},
@@ -116,7 +116,7 @@ env = { PYTHONPATH = "src" }
 [tool.briefcase]
 project_name = "Vector Inspector"
 bundle = "com.divinedevops.vector-inspector"
-version = "0.4.1"
+version = "0.4.2"
 url = "https://vector-inspector.divinedevops.com"
 license.file = "LICENSE"
 author = "Anthony Dawson"
