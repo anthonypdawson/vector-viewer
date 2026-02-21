@@ -1,7 +1,7 @@
 
 # Vector Inspector
 
-[![CI](https://github.com/anthonypdawson/vector-inspector/actions/workflows/ci-tests.yml/badge.svg?branch=master)](https://github.com/anthonypdawson/vector-inspector/actions/workflows/ci-tests.yml)
+[![CI](https://github.com/anthonypdawson/vector-inspector/actions/workflows/ci-tests.yml/badge.svg?branch=master)](https://github.com/anthonypdawson/vector-inspector/actions/workflows/ci-tests.yml) [![Coverage Status](https://coveralls.io/repos/github/anthonypdawson/vector-inspector/badge.svg?branch=master)](https://coveralls.io/github/anthonypdawson/vector-inspector?branch=master)
 [![Publish](https://github.com/anthonypdawson/vector-inspector/actions/workflows/release-and-publish.yml/badge.svg?branch=master)](https://github.com/anthonypdawson/vector-inspector/actions/workflows/release-and-publish.yml)
 
 [![PyPI Version](https://img.shields.io/pypi/v/vector-inspector.svg?cacheSeconds=300)](https://pypi.org/project/vector-inspector/)
