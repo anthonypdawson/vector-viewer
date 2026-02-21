@@ -232,7 +232,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for the complete development roadmap and plann
 
 Paths are resolved relative to the project root (where `pyproject.toml` is). For example, entering `./data/chroma_db` will use the absolute path resolved from the project root.
 
-The application automatically saves your last connection configuration to `~/.vector-viewer/settings.json`. The next time you launch the application, it will attempt to reconnect using the last saved settings.
+The application automatically saves your last connection configuration to `~/.vector-inspector/settings.json`. The next time you launch the application, it will attempt to reconnect using the last saved settings.
 
 Example settings structure:
 ```json
