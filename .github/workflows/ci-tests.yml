@@ -51,7 +51,9 @@ jobs:
         env:
           PYTHONPATH: ./src
           QT_QPA_PLATFORM: offscreen
-        run: pdm run pytest -q tests --cov=vector_inspector --cov-report=lcov
+          QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu"
+          QTWEBENGINE_DISABLE_SANDBOX: 1
+        run: pdm run pytest tests --cov=vector_inspector --cov-report=lcov -vv -s
 
       - name: Upload coverage xml report
         if: success()
