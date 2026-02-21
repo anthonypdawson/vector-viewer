@@ -24,6 +24,10 @@ Vector Inspector bridges the gap between vector databases and user-friendly data
 
 ---
 
+## Homepage
+[https://vector-inspector.divinedevops.com](https://vector-inspector.divinedevops.com)
+
+
 # 🟦 Installation
 
 ## Quick Install (recommended)
