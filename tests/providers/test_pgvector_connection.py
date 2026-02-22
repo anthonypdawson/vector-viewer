@@ -254,3 +254,67 @@ def test_parse_vector_various_inputs():
     assert conn._parse_vector("[1.0,2.0]") == [1.0, 2.0]
     # malformed string returns []
     assert conn._parse_vector("not-a-vector") == []
+
+
+def test_parse_vector_with_numpy_array():
+    np = pytest.importorskip("numpy")
+    conn = PgVectorConnection()
+    arr = np.array([1.5, 2.5, 3.5])
+    parsed = conn._parse_vector(arr)
+    assert parsed == [1.5, 2.5, 3.5]
+
+
+def test_create_collection_commits_and_handles_distance_ops(mock_pgvector_conn):
+    mock_conn, mock_cursor = mock_pgvector_conn
+    conn = PgVectorConnection()
+    conn.connect()
+    # exercise with different distance keywords
+    assert conn.create_collection("c1", vector_size=4, distance="euclidean") is True
+    assert conn.create_collection("c2", vector_size=4, distance="dotproduct") is True
+    assert conn.create_collection("c3", vector_size=4, distance="unknown") is True
+    # commit should have been called at least once
+    assert mock_conn.commit.called
+
+
+def test_add_items_maps_metadata_columns_when_no_metadata_col(mock_pgvector_conn):
+    mock_conn, mock_cursor = mock_pgvector_conn
+    conn = PgVectorConnection()
+    conn.connect()
+
+    # simulate a schema without metadata jsonb but with a specific column 'title'
+    conn._get_table_schema = lambda name: {"id": "text", "document": "text", "title": "text", "embedding": "vector"}
+
+    documents = ["d1"]
+    metadatas = [{"title": "hello", "other": "ignored"}]
+    ids = ["i1"]
+    embeddings = [[0.1, 0.2]]
+
+    res = conn.add_items("coll", documents=documents, metadatas=metadatas, ids=ids, embeddings=embeddings)
+    assert res is True
+    # The last execute call should have values matching the provided values
+    # execute was called multiple times; inspect the last call args
+    *_, last_call = mock_cursor.execute.call_args_list
+    # call_args = (sql_obj, values)
+    call_args, call_kwargs = last_call
+    # ensure the values list contains the id and embedding we provided
+    assert ids[0] in call_args[1]
+    assert embeddings[0] in call_args[1]
+
+
+def test_list_databases_handles_tmp_connect_failure():
+    # Simulate psycopg2.connect raising when trying temporary connection
+    with patch("psycopg2.connect", side_effect=Exception("no db")):
+        conn = PgVectorConnection()
+        # ensure no client is set
+        conn._client = None
+        res = conn.list_databases()
+        assert res == []
+
+
+def test__get_table_schema_returns_empty_on_error(mock_pgvector_conn):
+    mock_conn, mock_cursor = mock_pgvector_conn
+    # make fetchall raise
+    mock_cursor.fetchall.side_effect = Exception("boom")
+    conn = PgVectorConnection()
+    conn.connect()
+    assert conn._get_table_schema("whatever") == {}
