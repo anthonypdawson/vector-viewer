@@ -23,6 +23,8 @@ class LanceDBConnection(VectorDBConnection):
         self._client = None
         self._db = None
         self._connected = False
+        # Cache per-collection metadata (e.g., vector_dimension)
+        self._collection_meta: dict[str, int] = {}
 
     def connect(self) -> bool:
         try:
@@ -111,6 +113,13 @@ class LanceDBConnection(VectorDBConnection):
                         except Exception:
                             vector_dimension = "Unknown"
 
+                # Cache vector dimension if known
+                try:
+                    if isinstance(vector_dimension, int):
+                        self._collection_meta[name] = vector_dimension
+                except Exception:
+                    pass
+
             else:
                 # No dataframe available, try to get count from attribute
                 if count is None:
@@ -145,11 +154,14 @@ class LanceDBConnection(VectorDBConnection):
                     "metadata": "{}",
                 }
             ]
-            print(
-                f"LanceDB create_collection: Creating table '{name}' with vector_size={vector_size}"
-            )
+            print(f"LanceDB create_collection: Creating table '{name}' with vector_size={vector_size}")
             self._db.create_table(name, data=dummy_data)
             print(f"LanceDB create_collection: Table '{name}' created successfully")
+            # Cache the declared vector size for this collection
+            try:
+                self._collection_meta[name] = int(vector_size)
+            except Exception:
+                pass
             return True
         except Exception as e:
             print(f"LanceDB create_collection failed: {e}")
@@ -170,7 +182,27 @@ class LanceDBConnection(VectorDBConnection):
             import pyarrow as pa
 
             # Prepare data
-            vectors = embeddings if embeddings else [[0.0] * len(documents)] * len(documents)
+            if embeddings:
+                vectors = embeddings
+            else:
+                # Prefer cached vector size for this collection
+                vec_len = self._collection_meta.get(collection_name)
+                if not vec_len:
+                    # Try to infer vector dimension from collection info; fail early if unknown
+                    try:
+                        info = self.get_collection_info(collection_name)
+                        vec_len = info.get("vector_dimension") if info else None
+                        if isinstance(vec_len, str) and vec_len.isdigit():
+                            vec_len = int(vec_len)
+                    except Exception:
+                        vec_len = None
+
+                if not vec_len or vec_len == "Unknown":
+                    # Cannot safely generate fixed-size vectors without a known dimension
+                    log_error("LanceDB add_items failed: unknown vector dimension for %s", collection_name)
+                    return False
+
+                vectors = [[0.0] * int(vec_len) for _ in range(len(documents))]
             meta = metadatas if metadatas else [{}] * len(documents)
             id_list = ids if ids else [str(i) for i in range(len(documents))]
             doc_list = documents if documents else [""] * len(vectors)
@@ -307,9 +339,7 @@ class LanceDBConnection(VectorDBConnection):
             # If query_texts provided but no embeddings, compute embeddings for the collection
             if (not query_embeddings) and query_texts:
                 try:
-                    query_embeddings = self.compute_embeddings_for_documents(
-                        collection_name, query_texts
-                    )
+                    query_embeddings = self.compute_embeddings_for_documents(collection_name, query_texts)
                 except Exception as e:
                     log_error("Failed to compute embeddings for query_texts: %s", e)
                     return None
@@ -320,9 +350,7 @@ class LanceDBConnection(VectorDBConnection):
                     # Try to recompute embeddings from query_texts if available
                     if query_texts:
                         try:
-                            query_embeddings = self.compute_embeddings_for_documents(
-                                collection_name, query_texts
-                            )
+                            query_embeddings = self.compute_embeddings_for_documents(collection_name, query_texts)
                             emb = query_embeddings[0]
                         except Exception as e:
                             log_error("Embedding dim mismatch and recompute failed: %s", e)
@@ -343,10 +371,7 @@ class LanceDBConnection(VectorDBConnection):
                     results = results.head(n_results)
                 except Exception as e_search:
                     msg = str(e_search)
-                    if (
-                        "no vector column" in msg.lower()
-                        or "there is no vector column" in msg.lower()
-                    ):
+                    if "no vector column" in msg.lower() or "there is no vector column" in msg.lower():
                         # Try explicit common vector column names as a fallback
                         tried = []
                         # Log available schema names if accessible
@@ -379,11 +404,7 @@ class LanceDBConnection(VectorDBConnection):
                         for col in candidates:
                             try:
                                 tried.append(col)
-                                results = (
-                                    tbl.search(emb, vector_column=col)
-                                    .limit(n_results + 1)
-                                    .to_pandas()
-                                )
+                                results = tbl.search(emb, vector_column=col).limit(n_results + 1).to_pandas()
                                 # Filter out dummy row if present
                                 if "id" in results.columns:
                                     results = results[results["id"] != "__dummy_init__"]
@@ -522,7 +543,12 @@ class LanceDBConnection(VectorDBConnection):
 
             arr = pa.table(table_dict)
             self._db.drop_table(collection_name)
-            self._db.create_table(collection_name, arr.schema)
+            # Create table with data (pass actual Arrow table as 'data' kwarg)
+            try:
+                self._db.create_table(collection_name, data=arr)
+            except TypeError:
+                # Fallback for older lancedb API signatures
+                self._db.create_table(collection_name, arr)
             self._db.open_table(collection_name).add(arr)
             return True
         except Exception as e:
