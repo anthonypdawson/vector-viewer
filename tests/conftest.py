@@ -1,6 +1,10 @@
 import logging
 import os
 
+# Ensure headless Qt platform as early as possible to avoid GUI initialization
+# before tests or imported modules can touch Qt.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import pytest
 
 from tests.fakes.fake_provider import FakeProvider
@@ -49,8 +53,6 @@ def pytest_configure(config):
     except Exception as _err:
         # Fail-safe: do not prevent pytest from running if telemetry internals change
         logging.debug(f"Could not patch telemetry for tests: {_err}")
-        # Respect existing setting but default to offscreen for headless testing
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture
