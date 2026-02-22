@@ -1,33 +1,11 @@
-## Release Notes (0.4.2)
+## Release Notes (0.4.3)
 
-This release finalizes the UI refactor and AppState migration. Key changes
-focus on centralizing application state in `AppState`, restoring robust
-singleton semantics for core services, and updating documentation and tests
-to reflect the new patterns.
 
-Highlights
-- AppState: Introduced as the canonical, required application state container
-	for UI views and services. Views now receive `app_state: AppState` and
-	access shared services via `app_state.*` properties.
-- Singleton core services: `SettingsService`, `CacheManager`, and
-	`EmbeddingModelRegistry` now implement a safe singleton pattern. The
-	initialization guard checks the instance dictionary to avoid false
-	positives from class-level resets used in tests.
-- Backward compatibility: Deprecated helper getters (e.g. `get_cache_manager()`)
-	still return the same singleton instances to avoid state fragmentation,
-	but new code should prefer `app_state.*`.
-- Cache management: `CacheManager` is documented and examples updated to use
-	`app_state.cache_manager` for get/set/invalidate operations.
-- Settings: `SettingsService` persists to `~/.vector-inspector/settings.json`.
-	Access via `app_state.settings_service`; signals available on the service
-	for reactive UI updates.
-- Tests: Full test suite run — all tests passing (281 passed, 2 skipped).
-- Docs: Updated `.github/copilot-instructions.md` to describe the AppState
-	pattern, singleton usage, preferred access patterns, and testing notes.
-
-Migration notes
-- All UI components should now require `app_state` (no `Optional[AppState]`
-	fallbacks remain). If any legacy code still instantiates services directly,
-	it will receive the same singleton instance to preserve behavior.
+- LanceDB provider fixes and improvements
+	- Fix: `delete_items` now feature-detects the native LanceDB table delete API and uses it when available (`tbl.delete(predicate)`). If the native call raises, the implementation falls back to a safe rewrite.
+	- Fix: Atomic rewrite fallback no longer double-inserts rows. The implementation now creates the table once with Arrow data (`create_table(data=arr)`) and avoids a subsequent `add()` call that caused duplicate inserts.
+	- Test: Added unit tests covering the native delete path, fallback-on-error path, and a regression test to ensure the rewrite path does not double-add. See `tests/providers/test_lancedb_connection.py`.
+	- Docs: Documented supported versions for `lancedb`/`pyarrow` in `README.md` and added a CI comment in `.github/workflows/ci-tests.yml` to flag where to look if version bumps break delete behavior.
+	- Logging: Improved error logging around native delete failures to make fallback behavior easier to diagnose.
 
 ---

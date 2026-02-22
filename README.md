@@ -130,7 +130,7 @@ vector-inspector
   - Qdrant (remote server or embedded local)
   - Pinecone (cloud-hosted)
   - Milvus (remote server or Milvus Lite) (Only on MacOs/Linux, experimental) - In Progress
-  - LanceDB (persistent local storage)
+  - LanceDB (persistent local storage) — requires `lancedb>=0.27.0`, `pyarrow>=14.0.0`
   - PgVector/PostgreSQL (remote server)
   - Weaviate (Local/Remote + WCD/Cloud)
 - Unified interface regardless of backend provider

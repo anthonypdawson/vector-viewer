@@ -524,32 +524,34 @@ class LanceDBConnection(VectorDBConnection):
             return False
         try:
             tbl = self._db.open_table(collection_name)
+
+            # Feature-detect native delete API (available in newer LanceDB versions).
+            # tbl.delete() accepts a SQL WHERE-style predicate string.
+            if ids and hasattr(tbl, "delete") and callable(tbl.delete):
+                id_csv = ", ".join(f"'{i}'" for i in ids)
+                try:
+                    tbl.delete(f"id IN ({id_csv})")
+                    return True
+                except Exception as native_err:
+                    log_error("LanceDB native delete failed, falling back to rewrite: %s", native_err)
+                    # Fall through to atomic rewrite below
+
+            # Atomic rewrite fallback: read → filter → drop → recreate (single create_table call).
+            import pyarrow as pa
+
             df = tbl.to_pandas()
             if ids:
                 df = df[~df["id"].isin(ids)]
-            # Re-create table with remaining items
-            import pyarrow as pa
 
-            # Preserve all columns including document
-            table_dict = {}
-            if "vector" in df.columns:
-                table_dict["vector"] = df["vector"].tolist()
-            if "id" in df.columns:
-                table_dict["id"] = df["id"].tolist()
-            if "document" in df.columns:
-                table_dict["document"] = df["document"].tolist()
-            if "metadata" in df.columns:
-                table_dict["metadata"] = df["metadata"].tolist()
+            table_dict: dict[str, list] = {}
+            for col in ("vector", "id", "document", "metadata"):
+                if col in df.columns:
+                    table_dict[col] = df[col].tolist()
 
             arr = pa.table(table_dict)
             self._db.drop_table(collection_name)
-            # Create table with data (pass actual Arrow table as 'data' kwarg)
-            try:
-                self._db.create_table(collection_name, data=arr)
-            except TypeError:
-                # Fallback for older lancedb API signatures
-                self._db.create_table(collection_name, arr)
-            self._db.open_table(collection_name).add(arr)
+            # Single atomic create with data — no subsequent add() to avoid double-insertion.
+            self._db.create_table(collection_name, data=arr)
             return True
         except Exception as e:
             log_error("LanceDB delete_items failed: %s", e)

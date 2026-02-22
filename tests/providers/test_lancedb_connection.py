@@ -135,14 +135,86 @@ def test_delete_items_recreates_table_with_data(monkeypatch, tmp_path):
         {"id": ["a", "b"], "vector": [[0.1, 0.2], [0.3, 0.4]], "document": ["d1", "d2"], "metadata": ["{}", "{}"]}
     )
 
-    tbl = MagicMock()
+    # Use spec to exclude 'delete' so the rewrite path is exercised
+    tbl = MagicMock(spec=["to_pandas"])
     tbl.to_pandas.return_value = df
     conn._db = MagicMock()
     conn._db.open_table.return_value = tbl
     conn._db.create_table = MagicMock()
     conn._db.drop_table = MagicMock()
 
-    # deleting id 'b' should call create_table with data
+    # deleting id 'b' should call create_table with data via rewrite fallback
     ok = conn.delete_items("coll", ids=["b"])
     assert isinstance(ok, bool)
     assert conn._db.create_table.called
+
+
+# --- Feature-detection tests (Tasks 1 & 2) ---
+
+
+def test_delete_items_uses_native_delete_when_available():
+    """When tbl.delete exists, it should be called with a SQL predicate and the rewrite skipped."""
+
+    conn = LanceDBConnection(uri="/tmp/fake")
+    conn._connected = True
+
+    tbl = MagicMock()
+    tbl.delete = MagicMock()  # native delete available
+    conn._db = MagicMock()
+    conn._db.open_table.return_value = tbl
+
+    ok = conn.delete_items("coll", ids=["id1", "id2"])
+    assert ok is True
+    tbl.delete.assert_called_once_with("id IN ('id1', 'id2')")
+    # Rewrite path must NOT be used
+    conn._db.drop_table.assert_not_called()
+    conn._db.create_table.assert_not_called()
+
+
+def test_delete_items_falls_back_to_rewrite_when_native_raises():
+    """When tbl.delete raises, the atomic rewrite fallback should complete successfully."""
+    import pandas as pd
+
+    conn = LanceDBConnection(uri="/tmp/fake")
+    conn._connected = True
+
+    df = pd.DataFrame(
+        {"id": ["a", "b"], "vector": [[0.1, 0.2], [0.3, 0.4]], "document": ["d1", "d2"], "metadata": ["{}", "{}"]}
+    )
+
+    tbl = MagicMock()
+    tbl.delete = MagicMock(side_effect=RuntimeError("native delete unsupported"))
+    tbl.to_pandas.return_value = df
+    conn._db = MagicMock()
+    conn._db.open_table.return_value = tbl
+
+    ok = conn.delete_items("coll", ids=["b"])
+    assert ok is True
+    conn._db.drop_table.assert_called_once_with("coll")
+    conn._db.create_table.assert_called_once()
+
+
+def test_delete_items_rewrite_does_not_double_add():
+    """Rewrite fallback must call create_table exactly once with data and never call tbl.add."""
+    import pandas as pd
+
+    conn = LanceDBConnection(uri="/tmp/fake")
+    conn._connected = True
+
+    df = pd.DataFrame(
+        {"id": ["a", "b"], "vector": [[0.1, 0.2], [0.3, 0.4]], "document": ["d1", "d2"], "metadata": ["{}", "{}"]}
+    )
+
+    # tbl has no native delete attribute → forces rewrite path
+    tbl = MagicMock(spec=["to_pandas"])
+    tbl.to_pandas.return_value = df
+    conn._db = MagicMock()
+    conn._db.open_table.return_value = tbl
+
+    ok = conn.delete_items("coll", ids=["b"])
+    assert ok is True
+    assert conn._db.create_table.call_count == 1
+    # Ensure no second open_table().add() call was made (no double-insertion)
+    new_tbl = conn._db.open_table.return_value
+    if hasattr(new_tbl, "add"):
+        new_tbl.add.assert_not_called()
