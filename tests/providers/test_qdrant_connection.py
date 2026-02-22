@@ -1,7 +1,19 @@
-import pytest
-from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 import uuid
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+
+
+@pytest.fixture
+def mock_qdrant_client():
+    with patch("qdrant_client.QdrantClient") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.get_collections.return_value = SimpleNamespace(collections=[])
+        mock_client_cls.return_value = mock_client
+        yield mock_client
 
 
 def test_qdrant_connection_integration(tmp_path):
@@ -47,9 +59,7 @@ def test_qdrant_add_items_missing_embeddings_auto_embed_fails(tmp_path):
     conn = QdrantConnection(path=db_path)
     conn.connect()
     conn.create_collection(collection_name, vector_size=2, distance="Cosine")
-    with patch.object(
-        conn, "compute_embeddings_for_documents", side_effect=Exception("embedding failure")
-    ):
+    with patch.object(conn, "compute_embeddings_for_documents", side_effect=Exception("embedding failure")):
         result = conn.add_items(collection_name, documents=["doc1"], ids=["id1"])
         assert result is False
 
@@ -126,3 +136,136 @@ def test_qdrant_get_items_by_id(tmp_path):
         pytest.skip("Qdrant local get_items not supported in this environment")
 
     assert "documents" in res and len(res["documents"]) == 1
+
+
+def test_to_uuid_deterministic_and_valid():
+    conn = QdrantConnection()
+    # valid uuid string
+    u = str(uuid.uuid4())
+    assert conn._to_uuid(u) == uuid.UUID(u)
+
+    # non-uuid string -> deterministic uuid5
+    a = conn._to_uuid("some-id")
+    b = conn._to_uuid("some-id")
+    assert isinstance(a, uuid.UUID)
+    assert a == b
+
+
+def test_count_collection_with_and_without_client(mock_qdrant_client):
+    conn = QdrantConnection()
+    # no client
+    assert conn.count_collection("c") == 0
+
+    conn._client = mock_qdrant_client
+    # client returns object with count attribute
+    mock_qdrant_client.count.return_value = SimpleNamespace(count=7)
+    assert conn.count_collection("c") == 7
+
+
+def test_list_collections_returns_names(mock_qdrant_client):
+    # prepare collections
+    mock_qdrant_client.get_collections.return_value = SimpleNamespace(
+        collections=[SimpleNamespace(name="a"), SimpleNamespace(name="b")]
+    )
+    conn = QdrantConnection()
+    conn._client = mock_qdrant_client
+    assert conn.list_collections() == ["a", "b"]
+
+
+def test_get_collection_info_parses_config_and_sample(mock_qdrant_client):
+    # Mock collection_info with config containing named vectors
+    vectors = {"default": SimpleNamespace(size=128, distance=SimpleNamespace())}
+    params = SimpleNamespace(vectors=vectors)
+    hnsw = SimpleNamespace(m=16, ef_construct=100)
+    optimizer = SimpleNamespace(indexing_threshold=1024)
+    config = SimpleNamespace(
+        params=params,
+        hnsw_config=hnsw,
+        optimizer_config=optimizer,
+        metadata={"embedding_model": "m", "embedding_model_type": "stored"},
+    )
+    collection_info = SimpleNamespace(points_count=10, config=config)
+    mock_qdrant_client.get_collection.return_value = collection_info
+
+    # Mock scroll to return a sample point with payload
+    point = SimpleNamespace(id=1, payload={"foo": "bar"}, vector=[0.1, 0.2])
+    mock_qdrant_client.scroll.return_value = ([point], None)
+
+    conn = QdrantConnection()
+    conn._client = mock_qdrant_client
+    info = conn.get_collection_info("name")
+    assert info["count"] == 10
+    assert "foo" in info["metadata_fields"]
+    assert info["vector_dimension"] == 128
+    assert info["config"]["hnsw_config"]["m"] == 16
+    assert info["embedding_model"] == "m"
+
+
+def test_add_items_preserves_original_id_and_upserts(mock_qdrant_client):
+    conn = QdrantConnection()
+    conn._client = mock_qdrant_client
+    # provide a non-uuid id
+    ids = ["not-a-uuid"]
+    docs = ["doc"]
+    embs = [[0.1, 0.2]]
+    res = conn.add_items("coll", documents=docs, metadatas=[{}], ids=ids, embeddings=embs)
+    assert res is True
+    # Inspect upsert call for payload original_id
+    assert mock_qdrant_client.upsert.called
+    call_args = mock_qdrant_client.upsert.call_args[1]
+    points = call_args.get("points")
+    assert points and points[0].payload.get("original_id") == "not-a-uuid"
+
+
+def test_update_items_computes_embeddings_and_upserts(mock_qdrant_client):
+    conn = QdrantConnection()
+    conn._client = mock_qdrant_client
+
+    # prepare existing point returned by retrieve
+    existing_point = SimpleNamespace(id="id1", payload={"document": "old"}, vector=[0.0, 0.0])
+    mock_qdrant_client.retrieve.return_value = [existing_point]
+
+    # patch compute_embeddings_for_documents to return a new vector
+    conn.compute_embeddings_for_documents = lambda collection, docs, profile=None: [[9.9, 9.8]]
+
+    res = conn.update_items("coll", ids=["id1"], documents=["newdoc"])
+    assert res is True
+    assert mock_qdrant_client.upsert.called
+
+
+def test_prepare_restore_validates_dimensions_and_generates_embeddings(mock_qdrant_client):
+    conn = QdrantConnection()
+    conn._client = mock_qdrant_client
+    # stub create_collection to return True
+    conn.create_collection = lambda name, size, distance: True
+
+    # Case: embeddings present with wrong length
+    metadata = {"collection_info": {"vector_dimension": 3}, "collection_name": "c"}
+    data = {"embeddings": [[1, 2]], "ids": ["1"]}
+    assert conn.prepare_restore(metadata, data) is False
+
+    # Case: embeddings missing, documents present -> generate via encoder
+    # Patch embedding resolver to return a dummy model
+    conn._get_embedding_model_for_collection = lambda name: ("model", "m", "type")
+    # Patch encode_documents to return correct-length embeddings
+    import vector_inspector.core.embedding_utils as embedding_utils
+
+    with patch.object(embedding_utils, "encode_documents", return_value=[[1, 2, 3]], create=True):
+        # Provide metadata with vector_size absent but embeddings absent and documents provided
+        metadata2 = {"collection_info": {"vector_size": 3}, "collection_name": "c2"}
+        data2 = {"documents": ["d1"], "ids": ["1"]}
+        assert conn.prepare_restore(metadata2, data2) is True
+
+
+def test_get_connection_info_modes():
+    c1 = QdrantConnection(path="/tmp/db")
+    assert c1.get_connection_info()["mode"] == "local"
+
+    c2 = QdrantConnection(url="http://x")
+    assert c2.get_connection_info()["mode"] == "remote"
+
+    c3 = QdrantConnection(host="h", port=6334)
+    assert c3.get_connection_info()["mode"] == "remote"
+
+    c4 = QdrantConnection()
+    assert c4.get_connection_info()["mode"] == "memory"
