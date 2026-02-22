@@ -3,7 +3,7 @@
 Uses pytest-qt's qtbot fixture for proper Qt widget testing.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -12,25 +12,39 @@ from vector_inspector.ui.views.search_view import SearchView
 
 
 @pytest.fixture
-def mock_connection():
-    """Create a mock connection."""
-    conn = MagicMock()
-    conn.query_collection.return_value = {
-        "ids": ["result1", "result2", "result3"],
-        "documents": ["Result doc 1", "Result doc 2", "Result doc 3"],
-        "metadatas": [
-            {"title": "Result 1"},
-            {"title": "Result 2"},
-            {"title": "Result 3"},
-        ],
-        "embeddings": [
-            [0.1, 0.2, 0.3],
-            [0.4, 0.5, 0.6],
-            [0.7, 0.8, 0.9],
-        ],
-        "distances": [0.1, 0.3, 0.5],
-    }
-    return conn
+def mock_connection(fake_provider):
+    """Provide a lightweight fake provider populated with predictable results."""
+    # Populate a collection the tests expect
+    fake_provider.create_collection(
+        "test_collection",
+        ["Result doc 1", "Result doc 2", "Result doc 3"],
+        [{"title": "Result 1"}, {"title": "Result 2"}, {"title": "Result 3"}],
+        [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
+        ids=["result1", "result2", "result3"],
+    )
+    # Provide simple embedding helper used by SearchView to compute query embeddings
+    fake_provider.compute_embeddings_for_documents = lambda texts: [[0.1, 0.2, 0.3]]
+    # Provide supported filter operators API expected by SearchView
+    fake_provider.get_supported_filter_operators = lambda: []
+    # Provide compatibility wrapper so callers using `query_texts` kw work
+    orig_qc = fake_provider.query_collection
+
+    def _qc_compat(collection_name, query_texts=None, n_results=10, where=None, **kwargs):
+        # For deterministic tests, return a fixed ordering when query_texts
+        # are provided so tests relying on result ordering remain stable.
+        if query_texts:
+            return {
+                "ids": [["result1", "result2", "result3"]],
+                "documents": [["Result doc 1", "Result doc 2", "Result doc 3"]],
+                "metadatas": [[{"title": "Result 1"}, {"title": "Result 2"}, {"title": "Result 3"}]],
+                "embeddings": [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]],
+                "distances": [[0.1, 0.3, 0.5]],
+            }
+
+        return orig_qc(collection_name, n_results=n_results, where=where)
+
+    fake_provider.query_collection = _qc_compat
+    return fake_provider
 
 
 @pytest.fixture
@@ -152,7 +166,7 @@ def test_pane_updates_on_selection_change(qtbot, search_view, mock_connection):
 def test_pane_hides_on_empty_results(qtbot, search_view, mock_connection):
     """Test that pane hides when search returns no results."""
     # Mock empty search results
-    mock_connection.query_collection.return_value = {
+    mock_connection.query_collection = lambda *a, **k: {
         "ids": [],
         "documents": [],
         "metadatas": [],
@@ -171,8 +185,12 @@ def test_pane_hides_on_empty_results(qtbot, search_view, mock_connection):
 
 def test_pane_hides_on_search_error(qtbot, search_view, mock_connection):
     """Test that pane hides when search fails."""
+
     # Mock search error
-    mock_connection.query_collection.side_effect = Exception("Search failed")
+    def _raise_error(*a, **k):
+        raise Exception("Search failed")
+
+    mock_connection.query_collection = _raise_error
 
     search_view.query_input.setText("test query")
     # Search will raise exception - test that it doesn't crash the app
@@ -324,7 +342,7 @@ def test_rank_display(qtbot, search_view, mock_connection):
 def test_pane_handles_missing_distance(qtbot, search_view, mock_connection):
     """Test that pane handles missing distance values."""
     # Mock results without distances
-    mock_connection.query_collection.return_value = {
+    mock_connection.query_collection = lambda *a, **k: {
         "ids": ["result1"],
         "documents": ["Result doc 1"],
         "metadatas": [{"title": "Result 1"}],

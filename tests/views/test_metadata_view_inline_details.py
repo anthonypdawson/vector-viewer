@@ -14,26 +14,20 @@ from vector_inspector.ui.views.metadata_view import MetadataView
 
 
 @pytest.fixture
-def mock_connection():
-    """Create a mock connection with sample data."""
-    from unittest.mock import MagicMock
-
-    conn = MagicMock()
-    conn.get_all_items.return_value = {
-        "ids": ["id1", "id2", "id3"],
-        "documents": ["Document 1", "Document 2", "Document 3"],
-        "metadatas": [
+def mock_connection(fake_provider):
+    """Provide a lightweight fake provider populated with sample data."""
+    fake_provider.create_collection(
+        "test_collection",
+        ["Document 1", "Document 2", "Document 3"],
+        [
             {"title": "Item 1", "cluster": 1},
             {"title": "Item 2", "cluster": 2},
             {"title": "Item 3", "cluster": 1},
         ],
-        "embeddings": [
-            [0.1, 0.2, 0.3],
-            [0.4, 0.5, 0.6],
-            [0.7, 0.8, 0.9],
-        ],
-    }
-    return conn
+        [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
+        ids=["id1", "id2", "id3"],
+    )
+    return fake_provider
 
 
 @pytest.fixture
@@ -46,7 +40,7 @@ def metadata_view(qtbot, task_runner, mock_connection):
     view.ctx = MetadataContext(connection=mock_connection)
     view.ctx.current_collection = "test_collection"
     view.ctx.current_database = "test_db"
-    view.ctx.current_data = mock_connection.get_all_items.return_value
+    view.ctx.current_data = mock_connection.get_all_items("test_collection")
 
     # Populate table
     from vector_inspector.ui.views.metadata.metadata_table import populate_table
@@ -269,20 +263,21 @@ def test_inline_pane_updates_after_page_change(qtbot, metadata_view):
 
 def test_inline_pane_handles_missing_embedding(qtbot, task_runner, mock_connection):
     """Test inline pane handles items without embeddings."""
-    # Create data with no embeddings
-    mock_connection.get_all_items.return_value = {
-        "ids": ["id1"],
-        "documents": ["Document 1"],
-        "metadatas": [{"title": "Item 1"}],
-        "embeddings": [None],
-    }
+    # Create data with no embeddings by creating a collection
+    mock_connection.create_collection(
+        "test_collection",
+        ["Document 1"],
+        [{"title": "Item 1"}],
+        [None],
+        ids=["id1"],
+    )
 
     app_state = AppState()
     app_state.provider = mock_connection
     view = MetadataView(app_state, task_runner)
     qtbot.addWidget(view)
     view.ctx = MetadataContext(connection=mock_connection)
-    view.ctx.current_data = mock_connection.get_all_items.return_value
+    view.ctx.current_data = mock_connection.get_all_items("test_collection")
 
     from vector_inspector.ui.views.metadata.metadata_table import populate_table
 

@@ -37,22 +37,20 @@ def test_demo_view_initializes(demo_view):
     assert demo_view.table.rowCount() == 0
 
 
-def test_demo_view_reacts_to_provider_change(demo_view, app_state, qtbot):
+def test_demo_view_reacts_to_provider_change(demo_view, app_state, qtbot, fake_provider):
     """Test that view reacts to provider changes."""
-    # Create mock connection
-    mock_connection = MagicMock()
-    mock_connection.get_all_items = MagicMock(
-        return_value={
-            "ids": ["id1", "id2"],
-            "metadatas": [{"key": "value"}, {}],
-            "documents": ["doc1", "doc2"],
-            "embeddings": [[0.1, 0.2], [0.3, 0.4]],
-        }
-    )
+    # Use lightweight fake provider instead of MagicMock to avoid crossing
+    # Shiboken/Qt conversion issues when emitting provider objects.
+    fake_provider.get_all_items = lambda: {
+        "ids": ["id1", "id2"],
+        "metadatas": [{"key": "value"}, {}],
+        "documents": ["doc1", "doc2"],
+        "embeddings": [[0.1, 0.2], [0.3, 0.4]],
+    }
 
     # Change provider
     with qtbot.waitSignal(app_state.provider_changed):
-        app_state.provider = mock_connection
+        app_state.provider = fake_provider
 
     # Verify button enabled
     assert demo_view.load_button.isEnabled()
@@ -79,11 +77,10 @@ def test_demo_view_reacts_to_data_load(demo_view, app_state, qtbot):
     assert demo_view.table.item(2, 0).text() == "test3"
 
 
-def test_demo_view_reacts_to_collection_change(demo_view, app_state, qtbot):
+def test_demo_view_reacts_to_collection_change(demo_view, app_state, qtbot, fake_provider):
     """Test that view reacts to collection changes."""
-    # Mock connection
-    mock_connection = MagicMock()
-    app_state.provider = mock_connection
+    # Use fake provider to avoid MagicMock crossing Qt signals
+    app_state.provider = fake_provider
 
     # Change collection
     with qtbot.waitSignal(app_state.collection_changed):
@@ -129,17 +126,14 @@ def test_demo_view_handles_error(demo_view, app_state, qtbot, monkeypatch):
     mock_critical.assert_called_once()
 
 
-def test_demo_view_services_get_connection_on_provider_change(demo_view, app_state):
+def test_demo_view_services_get_connection_on_provider_change(demo_view, app_state, fake_provider):
     """Test that services receive connection when provider changes."""
-    # Create mock connection
-    mock_connection = MagicMock()
-
-    # Change provider
-    app_state.provider = mock_connection
+    # Change provider using a lightweight fake provider
+    app_state.provider = fake_provider
 
     # Verify services got connection
-    assert demo_view.collection_loader.connection == mock_connection
-    assert demo_view.metadata_loader.connection == mock_connection
+    assert demo_view.collection_loader.connection == fake_provider
+    assert demo_view.metadata_loader.connection == fake_provider
 
 
 def test_demo_view_load_button_disabled_without_connection(demo_view):

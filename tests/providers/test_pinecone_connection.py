@@ -338,6 +338,8 @@ def test_pinecone_create_collection(mock_pinecone_client):
 def test_pinecone_update_items(mock_pinecone_client):
     """Test updating items in an index."""
     mock_index = Mock()
+    # Provide real-like stats to avoid MagicMock dict comparisons in get_collection_info
+    mock_index.describe_index_stats.return_value = {"total_vector_count": 1, "namespaces": {}}
 
     # Mock fetch to return existing vectors
     mock_vector_data = Mock()
