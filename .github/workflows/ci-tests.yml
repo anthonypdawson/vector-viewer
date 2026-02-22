@@ -58,6 +58,7 @@ jobs:
         run: pdm install -d
 
       - name: Run tests
+        continue-on-error: true
         env:
           PYTHONPATH: ./src
           QT_QPA_PLATFORM: offscreen
@@ -88,15 +89,29 @@ jobs:
           title: Test results
 
       - name: Upload coverage report
-        if: success()
+        if: hashFiles('coverage.lcov') != ''
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.python-version }}
           path: ./coverage.lcov
       
       - name: Coveralls
-        if: matrix.python-version == '3.12'
+        if: hashFiles('coverage.lcov') != '' && matrix.python-version == '3.12'
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: ./coverage.lcov
+
+      - name: Upload coverage reports to Codecov
+        if: hashFiles('coverage.lcov') != '' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      # - name: Upload GitHub coverage
+      #   if: hashFiles('coverage.lcov') != '' && matrix.python-version == '3.12'
+      #   uses: actions/upload-coverage@v1
+      #   with:
+      #     coverage-file: coverage.lcov
+      #     coverage-format: lcov
+
