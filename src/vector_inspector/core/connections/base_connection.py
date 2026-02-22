@@ -276,9 +276,7 @@ class VectorDBConnection(ABC):
             log_error("Failed to get embedding model: %s", e)
             return None
 
-    def load_embedding_model_for_collection(
-        self, collection_name: str, profile_name_override: str | None = None
-    ):
+    def load_embedding_model_for_collection(self, collection_name: str, profile_name_override: str | None = None):
         """
         Resolve and load an embedding model for a collection.
 
