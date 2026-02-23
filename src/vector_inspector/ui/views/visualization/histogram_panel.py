@@ -397,6 +397,9 @@ class HistogramPanel(QWidget):
         )
 
         html = fig.to_html(include_plotlyjs="cdn")
+        # Embed metadata comment with explicit trace names so tests can assert presence
+        meta_comment = f"<!--VI_META primary:{primary_name} compare:{compare_name}-->\n"
+        html = meta_comment + html
         self._current_html = html
         self.web_view.setHtml(html)
 

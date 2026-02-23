@@ -45,6 +45,11 @@ class CreateCollectionDialog(QDialog):
         self.name_input.setPlaceholderText("e.g., test_collection")
         collection_layout.addRow("Collection Name:", self.name_input)
 
+        # Connection display (informs user which connection will receive the new collection)
+        self.connection_label = QLabel("(no connection)")
+        self.connection_label.setEnabled(False)
+        collection_layout.addRow("Connection:", self.connection_label)
+
         collection_group.setLayout(collection_layout)
         layout.addWidget(collection_group)
 
@@ -79,12 +84,16 @@ class CreateCollectionDialog(QDialog):
         self.model_combo.setEnabled(False)
         options_layout.addRow("Embedding Model:", self.model_combo)
 
+        # Randomize data option
+        self.random_data_checkbox = QCheckBox("Randomize data")
+        self.random_data_checkbox.setChecked(True)
+        self.random_data_checkbox.setEnabled(False)
+        options_layout.addRow("Random data:", self.random_data_checkbox)
+
         sample_layout.addLayout(options_layout)
 
         # Info label
-        self.info_label = QLabel(
-            "Sample data will be automatically embedded and inserted into the collection."
-        )
+        self.info_label = QLabel("Sample data will be automatically embedded and inserted into the collection.")
         self.info_label.setWordWrap(True)
         self.info_label.setStyleSheet("color: gray; font-size: 11px; padding: 5px;")
         sample_layout.addWidget(self.info_label)
@@ -135,9 +144,7 @@ class CreateCollectionDialog(QDialog):
         for model in registry.get_models_by_type("sentence-transformer"):
             model_name = model.name
             # Skip if already added
-            if any(
-                model_name in self.model_combo.itemText(i) for i in range(self.model_combo.count())
-            ):
+            if any(model_name in self.model_combo.itemText(i) for i in range(self.model_combo.count())):
                 continue
             display_text = f"{model_name} ({model.dimension} dims)"
             self.model_combo.addItem(display_text, (model_name, "sentence-transformer"))
@@ -155,6 +162,7 @@ class CreateCollectionDialog(QDialog):
         self.count_spin.setEnabled(checked)
         self.data_type_combo.setEnabled(checked)
         self.model_combo.setEnabled(checked)
+        self.random_data_checkbox.setEnabled(checked)
 
     def get_configuration(self) -> dict:
         """Get the dialog configuration.
@@ -173,8 +181,17 @@ class CreateCollectionDialog(QDialog):
             config["data_type"] = self.data_type_combo.currentData()
             config["embedder_name"] = model_data[0] if model_data else None
             config["embedder_type"] = model_data[1] if model_data else None
+            config["random_data"] = bool(self.random_data_checkbox.isChecked())
 
         return config
+
+    def set_connection(self, connection) -> None:
+        """Set the current connection display for the dialog."""
+        if connection is None:
+            text = "(no connection)"
+        else:
+            text = getattr(connection, "name", str(connection))
+        self.connection_label.setText(text)
 
     def accept(self):
         """Validate and accept the dialog."""
@@ -194,11 +211,8 @@ class CreateCollectionDialog(QDialog):
             return
 
         # If adding sample data, validate model selection
-        if self.add_sample_check.isChecked():
-            if self.model_combo.currentData() is None:
-                QMessageBox.warning(
-                    self, "Invalid Input", "Please select an embedding model for sample data."
-                )
-                return
+        if self.add_sample_check.isChecked() and self.model_combo.currentData() is None:
+            QMessageBox.warning(self, "Invalid Input", "Please select an embedding model for sample data.")
+            return
 
         super().accept()

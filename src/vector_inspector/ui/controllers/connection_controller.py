@@ -23,9 +23,7 @@ from vector_inspector.ui.workers.collection_worker import CollectionCreationWork
 class ConnectionThread(QThread):
     """Background thread for connecting to database."""
 
-    finished = Signal(
-        bool, list, str, float, str
-    )  # success, collections, error_message, duration_ms, correlation_id
+    finished = Signal(bool, list, str, float, str)  # success, collections, error_message, duration_ms, correlation_id
 
     def __init__(self, connection: VectorDBConnection, correlation_id: str, provider: str):
         super().__init__()
@@ -91,9 +89,7 @@ class ConnectionController(QObject):
     - Emitting signals for UI updates
     """
 
-    connection_completed = Signal(
-        str, bool, list, str
-    )  # connection_id, success, collections, error
+    connection_completed = Signal(str, bool, list, str)  # connection_id, success, collections, error
 
     def __init__(
         self,
@@ -156,9 +152,7 @@ class ConnectionController(QObject):
             )
 
             # Update state to connecting
-            self.connection_manager.update_connection_state(
-                connection_id, ConnectionState.CONNECTING
-            )
+            self.connection_manager.update_connection_state(connection_id, ConnectionState.CONNECTING)
 
             # Generate correlation ID for telemetry
             correlation_id = str(uuid.uuid4())
@@ -187,10 +181,8 @@ class ConnectionController(QObject):
             # Connect in background thread
             thread = ConnectionThread(connection, correlation_id, provider)
             thread.finished.connect(
-                lambda success, collections, error, duration_ms, corr_id: (
-                    self._on_connection_finished(
-                        connection_id, provider, success, collections, error, duration_ms, corr_id
-                    )
+                lambda success, collections, error, duration_ms, corr_id: self._on_connection_finished(
+                    connection_id, provider, success, collections, error, duration_ms, corr_id
                 )
             )
             self._connection_threads[connection_id] = thread
@@ -201,9 +193,7 @@ class ConnectionController(QObject):
             return True
 
         except Exception as e:
-            QMessageBox.critical(
-                self.parent_widget, "Connection Error", f"Failed to create connection: {e}"
-            )
+            QMessageBox.critical(self.parent_widget, "Connection Error", f"Failed to create connection: {e}")
             return False
 
     def _on_connection_finished(
@@ -244,9 +234,7 @@ class ConnectionController(QObject):
 
         if success:
             # Update state to connected
-            self.connection_manager.update_connection_state(
-                connection_id, ConnectionState.CONNECTED
-            )
+            self.connection_manager.update_connection_state(connection_id, ConnectionState.CONNECTED)
 
             # Mark connection as opened first (will show in UI)
             self.connection_manager.mark_connection_opened(connection_id)
@@ -255,13 +243,9 @@ class ConnectionController(QObject):
             self.connection_manager.update_collections(connection_id, collections)
         else:
             # Update state to error
-            self.connection_manager.update_connection_state(
-                connection_id, ConnectionState.ERROR, error
-            )
+            self.connection_manager.update_connection_state(connection_id, ConnectionState.ERROR, error)
 
-            QMessageBox.warning(
-                self.parent_widget, "Connection Failed", f"Failed to connect: {error}"
-            )
+            QMessageBox.warning(self.parent_widget, "Connection Failed", f"Failed to connect: {error}")
 
             # Remove the failed connection
             self.connection_manager.close_connection(connection_id)
@@ -276,11 +260,11 @@ class ConnectionController(QObject):
             connection_id: ID of the active connection
 
         Returns:
-            True if the collection creation process was initiated successfully, 
-            False if the dialog was cancelled or validation failed. Note that 
-            when True is returned, the actual collection creation happens 
-            asynchronously in a background thread, so True does not indicate 
-            that the collection has been created yet - only that the process 
+            True if the collection creation process was initiated successfully,
+            False if the dialog was cancelled or validation failed. Note that
+            when True is returned, the actual collection creation happens
+            asynchronously in a background thread, so True does not indicate
+            that the collection has been created yet - only that the process
             has started without errors.
         """
         # Get active connection
@@ -288,9 +272,7 @@ class ConnectionController(QObject):
             connection_id = self.connection_manager.get_active_connection_id()
 
         if not connection_id:
-            QMessageBox.warning(
-                self.parent_widget, "No Connection", "Please connect to a database first."
-            )
+            QMessageBox.warning(self.parent_widget, "No Connection", "Please connect to a database first.")
             return False
 
         connection = self.connection_manager.get_connection(connection_id)
@@ -300,6 +282,8 @@ class ConnectionController(QObject):
 
         # Show dialog
         dialog = CreateCollectionDialog(self.parent_widget)
+        # Inform dialog which connection is active so user knows where collection will be created
+        dialog.set_connection(connection)
         if dialog.exec() != CreateCollectionDialog.DialogCode.Accepted:
             return False
 
@@ -317,9 +301,7 @@ class ConnectionController(QObject):
                 )
                 return False
         except Exception as e:
-            QMessageBox.warning(
-                self.parent_widget, "Error", f"Could not check existing collections: {e}"
-            )
+            QMessageBox.warning(self.parent_widget, "Error", f"Could not check existing collections: {e}")
             return False
 
         # Create progress dialog immediately
@@ -349,17 +331,13 @@ class ConnectionController(QObject):
                 self.model_metadata_thread.wait()
 
             # Start thread to load model metadata
-            self.model_metadata_thread = ModelMetadataLoadThread(
-                config["embedder_name"], config["embedder_type"], self
-            )
+            self.model_metadata_thread = ModelMetadataLoadThread(config["embedder_name"], config["embedder_type"], self)
             self.model_metadata_thread.finished.connect(
                 lambda dim: self._create_collection_with_dimension(
                     connection, connection_id, collection_name, config, dim, progress_dialog
                 )
             )
-            self.model_metadata_thread.error.connect(
-                lambda err: self._on_model_metadata_error(err, progress_dialog)
-            )
+            self.model_metadata_thread.error.connect(lambda err: self._on_model_metadata_error(err, progress_dialog))
             self.model_metadata_thread.start()
         else:
             # No sample data - proceed directly with None dimension
@@ -369,14 +347,10 @@ class ConnectionController(QObject):
 
         return True
 
-    def _on_model_metadata_error(
-        self, error_message: str, progress_dialog: QProgressDialog
-    ) -> None:
+    def _on_model_metadata_error(self, error_message: str, progress_dialog: QProgressDialog) -> None:
         """Handle model metadata loading error."""
         progress_dialog.close()
-        QMessageBox.critical(
-            self.parent_widget, "Error", f"Failed to get model dimension: {error_message}"
-        )
+        QMessageBox.critical(self.parent_widget, "Error", f"Failed to get model dimension: {error_message}")
 
     def _create_collection_with_dimension(
         self,
@@ -401,6 +375,7 @@ class ConnectionController(QObject):
                 "data_type": config["data_type"],
                 "embedder_name": config["embedder_name"],
                 "embedder_type": config["embedder_type"],
+                "random_data": config.get("random_data", True),
             }
 
         worker = CollectionCreationWorker(
@@ -437,9 +412,7 @@ class ConnectionController(QObject):
                     settings = SettingsService()
 
                     # Get profile name from connection
-                    profile_name = (
-                        connection.name if hasattr(connection, "name") else str(connection_id)
-                    )
+                    profile_name = connection.name if hasattr(connection, "name") else str(connection_id)
 
                     # Save the embedding model configuration
                     settings.save_embedding_model(
@@ -448,9 +421,7 @@ class ConnectionController(QObject):
                         model_name=config["embedder_name"],
                         model_type=config["embedder_type"],
                     )
-                    log_info(
-                        f"Saved embedding model config: {config['embedder_name']} for {collection_name}"
-                    )
+                    log_info(f"Saved embedding model config: {config['embedder_name']} for {collection_name}")
                 except Exception as e:
                     # Log but don't fail - collection is created successfully
                     log_error(f"Failed to save embedding model configuration: {e}")

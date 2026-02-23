@@ -132,7 +132,7 @@ JSON_DESCRIPTIONS = [
 
 
 def generate_sample_data(
-    count: int, data_type: SampleDataType = SampleDataType.TEXT
+    count: int, data_type: SampleDataType = SampleDataType.TEXT, randomize: bool = True
 ) -> list[dict[str, Any]]:
     """Generate sample data for testing vector databases.
 
@@ -147,26 +147,31 @@ def generate_sample_data(
         data_type = SampleDataType(data_type)
 
     if data_type == SampleDataType.TEXT:
-        return _generate_text_samples(count)
+        return _generate_text_samples(count, randomize=randomize)
     if data_type == SampleDataType.MARKDOWN:
-        return _generate_markdown_samples(count)
+        return _generate_markdown_samples(count, randomize=randomize)
     if data_type == SampleDataType.JSON:
-        return _generate_json_samples(count)
+        return _generate_json_samples(count, randomize=randomize)
     raise ValueError(f"Unknown data type: {data_type}")
 
 
-def _generate_text_samples(count: int) -> list[dict[str, Any]]:
+def _generate_text_samples(count: int, randomize: bool = True) -> list[dict[str, Any]]:
     """Generate simple text samples."""
     samples = []
 
     for i in range(count):
-        topic = random.choice(TOPICS)
-        sentence = random.choice(SENTENCES)
+        if randomize:
+            topic = random.choice(TOPICS)
+            sentence = random.choice(SENTENCES)
+        else:
+            topic = TOPICS[i % len(TOPICS)]
+            sentence = SENTENCES[i % len(SENTENCES)]
         text = f"{topic.capitalize()} {sentence}."
 
         # Add some variety with occasional two-sentence entries
-        if random.random() < 0.3:
-            second_sentence = random.choice(SENTENCES)
+        add_second = random.random() < 0.3 if randomize else i % 10 < 3
+        if add_second:
+            second_sentence = random.choice(SENTENCES) if randomize else SENTENCES[(i + 1) % len(SENTENCES)]
             text += f" It {second_sentence}."
 
         samples.append(
@@ -179,24 +184,30 @@ def _generate_text_samples(count: int) -> list[dict[str, Any]]:
     return samples
 
 
-def _generate_markdown_samples(count: int) -> list[dict[str, Any]]:
+def _generate_markdown_samples(count: int, randomize: bool = True) -> list[dict[str, Any]]:
     """Generate markdown formatted samples."""
     samples = []
 
     for i in range(count):
         # Use section headers as titles
+
         section_idx = i % len(MARKDOWN_SECTIONS)
         title, content = MARKDOWN_SECTIONS[section_idx]
 
         # Add a topic-specific sentence
-        topic = random.choice(TOPICS)
-        sentence = random.choice(SENTENCES)
+        if randomize:
+            topic = random.choice(TOPICS)
+            sentence = random.choice(SENTENCES)
+        else:
+            topic = TOPICS[i % len(TOPICS)]
+            sentence = SENTENCES[i % len(SENTENCES)]
         additional_content = f"{topic.capitalize()} {sentence}."
 
         markdown_text = f"## {title}\n\n{content} {additional_content}"
 
         # Occasionally add a list
-        if random.random() < 0.3:
+        add_list = random.random() < 0.3 if randomize else i % 10 < 3
+        if add_list:
             markdown_text += "\n\n- Key point one\n- Key point two\n- Key point three"
 
         samples.append(
@@ -215,7 +226,7 @@ def _generate_markdown_samples(count: int) -> list[dict[str, Any]]:
     return samples
 
 
-def _generate_json_samples(count: int) -> list[dict[str, Any]]:
+def _generate_json_samples(count: int, randomize: bool = True) -> list[dict[str, Any]]:
     """Generate JSON-like structured samples."""
     samples = []
 
@@ -225,14 +236,19 @@ def _generate_json_samples(count: int) -> list[dict[str, Any]]:
 
         title = JSON_TITLES[title_idx]
         description = JSON_DESCRIPTIONS[desc_idx]
-        topic = random.choice(TOPICS)
+        topic = random.choice(TOPICS) if randomize else TOPICS[i % len(TOPICS)]
 
         # Create a text representation of structured data
         text = f"Title: {title}\n\nDescription: {description}\n\nTopic: {topic.capitalize()}"
 
         # Occasionally add tags
-        if random.random() < 0.5:
-            tags = random.sample(TOPICS, k=min(3, len(TOPICS)))
+        add_tags = random.random() < 0.5 if randomize else i % 2 == 0
+        if add_tags:
+            if randomize:
+                tags = random.sample(TOPICS, k=min(3, len(TOPICS)))
+            else:
+                # deterministic tag selection
+                tags = [TOPICS[(i + j) % len(TOPICS)] for j in range(min(3, len(TOPICS)))]
             text += f"\n\nTags: {', '.join(tags)}"
 
         samples.append(

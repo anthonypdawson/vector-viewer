@@ -40,9 +40,7 @@ class CollectionService(QObject):
             # Use the unified create_collection method
             # Some providers require dimension, others will determine it on first insert
             if dimension is not None:
-                success = connection.create_collection(
-                    name=collection_name, vector_size=dimension, distance="cosine"
-                )
+                success = connection.create_collection(name=collection_name, vector_size=dimension, distance="cosine")
             else:
                 # Try without dimension (works for ChromaDB)
                 success = connection.create_collection(
@@ -70,6 +68,7 @@ class CollectionService(QObject):
         data_type: SampleDataType,
         embedder_name: str,
         embedder_type: str = "sentence-transformer",
+        randomize: bool = True,
     ) -> tuple[bool, str]:
         """Populate collection with sample data.
 
@@ -88,8 +87,9 @@ class CollectionService(QObject):
             self.operation_started.emit("Generating sample data")
             log_info(f"Generating {count} sample items of type {data_type}")
 
-            # Generate sample data
-            samples = generate_sample_data(count, data_type)
+            # Generate sample data (allow deterministic generation when requested)
+            # sample_config may include 'random_data' (bool) to control randomness
+            samples = generate_sample_data(count, data_type, randomize=randomize)
             self.operation_progress.emit("Sample data generated", 1, 3)
 
             # Load embedding model
@@ -159,9 +159,7 @@ class CollectionService(QObject):
                             model_name=embedder_name,
                             model_type=embedder_type,
                         )
-                        log_info(
-                            f"Saved embedding model '{embedder_name}' for collection '{collection_name}'"
-                        )
+                        log_info(f"Saved embedding model '{embedder_name}' for collection '{collection_name}'")
                 except Exception as e:
                     # Don't fail the operation if saving settings fails
                     log_error(f"Failed to save embedding model to settings: {e}")

@@ -112,6 +112,7 @@ class CollectionCreationWorker(QThread):
                     data_type=SampleDataType(self.sample_config.get("data_type", "text")),
                     embedder_name=self.sample_config["embedder_name"],
                     embedder_type=self.sample_config.get("embedder_type", "sentence-transformer"),
+                    randomize=self.sample_config.get("random_data", True),
                 )
 
                 duration_ms = int((time.time() - start_time) * 1000)
@@ -120,9 +121,7 @@ class CollectionCreationWorker(QThread):
                 # Send telemetry
                 try:
                     telemetry = TelemetryService()
-                    event_name = (
-                        "sample_db.create_completed" if success else "sample_db.create_failed"
-                    )
+                    event_name = "sample_db.create_completed" if success else "sample_db.create_failed"
                     metadata = {
                         "db_type": provider_type,
                         "sample_db_id": self.collection_name,
