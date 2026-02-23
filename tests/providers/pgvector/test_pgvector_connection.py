@@ -337,3 +337,39 @@ def test__get_table_schema_returns_empty_on_error(mock_pgvector_conn):
     conn = PgVectorConnection()
     conn.connect()
     assert conn._get_table_schema("whatever") == {}
+
+
+def test_pgvector_add_items_handles_exception(mock_pgvector_conn):
+    """If DB cursor execute/insert raises, add_items should return False."""
+    mock_conn, mock_cursor = mock_pgvector_conn
+    conn = PgVectorConnection()
+    conn.connect()
+
+    mock_cursor.execute.side_effect = Exception("db insert failed")
+
+    res = conn.add_items("my_table", documents=["doc"], ids=["id1"], embeddings=[[0.1, 0.2]])
+    assert res is False
+
+
+def test_pgvector_get_all_items_handles_exception(mock_pgvector_conn):
+    """If fetching rows raises, get_all_items should return None."""
+    mock_conn, mock_cursor = mock_pgvector_conn
+    conn = PgVectorConnection()
+    conn.connect()
+
+    mock_cursor.fetchall.side_effect = Exception("fetch fail")
+
+    res = conn.get_all_items("my_table", limit=10)
+    assert res is None
+
+
+def test_pgvector_delete_items_handles_exception(mock_pgvector_conn):
+    """If delete execution raises, delete_items should return False."""
+    mock_conn, mock_cursor = mock_pgvector_conn
+    conn = PgVectorConnection()
+    conn.connect()
+
+    mock_cursor.execute.side_effect = Exception("delete fail")
+
+    res = conn.delete_items("my_table", ids=["id1"])
+    assert res is False

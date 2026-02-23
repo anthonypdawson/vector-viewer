@@ -364,3 +364,31 @@ def test_lancedb_get_all_items_with_nonstandard_vector_column_returns_empty_embe
     assert res is not None
     # embeddings should be empty list because code expects 'vector' column
     assert res.get("embeddings") == []
+
+
+def test_lancedb_add_items_handles_exception():
+    """If table.add raises, add_items should return False."""
+    conn = LanceDBConnection(uri="/tmp/fake")
+    conn._connected = True
+
+    tbl = MagicMock()
+    tbl.add.side_effect = Exception("tbl add failed")
+    conn._db = MagicMock()
+    conn._db.open_table.return_value = tbl
+
+    res = conn.add_items("coll", documents=["d"], ids=["i"], embeddings=[[0.1, 0.2]])
+    assert res is False
+
+
+def test_lancedb_query_handles_exception():
+    """If table.search raises, query_collection should return None."""
+    conn = LanceDBConnection(uri="/tmp/fake")
+    conn._connected = True
+
+    tbl = MagicMock()
+    tbl.search.side_effect = Exception("search fail")
+    conn._db = MagicMock()
+    conn._db.open_table.return_value = tbl
+
+    res = conn.query_collection("coll", query_embeddings=[[0.1, 0.2]])
+    assert res is None

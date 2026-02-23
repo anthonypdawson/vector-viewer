@@ -308,3 +308,47 @@ def test_qdrant_delete_where_and_ids_precedence(tmp_path):
     res2 = conn.get_all_items(collection_name, limit=10)
     # Some backends prefer where over ids; ensure call succeeded and results are retrievable
     assert res2 is not None
+
+
+def test_qdrant_add_items_handles_exception(monkeypatch):
+    conn = QdrantConnection()
+    conn.connect()
+    mock_client = MagicMock()
+    mock_client.upsert.side_effect = Exception("upsert fail")
+    conn._client = mock_client
+
+    res = conn.add_items("coll", documents=["d"], ids=["i"], embeddings=[[0.1, 0.2]])
+    assert res is False
+
+
+def test_qdrant_query_handles_exception(monkeypatch):
+    conn = QdrantConnection()
+    conn.connect()
+    mock_client = MagicMock()
+    mock_client.query_points.side_effect = Exception("query fail")
+    conn._client = mock_client
+
+    res = conn.query_collection("coll", query_embeddings=[[0.1, 0.2]])
+    assert res is None or isinstance(res, dict)
+
+
+def test_qdrant_delete_handles_exception(monkeypatch):
+    conn = QdrantConnection()
+    conn.connect()
+    mock_client = MagicMock()
+    mock_client.delete.side_effect = Exception("delete fail")
+    conn._client = mock_client
+
+    res = conn.delete_items("coll", ids=["i"])
+    assert res is False
+
+
+def test_qdrant_get_all_items_handles_exception(monkeypatch):
+    conn = QdrantConnection()
+    conn.connect()
+    mock_client = MagicMock()
+    mock_client.scroll.side_effect = Exception("scroll fail")
+    conn._client = mock_client
+
+    res = conn.get_all_items("coll", limit=10)
+    assert res is None

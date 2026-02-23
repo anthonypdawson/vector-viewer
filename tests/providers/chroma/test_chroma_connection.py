@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -138,3 +138,44 @@ def test_chroma_delete_where_and_ids_precedence(tmp_path):
     res2 = conn.get_all_items(collection_name, limit=10)
     # Some backends prefer where over ids; ensure the call succeeded and results are retrievable
     assert res2 is not None
+
+
+def test_chroma_add_items_handles_exception(tmp_path, monkeypatch):
+    """If underlying collection.add raises, add_items should return False."""
+    collection_name = f"test_collection_{uuid.uuid4().hex[:8]}"
+    conn = ChromaDBConnection()
+    conn.connect()
+    conn.create_collection(collection_name, vector_size=2)
+
+    # Patch get_collection to return a mock collection whose add raises
+    mock_col = MagicMock()
+    mock_col.add.side_effect = Exception("add failed")
+    monkeypatch.setattr(conn, "get_collection", lambda name: mock_col)
+
+    res = conn.add_items(collection_name, documents=["d"], ids=["i"], embeddings=[[0.1, 0.2]])
+    assert res is False
+
+
+def test_chroma_query_handles_exception(monkeypatch):
+    """If collection.query raises, query_collection should return None."""
+    conn = ChromaDBConnection()
+    conn.connect()
+    # Patch get_collection to return a mock collection whose query raises
+    mock_col = MagicMock()
+    mock_col.query.side_effect = Exception("query fail")
+    monkeypatch.setattr(conn, "get_collection", lambda name: mock_col)
+
+    res = conn.query_collection("coll", query_embeddings=[[0.1, 0.2]])
+    assert res is None
+
+
+def test_chroma_get_all_items_handles_exception(monkeypatch):
+    """If collection.get raises, get_all_items should return None."""
+    conn = ChromaDBConnection()
+    conn.connect()
+    mock_col = MagicMock()
+    mock_col.get.side_effect = Exception("get fail")
+    monkeypatch.setattr(conn, "get_collection", lambda name: mock_col)
+
+    res = conn.get_all_items("coll", limit=10)
+    assert res is None

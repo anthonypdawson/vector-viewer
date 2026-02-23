@@ -462,6 +462,116 @@ def test_pinecone_get_all_items(mock_pinecone_client):
     assert result["metadatas"] == [{"key": "value1"}, {"key": "value2"}, {"key": "value3"}]
 
 
+def test_get_embedding_function_prefers_settings_model(monkeypatch, mock_pinecone_client):
+    """Ensure _get_embedding_function_for_collection uses SettingsService-configured model when present."""
+    conn = PineconeConnection(api_key="test-api-key")
+    conn.connect()
+
+    # Patch get_collection_info to return a vector dimension
+    monkeypatch.setattr(PineconeConnection, "get_collection_info", lambda self, c: {"vector_dimension": 128})
+
+    # Patch SettingsService to return a configured model for this collection
+    class DummySettings:
+        def get_embedding_model(self, profile, collection):
+            return {"model": "dummy-model", "type": "custom-type"}
+
+    # Patch the SettingsService where it is implemented
+    monkeypatch.setattr("vector_inspector.services.settings_service.SettingsService", lambda: DummySettings())
+
+    # Patch load_embedding_model and encode_text in embedding_utils where they originate
+    monkeypatch.setattr("vector_inspector.core.embedding_utils.load_embedding_model", lambda model, t: "LOADED_MODEL")
+    monkeypatch.setattr("vector_inspector.core.embedding_utils.encode_text", lambda text, model, mtype: [0.42])
+
+    # Provide a profile name so SettingsService is consulted
+    conn.profile_name = "test-profile"
+
+    fn, mtype = conn._get_embedding_function_for_collection("idx::ns")
+    assert callable(fn)
+    assert mtype == "custom-type"
+    assert fn("hello") == [0.42]
+
+
+def test_get_embedding_function_handles_hosted_model(monkeypatch, mock_pinecone_client):
+    """When collection reports Pinecone-hosted model, function still returns an embedding function (with fallback)."""
+    conn = PineconeConnection(api_key="test-api-key")
+    conn.connect()
+
+    # Simulate hosted model info returned by get_collection_info
+    monkeypatch.setattr(
+        PineconeConnection,
+        "get_collection_info",
+        lambda self, c: {
+            "vector_dimension": 384,
+            "embedding_model_type": "pinecone-hosted",
+            "embedding_model": "pine-hosted",
+        },
+    )
+
+    # Patch fallback embedder routines
+    monkeypatch.setattr(
+        "vector_inspector.core.embedding_utils.get_embedding_model_for_dimension",
+        lambda d: ("MDL", None, "sentence-transformer"),
+    )
+    monkeypatch.setattr("vector_inspector.core.embedding_utils.encode_text", lambda text, model, mtype: [0.1, 0.2])
+
+    fn, mtype = conn._get_embedding_function_for_collection("idx")
+    assert callable(fn)
+    assert isinstance(mtype, str)
+    assert fn("x") == [0.1, 0.2]
+
+
+def test_add_items_handles_upsert_exception(mock_pinecone_client):
+    """If the underlying index.upsert raises, add_items should return False."""
+    mock_index = Mock()
+    mock_index.upsert.side_effect = Exception("upsert fail")
+    mock_pinecone_client.Index.return_value = mock_index
+
+    conn = PineconeConnection(api_key="test-api-key")
+    conn.connect()
+
+    res = conn.add_items("test-index", documents=["d"], embeddings=[[0.1, 0.2]], ids=["i1"])
+    assert res is False
+
+
+def test_get_items_handles_fetch_exception(mock_pinecone_client):
+    """If index.fetch raises, get_items should return empty lists."""
+    mock_index = Mock()
+    mock_index.fetch.side_effect = Exception("fetch fail")
+    mock_pinecone_client.Index.return_value = mock_index
+
+    conn = PineconeConnection(api_key="test-api-key")
+    conn.connect()
+
+    res = conn.get_items("test-index", ids=["idX"])
+    assert res == {"documents": [], "metadatas": []}
+
+
+def test_delete_items_handles_delete_exception(mock_pinecone_client):
+    """If index.delete raises, delete_items should return False."""
+    mock_index = Mock()
+    mock_index.delete.side_effect = Exception("delete fail")
+    mock_pinecone_client.Index.return_value = mock_index
+
+    conn = PineconeConnection(api_key="test-api-key")
+    conn.connect()
+
+    res = conn.delete_items("test-index", ids=["id1"])
+    assert res is False
+
+
+def test_query_handles_query_exception(mock_pinecone_client):
+    """If index.query raises, query_collection should return None."""
+    mock_index = Mock()
+    mock_index.query.side_effect = Exception("query fail")
+    mock_pinecone_client.Index.return_value = mock_index
+
+    conn = PineconeConnection(api_key="test-api-key")
+    conn.connect()
+
+    res = conn.query_collection("test-index", query_embeddings=[[0.1, 0.2]])
+    assert res is None
+
+
 @pytest.mark.skip(reason="Integration tests require valid Pinecone API key")
 def test_pinecone_integration():
     """

@@ -378,6 +378,62 @@ def test_weaviate_delete_items_by_id(mock_weaviate_client):
     assert mock_collection.data.delete_by_id.call_count == 2
 
 
+def test_weaviate_add_items_handles_exception(mock_weaviate_client):
+    """If batch add raises, add_items should return False."""
+    mock_weaviate, mock_client = mock_weaviate_client
+
+    mock_collection = MagicMock()
+    mock_batch = MagicMock()
+    mock_batch.__enter__ = MagicMock(return_value=mock_batch)
+    mock_batch.__exit__ = MagicMock(return_value=False)
+    # make add raise
+    mock_batch.add_object.side_effect = Exception("batch add fail")
+    mock_collection.batch.dynamic.return_value = mock_batch
+    mock_client.collections.get.return_value = mock_collection
+
+    conn = WeaviateConnection(host="localhost", port=8080)
+    conn.connect()
+    res = conn.add_items("TestCollection", documents=["d"], embeddings=[[0.1, 0.2]], ids=["i"])
+    assert res is False
+
+
+def test_weaviate_query_handles_exception(mock_weaviate_client):
+    mock_weaviate, mock_client = mock_weaviate_client
+    mock_collection = MagicMock()
+    mock_collection.query.near_vector.side_effect = Exception("query fail")
+    mock_client.collections.get.return_value = mock_collection
+
+    conn = WeaviateConnection(host="localhost", port=8080)
+    conn.connect()
+    res = conn.query_collection("TestCollection", query_embeddings=[[0.1, 0.2]])
+    assert res is None
+
+
+def test_weaviate_delete_handles_exception(mock_weaviate_client):
+    mock_weaviate, mock_client = mock_weaviate_client
+    mock_collection = MagicMock()
+    mock_collection.data.delete_by_id.side_effect = Exception("delete fail")
+    mock_client.collections.get.return_value = mock_collection
+
+    conn = WeaviateConnection(host="localhost", port=8080)
+    conn.connect()
+    res = conn.delete_items("TestCollection", ids=[str(uuid.uuid4())])
+    # Weaviate's delete_items logs failures per-id but returns True (best-effort).
+    assert res is True
+
+
+def test_weaviate_get_all_items_handles_exception(mock_weaviate_client):
+    mock_weaviate, mock_client = mock_weaviate_client
+    mock_collection = MagicMock()
+    mock_collection.query.fetch_objects.side_effect = Exception("fetch fail")
+    mock_client.collections.get.return_value = mock_collection
+
+    conn = WeaviateConnection(host="localhost", port=8080)
+    conn.connect()
+    res = conn.get_all_items("TestCollection", limit=10)
+    assert res is None
+
+
 def test_weaviate_get_connection_info(mock_weaviate_client):
     """Test getting connection info."""
     _mock_weaviate, _mock_client = mock_weaviate_client
