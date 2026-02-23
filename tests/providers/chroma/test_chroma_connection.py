@@ -1,9 +1,13 @@
+import os
 import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
+from vector_inspector.core.connections.chroma_connection import (
+    ChromaDBConnection,
+    DimensionAwareEmbeddingFunction,
+)
 
 
 def test_chroma_connection_integration(tmp_path):
@@ -179,3 +183,63 @@ def test_chroma_get_all_items_handles_exception(monkeypatch):
 
     res = conn.get_all_items("coll", limit=10)
     assert res is None
+
+
+def test_resolve_path_relative(tmp_path, monkeypatch):
+    conn = ChromaDBConnection(path="./data/chroma_test")
+    # Ensure project root detection falls back to cwd when pyproject missing
+    p = conn._resolve_path("relative/path")
+    assert os.path.isabs(p)
+
+
+def test_dimension_aware_embedding_function_calls_encode_and_model(monkeypatch):
+    daf = DimensionAwareEmbeddingFunction(expected_dimension=2)
+
+    # Patch model loader and encoder
+    fake_model = object()
+
+    def fake_get_model(dim):
+        return fake_model, "model-name", "model-type"
+
+    def fake_encode(text, model, model_type):
+        # return deterministic vector
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(
+        "vector_inspector.core.connections.chroma_connection.get_embedding_model_for_dimension",
+        fake_get_model,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "vector_inspector.core.connections.chroma_connection.encode_text",
+        fake_encode,
+        raising=False,
+    )
+
+    # The __call__ should load model and encode texts
+    out = daf(["a", "b"])  # type: ignore[arg-type]
+    assert isinstance(out, list)
+    assert len(out) == 2
+
+
+def test_get_embedding_function_for_collection_no_client_returns_none():
+    conn = ChromaDBConnection()
+    # no client set
+    assert conn._get_embedding_function_for_collection("nope") is None
+
+
+def test_get_embedding_function_for_collection_with_sample(monkeypatch):
+    conn = ChromaDBConnection()
+    # create fake client with collection that returns embeddings
+    mock_client = MagicMock()
+    mock_collection = MagicMock()
+    mock_collection.get.return_value = {"embeddings": [[0.1, 0.2]]}
+    mock_client.get_collection.return_value = mock_collection
+    conn._client = mock_client
+
+    # Ensure has_embedding returns True
+    monkeypatch.setattr("vector_inspector.utils.has_embedding", lambda e: True)
+
+    ef = conn._get_embedding_function_for_collection("c")
+    assert ef is not None
+    assert isinstance(ef, DimensionAwareEmbeddingFunction)

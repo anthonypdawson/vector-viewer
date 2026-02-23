@@ -1,9 +1,9 @@
 import uuid
-import numpy as np
-import pytest
 
-from vector_inspector.services.collection_service import CollectionService
+import numpy as np
+
 from vector_inspector.core.sample_data import SampleDataType
+from vector_inspector.services.collection_service import CollectionService
 
 
 class _FakeConnectionBase:

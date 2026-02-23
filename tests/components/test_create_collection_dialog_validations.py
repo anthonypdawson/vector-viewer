@@ -1,8 +1,6 @@
 from PySide6.QtWidgets import QApplication
-import pytest
 
 from vector_inspector.ui.components.create_collection_dialog import CreateCollectionDialog
-
 
 if QApplication.instance() is None:
     _qapp = QApplication([])
@@ -17,9 +15,7 @@ def test_accept_rejects_empty_name(monkeypatch):
     def fake_warning(*args, **kwargs):
         called["warned"] = True
 
-    monkeypatch.setattr(
-        "vector_inspector.ui.components.create_collection_dialog.QMessageBox.warning", fake_warning
-    )
+    monkeypatch.setattr("vector_inspector.ui.components.create_collection_dialog.QMessageBox.warning", fake_warning)
 
     dlg.name_input.setText("")
     dlg.accept()
@@ -37,9 +33,7 @@ def test_accept_rejects_missing_model_when_sample_enabled(monkeypatch):
     def fake_warning(*args, **kwargs):
         called["warned"] = True
 
-    monkeypatch.setattr(
-        "vector_inspector.ui.components.create_collection_dialog.QMessageBox.warning", fake_warning
-    )
+    monkeypatch.setattr("vector_inspector.ui.components.create_collection_dialog.QMessageBox.warning", fake_warning)
 
     dlg.name_input.setText("valid_name")
     dlg.add_sample_check.setChecked(True)
