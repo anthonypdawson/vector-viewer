@@ -72,9 +72,7 @@ def main():
             telemetry.send_error_event(message=str(_qt_err), tb=tb, app_version=get_version())
         except Exception:
             try:
-                sys.stderr.write(
-                    f"[Telemetry] Failed sending PySide import error: {_qt_err}\n{tb}\n"
-                )
+                sys.stderr.write(f"[Telemetry] Failed sending PySide import error: {_qt_err}\n{tb}\n")
             except Exception:
                 pass
         # Re-raise so the import failure surfaces to the caller (app cannot run)
