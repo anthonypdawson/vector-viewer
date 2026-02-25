@@ -99,6 +99,26 @@ def test_overwrite_key(temp_home):
     assert svc.get("theme") == "dark"
 
 
+def test_highlight_defaults_and_setters(temp_home):
+    # Reset singleton for test isolation
+    SettingsService._instance = None
+    SettingsService._initialized = False
+    svc = SettingsService()
+
+    # Should return an rgba string
+    hc = svc.get_highlight_color()
+    assert isinstance(hc, str) and hc.startswith("rgba(")
+
+    # Set highlight values and persist
+    svc.set_highlight_color("rgba(5,6,7,1)")
+    svc.set_highlight_color_bg("rgba(5,6,7,0.05)")
+
+    # Recreate to ensure persisted
+    svc2 = SettingsService()
+    assert svc2.get_highlight_color() == "rgba(5,6,7,1)"
+    assert svc2.get_highlight_color_bg() == "rgba(5,6,7,0.05)"
+
+
 def test_unicode_and_large_value(temp_home):
     # Reset singleton for test isolation
     SettingsService._instance = None

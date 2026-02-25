@@ -43,6 +43,19 @@ class FakeSettings:
     def set_embedding_cache_enabled(self, v):
         self._store["embedding_cache_enabled"] = v
 
+    # Highlight color stubs for new Appearance controls
+    def get_highlight_color(self):
+        return self._store.get("ui.highlight_color", "rgba(0,122,204,1)")
+
+    def get_highlight_color_bg(self):
+        return self._store.get("ui.highlight_color_bg", "rgba(0,122,204,0.12)")
+
+    def set_highlight_color(self, color):
+        self._store["ui.highlight_color"] = color
+
+    def set_highlight_color_bg(self, color):
+        self._store["ui.highlight_color_bg"] = color
+
     def _save_settings(self):
         # pretend to persist
         pass
