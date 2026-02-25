@@ -268,6 +268,8 @@ results across developer machines and CI.
 
 - Tests use `pytest` with `pytest-qt` for Qt widget testing.
 - `tests/conftest.py` provides `fake_provider` fixture — a mock vector DB for isolated testing.
+- To get the report of which files need coverage you can use the command line
+    `pdm run pytest -q --cov=vector_inspector --cov-report term-missing` 
 
 ### 5.2 Organization
 
@@ -317,6 +319,17 @@ results across developer machines and CI.
 - Running tests:
   - Always run via `pdm run pytest` to ensure the correct environment.
   - Use `QT_QPA_PLATFORM=offscreen` in CI for headless runs.
+
+### 5.5 Required tests for new functionality
+
+- Any new functionality, public API, UI surface, or code path added to the project MUST include unit tests that exercise the behavior.
+- Tests for UI-related changes must use `qtbot` where appropriate (see section 5.3).
+- Place new tests under the appropriate `tests/` feature directory following the existing conventions (components, views, services, providers, etc.).
+- Tests should be small, focused, and deterministic; prefer fixtures (e.g., `fake_provider`) and mocks to avoid external dependencies.
+- When adding behavior that affects multiple layers (UI + service), include both a unit test for the service logic and a lightweight widget test for the UI glue where practical.
+- Add tests that cover edge cases and error paths for any new code paths to prevent regressions.
+- If a change is exploratory or a spike, include at least one regression test capturing the expected outcome before landing the change.
+
 
 
 ## 6. PROJECT OVERVIEW & ARCHITECTURE
