@@ -4,9 +4,11 @@ Copy this file and replace 'Template' with your database name.
 Implement all abstract methods according to your database's API.
 """
 
-from typing import Optional, List, Dict, Any
-from .base_connection import VectorDBConnection
+from typing import Any, Optional
+
 from vector_inspector.core.logging import log_error
+
+from .base_connection import VectorDBConnection
 
 
 class TemplateConnection(VectorDBConnection):
@@ -58,7 +60,7 @@ class TemplateConnection(VectorDBConnection):
         # Return whether the client is active
         return self._client is not None
 
-    def list_collections(self) -> List[str]:
+    def list_collections(self) -> list[str]:
         """
         Get list of all collections/indexes.
 
@@ -76,7 +78,7 @@ class TemplateConnection(VectorDBConnection):
             log_error("Failed to list collections: %s", e)
             return []
 
-    def get_collection_info(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_collection_info(self, name: str) -> Optional[dict[str, Any]]:
         """
         Get collection metadata and statistics.
 
@@ -110,12 +112,12 @@ class TemplateConnection(VectorDBConnection):
     def query_collection(
         self,
         collection_name: str,
-        query_texts: Optional[List[str]] = None,
-        query_embeddings: Optional[List[List[float]]] = None,
+        query_texts: Optional[list[str]] = None,
+        query_embeddings: Optional[list[list[float]]] = None,
         n_results: int = 10,
-        where: Optional[Dict[str, Any]] = None,
-        where_document: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        where: Optional[dict[str, Any]] = None,
+        where_document: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
         """
         Query a collection for similar vectors.
 
@@ -158,8 +160,8 @@ class TemplateConnection(VectorDBConnection):
         collection_name: str,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-        where: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        where: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
         """
         Get all items from a collection.
 
@@ -196,10 +198,10 @@ class TemplateConnection(VectorDBConnection):
     def add_items(
         self,
         collection_name: str,
-        documents: List[str],
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
-        embeddings: Optional[List[List[float]]] = None,
+        documents: list[str],
+        metadatas: Optional[list[dict[str, Any]]] = None,
+        ids: Optional[list[str]] = None,
+        embeddings: Optional[list[list[float]]] = None,
     ) -> bool:
         """
         Add items to a collection.
@@ -234,10 +236,10 @@ class TemplateConnection(VectorDBConnection):
     def update_items(
         self,
         collection_name: str,
-        ids: List[str],
-        documents: Optional[List[str]] = None,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        embeddings: Optional[List[List[float]]] = None,
+        ids: list[str],
+        documents: Optional[list[str]] = None,
+        metadatas: Optional[list[dict[str, Any]]] = None,
+        embeddings: Optional[list[list[float]]] = None,
     ) -> bool:
         """
         Update items in a collection.
@@ -272,8 +274,8 @@ class TemplateConnection(VectorDBConnection):
     def delete_items(
         self,
         collection_name: str,
-        ids: Optional[List[str]] = None,
-        where: Optional[Dict[str, Any]] = None,
+        ids: Optional[list[str]] = None,
+        where: Optional[dict[str, Any]] = None,
     ) -> bool:
         """
         Delete items from a collection.
@@ -322,7 +324,7 @@ class TemplateConnection(VectorDBConnection):
             log_error("Failed to delete collection: %s", e)
             return False
 
-    def get_connection_info(self) -> Dict[str, Any]:
+    def get_connection_info(self) -> dict[str, Any]:
         """
         Get information about the current connection.
 

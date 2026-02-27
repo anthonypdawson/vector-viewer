@@ -381,3 +381,65 @@ class SettingsService:
             # Remove the key to use default
             self.settings.pop("embedding_cache_dir", None)
             self._save_settings()
+
+    # UI highlight color settings
+    def get_highlight_color(self) -> str:
+        """Return the configured highlight color (CSS rgba string).
+
+        Falls back to the default in `vector_inspector.ui.styles`.
+        """
+        try:
+            val = self.settings.get("ui.highlight_color")
+            if val:
+                return str(val)
+        except Exception:
+            pass
+        try:
+            from vector_inspector.ui.styles import HIGHLIGHT_COLOR
+
+            return HIGHLIGHT_COLOR
+        except Exception:
+            return "rgba(0,122,204,1)"
+
+    def set_highlight_color(self, color: str):
+        """Set the UI highlight color (CSS rgba string) and persist it."""
+        try:
+            self.set("ui.highlight_color", str(color))
+        except Exception as e:
+            log_error("Failed to set highlight color: %s", e)
+
+    def get_highlight_color_bg(self) -> str:
+        """Return the configured highlight background color (rgba) or fallback."""
+        try:
+            val = self.settings.get("ui.highlight_color_bg")
+            if val:
+                return str(val)
+        except Exception:
+            pass
+        try:
+            from vector_inspector.ui.styles import HIGHLIGHT_COLOR_BG
+
+            return HIGHLIGHT_COLOR_BG
+        except Exception:
+            return "rgba(0,122,204,0.12)"
+
+    def set_highlight_color_bg(self, color: str):
+        """Set the UI highlight background color and persist it."""
+        try:
+            self.set("ui.highlight_color_bg", str(color))
+        except Exception as e:
+            log_error("Failed to set highlight background color: %s", e)
+
+    def get_use_accent_enabled(self) -> bool:
+        """Return whether accent/highlight styling is enabled (default: False)."""
+        try:
+            return bool(self.settings.get("ui.use_accent", False))
+        except Exception:
+            return False
+
+    def set_use_accent_enabled(self, enabled: bool):
+        """Enable or disable global accent/highlight styling."""
+        try:
+            self.set("ui.use_accent", bool(enabled))
+        except Exception as e:
+            log_error("Failed to set use_accent flag: %s", e)

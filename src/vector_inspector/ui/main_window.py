@@ -130,6 +130,15 @@ class MainWindow(InspectorShell):
         except Exception:
             pass
 
+        # Default to Profiles tab on launch (index 1) so saved profiles are
+        # shown to the user first instead of the Active panel.
+        try:
+            # Only switch if there are at least two tabs
+            if self.left_tabs.count() > 1:
+                self.set_left_panel_active(1)
+        except Exception:
+            pass
+
         # Main content tabs using TabRegistry
         tab_defs = InspectorTabs.get_standard_tabs()
 

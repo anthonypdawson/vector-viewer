@@ -15,6 +15,7 @@ on:
   push:
     paths:
       - 'pyproject.toml'
+      - '.github/workflows/ci-tests.yml'
       - 'tests/**'
 
 jobs:
@@ -100,6 +101,7 @@ jobs:
       - name: Coveralls
         if: hashFiles('coverage.lcov') != '' && matrix.python-version == '3.12'
         uses: coverallsapp/github-action@v2
+        continue-on-error: true
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: ./coverage.lcov
@@ -109,10 +111,11 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          slug: anthonypdawson/vector-inspector
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/test-results-action@v1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }}          
           slug: anthonypdawson/vector-inspector

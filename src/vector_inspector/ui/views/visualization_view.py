@@ -29,6 +29,11 @@ from vector_inspector.services import ClusterRunner, ThreadedTaskRunner
 from vector_inspector.services.visualization_service import VisualizationService
 from vector_inspector.state import AppState
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
+from vector_inspector.ui.styles import (
+    TAB_FONT_SIZE,
+    TAB_FONT_WEIGHT,
+    TAB_PADDING,
+)
 from vector_inspector.ui.views.visualization import ClusteringPanel, DRPanel, HistogramPanel, PlotPanel
 
 
@@ -253,6 +258,34 @@ class VisualizationView(QWidget):
         self.tab_widget.addTab(viz_tab, "Visualization")
 
         self.tab_widget.addTab(self.histogram_panel, "Distributions")
+
+        # Make tabs more noticeable: add emoji and slightly heavier styling
+        try:
+            self.tab_widget.setTabText(0, "🔬 Visualization")
+            self.tab_widget.setTabText(1, "📊 Distributions")
+            # Local stylesheet on the QTabBar to increase weight/padding and
+            # give a subtle selected-background so the tabs stand out.
+            # Use highlight color from user settings (if present) to stay consistent
+            try:
+                # Only apply the tab highlight styling when the user explicitly
+                # enabled accent styling. Avoids unexpectedly changing the
+                # default widget appearance for new users.
+                if self.app_state.settings_service.get_use_accent_enabled():
+                    highlight = self.app_state.settings_service.get_highlight_color()
+                    highlight_bg = self.app_state.settings_service.get_highlight_color_bg()
+
+                    tab_style = (
+                        f"QTabBar::tab {{ font-weight: {TAB_FONT_WEIGHT}; padding: {TAB_PADDING}; font-size: {TAB_FONT_SIZE};}}"
+                        f"QTabBar::tab:selected {{ background-color: {highlight_bg}; border-bottom: 2px solid {highlight}; }}"
+                    )
+                    self.tab_widget.tabBar().setStyleSheet(tab_style)
+                # else: leave native tab styling
+            except Exception:
+                # Best-effort; avoid crashing if styling not supported in some envs
+                pass
+        except Exception:
+            # Best-effort; avoid crashing if styling not supported in some envs
+            pass
 
         layout.addWidget(self.tab_widget, stretch=10)
 

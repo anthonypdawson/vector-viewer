@@ -119,4 +119,13 @@ def fake_settings():
                 return True
             return default
 
+        # Provide accent enable/disable API used by SettingsDialog and other UI
+        def get_use_accent_enabled(self) -> bool:
+            # Default to False for tests unless explicitly set
+            return bool(getattr(self, "_use_accent", False))
+
+        def set_use_accent_enabled(self, enabled: bool):
+            # Store the flag for inspection in tests
+            self._use_accent = bool(enabled)
+
     return FakeSettings()

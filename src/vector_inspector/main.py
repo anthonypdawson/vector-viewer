@@ -7,6 +7,8 @@ can record launch attempts even when the GUI dependencies fail to load.
 import os
 import sys
 
+from vector_inspector.core.logging import log_error
+
 # Run early telemetry before importing any Qt/PySide modules. Keep this
 # minimal and tolerant of failure so missing GUI requirements don't prevent
 # the app from reporting an attempted launch.
@@ -72,9 +74,7 @@ def main():
             telemetry.send_error_event(message=str(_qt_err), tb=tb, app_version=get_version())
         except Exception:
             try:
-                sys.stderr.write(
-                    f"[Telemetry] Failed sending PySide import error: {_qt_err}\n{tb}\n"
-                )
+                sys.stderr.write(f"[Telemetry] Failed sending PySide import error: {_qt_err}\n{tb}\n")
             except Exception:
                 pass
         # Re-raise so the import failure surfaces to the caller (app cannot run)
@@ -84,6 +84,31 @@ def main():
     app.setApplicationName("Vector Inspector")
     app.setApplicationDisplayName("Vector Inspector")  # For some dialogs and OS integrations
     app.setOrganizationName("Vector Inspector")
+
+    # Apply global stylesheet using configured highlight color (if any)
+    try:
+        from vector_inspector.services.settings_service import SettingsService
+        from vector_inspector.ui.styles import build_global_qss
+
+        # import PySide6.QtGui
+        settings = SettingsService()
+        # Only apply the global accent stylesheet when the user has explicitly
+        # enabled accent styling in settings. This keeps the default platform
+        # look unchanged for first-time users.
+        if settings.get_use_accent_enabled():
+            highlight = settings.get_highlight_color()
+            highlight_bg = settings.get_highlight_color_bg()
+            # palette: PySide6.QtGui.QPalette = app.palette()
+            # palette.setColor(QPalette.accent, QColor(highlight))
+            # palette.setColor(QPalette.highlight, QColor(highlight))
+            # palette.setColor(QPalette.button, QColor(highlight))
+            # palette.setColor(QPalette.link, QColor(highlight))
+            # app.setPalette(palette)
+            global_qss = build_global_qss(highlight, highlight_bg)
+            app.setStyleSheet(global_qss)
+    except Exception as _err:
+        log_error(f"[Startup] Failed to apply global stylesheet: {_err}")
+        pass
 
     # Set up Qt-specific exception handler for slots/signals
     try:
