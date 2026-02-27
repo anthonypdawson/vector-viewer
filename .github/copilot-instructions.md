@@ -329,6 +329,8 @@ results across developer machines and CI.
 - When adding behavior that affects multiple layers (UI + service), include both a unit test for the service logic and a lightweight widget test for the UI glue where practical.
 - Add tests that cover edge cases and error paths for any new code paths to prevent regressions.
 - If a change is exploratory or a spike, include at least one regression test capturing the expected outcome before landing the change.
+- Always reuse or extend existing fixtures and test utilities where possible to maintain consistency and reduce boilerplate in tests.
+- Always use the same test files and organization patterns as existing tests for the relevant feature area to keep the test suite coherent and navigable.
 
 
 
