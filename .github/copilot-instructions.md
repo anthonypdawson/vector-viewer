@@ -252,6 +252,25 @@ If you want the full, line-by-line meaning for any of these codes (for example `
 
 If you update these settings in `pyproject.toml`, please mirror the change here.
 
+### 4.7 Error Handling Convention
+
+Follow these layer-specific rules so errors surface cleanly without leaking implementation details into the UI or swallowing failures silently.
+
+- **Service layer** — raise exceptions; do not catch broadly. Let the caller decide how to present the error.
+- **QThread workers** — catch exceptions in `run()` and emit the `error` signal with a plain string message. Never modify the UI from a thread.
+- **UI layer** — connect the worker's `error` signal to a handler that shows `QMessageBox.critical()` or updates a status label. Handle only specific, expected exceptions; do not catch exceptions broadly (avoid `except Exception:`). Log events with the project's logging utility (include `exc_info=True` for unexpected errors) and send telemetry only after redacting PII. The user-facing message should be clear and actionable without technical jargon or stack traces. For unexpected exceptions, log full details with a correlation id and show a generic error message to the user.
+- **Extension hooks** — wrap handler calls in `try/except` and log failures; do not let a plugin crash the main app.
+- **Top-level unhandled exceptions** — covered by `vector_inspector.utils.exception_handler`; no additional handling needed.
+
+```python
+# Typical QThread → view error flow
+thread.error.connect(self._on_error)
+
+def _on_error(self, message: str) -> None:
+    self.loading_dialog.hide()
+    QMessageBox.critical(self, "Error", message)
+```
+
 ## 5. TESTING RULES (PYTEST + QT)
 
 ### 5.1 Running Tests
@@ -270,6 +289,8 @@ results across developer machines and CI.
 - `tests/conftest.py` provides `fake_provider` fixture — a mock vector DB for isolated testing.
 - To get the report of which files need coverage you can use the command line
     `pdm run pytest -q --cov=vector_inspector --cov-report term-missing` 
+
+**Coverage target:** Aim for 80% on new code. This is a guideline, not an absolute requirement — if a code path is only reachable through excessive mocking or is genuinely impractical to test (e.g., OS-specific crash handlers), skip it and leave a comment explaining why. Do not over-engineer test fixtures or add fragile tests just to hit the number.
 
 ### 5.2 Organization
 
@@ -291,6 +312,19 @@ results across developer machines and CI.
 - Use `empty_fake_provider` fixture when testing "no data" scenarios.
 - Mock `ConnectionInstance` when testing UI components.
 - CI uses `QT_QPA_PLATFORM=offscreen` for headless Qt testing.
+
+**Shared fixtures in `tests/conftest.py`** — always prefer these over duplicating setup in individual test files:
+
+| Fixture | Type | Description |
+|---|---|---|
+| `fake_provider` | `FakeProvider` | Pre-populated with `test_collection` (ids `id1`/`id2`/`id3`, embeddings `[1,0]`/`[0,1]`/`[0.5,0.5]`). Use for most provider-dependent tests. |
+| `empty_fake_provider` | `FakeProvider` | Empty provider with no collections. Use for "no data" and first-create scenarios. |
+| `fake_provider_with_name` | `tuple[FakeProvider, str]` | Returns `(provider, "test_collection")`. Use when the collection name is needed as a variable. |
+| `app_state_with_fake_provider` | `AppState` | `AppState` with `fake_provider` already set as `provider`. Use for full-stack view tests. |
+| `task_runner` | `ThreadedTaskRunner` | Fresh `ThreadedTaskRunner` instance. Pass alongside `app_state` when constructing views. |
+| `fake_settings` | `FakeSettings` | Minimal settings stub; suppresses the splash dialog and exposes `get`/`set_use_accent_enabled`. Use for settings-dependent component tests. |
+
+**Fixture ownership:** If you create a new fixture that is broadly useful (more than one test file would benefit from it), or you discover a fixture defined in a test file that logically belongs in `conftest.py`, move it there. Keep `conftest.py` as the single source of truth for shared test infrastructure.
 
 ### 5.4 Unit test directory structure
 
@@ -581,6 +615,31 @@ self.app_state.settings_service.signals.setting_changed.connect(self._on_setting
 - Never use `print()` or stdlib `logging` directly.
 - Ensures consistent formatting and easier log redirection.
 
+### 7.8 ThreadedTaskRunner
+
+`ThreadedTaskRunner` (`vector_inspector.services.task_runner`) is the standard way to run background work across the app. It is a `QObject` (not a `QThread`) that manages a pool of `TaskRunner` threads internally.
+
+**When to use it vs raw QThread subclasses:**
+- Use `ThreadedTaskRunner.run_task()` for one-off or simple background functions (fetching data, calling an API, running a computation).
+- Use a dedicated `QThread` subclass (e.g. `DataLoadThread`, `SearchThread`) only when the background task requires complex state, incremental progress emission, or custom cancellation logic that doesn't fit the generic callback model.
+
+**Usage:**
+
+```python
+self.task_runner.run_task(
+    my_function,          # plain callable — runs in background thread
+    arg1, arg2,           # positional args forwarded to my_function
+    task_id="my-task",    # optional; cancels any prior task with the same id
+    on_finished=self._on_done,   # called with the return value on success
+    on_error=self._on_error,     # called with error string on exception
+    on_progress=self._on_prog,   # called with (message, percent) if task reports progress
+)
+```
+
+- All views receive `task_runner: ThreadedTaskRunner` as a constructor parameter alongside `app_state`. Create one instance per top-level window and pass it down.
+- `TaskRunner` (the underlying thread) emits `result_ready`, `error`, and `progress` signals and auto-cleans up after itself.
+- Call `task_runner.cancel_task(task_id)` to abort a running task; call `cancel_all()` on shutdown.
+
 ## 8. EXTENSION SYSTEM (VECTOR STUDIO)
 
 - Hook pattern: pro features register handlers without modifying free code.
@@ -683,10 +742,40 @@ self.app_state.settings_service.signals.setting_changed.connect(self._on_setting
   - `release-and-publish.yml` → publishes to PyPI on tags.
   - `nuitka.yml` → experimental native compilation.
 
+### 10.3 Managing Dependencies (PDM)
+
+- Add a runtime dependency: `pdm add <package>`
+- Add a dev/test-only dependency: `pdm add -d <package>`
+- Heavy or optional dependencies (e.g. `sklearn`, `umap-learn`, `hdbscan`, `plotly`) **must** be added via `utils/lazy_imports.py` rather than a top-level import, so startup time is not affected and the app degrades gracefully when they are absent.
+- After editing `pyproject.toml` manually, run `pdm install` to sync the lock file.
+- Never `pip install` into the project's venv directly — always use `pdm add` so the lock file stays current.
+
 ## 11. RELEASE NOTES
 
 All release notes are added in `docs/RELEASE_REASON.md`, not in this file.  
 This file is cleared when the version is incremented and a new release is created.
+
+**Format:**
+
+```markdown
+## Release Notes (0.x.y) — YYYY-MM-DD
+
+### Section heading
+- Individual change
+- Individual change
+
+### Another section (omit if empty)
+- Individual change
+
+---
+```
+
+- The heading uses the *next* version number and today's date (update the date whenever new entries are added).
+- Group changes under short section headings (e.g. `### UI`, `### Providers`, `### Testing`, `### Bug Fixes`). Omit a section if it has no entries.
+- Each bullet is one user-visible or developer-visible change, written in plain language.
+- The file ends with a horizontal rule `---` on its own line.
+- When a release is cut, this file is cleared and a fresh heading for the next version is started.
+- **When to add an entry:** Any change substantial enough to matter to a user or developer should be recorded — new features, changed behavior, bug fixes, provider additions, UI changes, breaking changes, and significant internal improvements (e.g., new test infrastructure or CI changes). Skip trivial refactors, whitespace fixes, and internal rename-only changes that have no visible effect.
 
 ## 12. REFERENCES
 
