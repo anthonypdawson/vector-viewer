@@ -392,3 +392,46 @@ def test_lancedb_query_handles_exception():
 
     res = conn.query_collection("coll", query_embeddings=[[0.1, 0.2]])
     assert res is None
+
+
+# ---------------------------------------------------------------------------
+# disconnect / is_connected
+# ---------------------------------------------------------------------------
+
+
+def test_lancedb_disconnect_clears_state():
+    conn = LanceDBConnection(uri="/tmp/fake")
+    conn._connected = True
+    conn._client = MagicMock()
+    conn._db = MagicMock()
+
+    conn.disconnect()
+
+    assert conn._connected is False
+    assert conn._client is None
+    assert conn._db is None
+
+
+def test_lancedb_is_connected_false_before_connect():
+    conn = LanceDBConnection()
+    assert conn.is_connected is False
+
+
+def test_lancedb_is_connected_reflects_flag():
+    conn = LanceDBConnection()
+    conn._connected = True
+    assert conn.is_connected is True
+    conn._connected = False
+    assert conn.is_connected is False
+
+
+# ---------------------------------------------------------------------------
+# get_collection_info when not connected
+# ---------------------------------------------------------------------------
+
+
+def test_lancedb_get_collection_info_returns_none_when_not_connected():
+    conn = LanceDBConnection()
+    assert conn.is_connected is False
+    result = conn.get_collection_info("any_collection")
+    assert result is None

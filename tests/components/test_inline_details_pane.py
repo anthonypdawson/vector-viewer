@@ -388,3 +388,94 @@ def test_vector_dimension_display(qtbot):
     # Vector section title should show dimension
     section_title = pane.vector_section.toggle_button.text()
     assert "7-dim" in section_title
+
+
+# ---- Exception and early-return path tests ----
+
+
+class BadEmbedding:
+    """Embedding stub that raises on all numeric operations."""
+
+    def __len__(self):
+        raise ValueError("bad embedding len")
+
+    def tolist(self):
+        raise ValueError("bad embedding tolist")
+
+    def __iter__(self):
+        raise ValueError("bad embedding iter")
+
+
+def test_update_item_invalid_timestamp(qtbot):
+    """invalid timestamp triggers fallback text."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+
+    item = {
+        "id": "test-id",
+        "document": "Test doc",
+        "metadata": {"created_at": "bad-timestamp"},
+        "embedding": [0.1],
+    }
+    pane.update_item(item)
+    assert pane.timestamp_label.text() == "bad-timestamp"
+
+
+def test_update_item_bad_embedding_len(qtbot):
+    """exception when calculating embedding dimension raises is handled gracefully."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+
+    item = {
+        "id": "test-id",
+        "document": "Test doc",
+        "metadata": {},
+        "embedding": BadEmbedding(),
+    }
+    pane.update_item(item)
+    assert pane.dimension_label.text() == ""
+
+
+def test_update_item_bad_embedding_display(qtbot):
+    """exception when displaying vector."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+
+    item = {
+        "id": "test-id",
+        "document": "Test doc",
+        "metadata": {},
+        "embedding": BadEmbedding(),
+    }
+    pane.update_item(item)
+    assert pane.vector_text.toPlainText() == "(Unable to display vector)"
+
+
+def test_copy_vector_no_current_item(qtbot):
+    """early return in _copy_vector when no current item."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane._copy_vector()  # Should not raise
+
+
+def test_copy_vector_exception(qtbot):
+    """exception raised by embedding in _copy_vector is silenced without crashing."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane._current_item = {"id": "test", "embedding": BadEmbedding()}
+    pane._copy_vector()  # Should not raise
+
+
+def test_copy_vector_json_no_current_item(qtbot):
+    """early return in _copy_vector_json when no current item."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane._copy_vector_json()  # Should not raise
+
+
+def test_copy_vector_json_exception(qtbot):
+    """exception raised by embedding in _copy_vector_json is silenced without crashing."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane._current_item = {"id": "test", "embedding": BadEmbedding()}
+    pane._copy_vector_json()  # Should not raise

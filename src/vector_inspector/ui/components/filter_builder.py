@@ -212,7 +212,7 @@ class FilterBuilder(QWidget):
         header_layout.addWidget(QLabel("Combine rules with:"))
         self.logic_combo = QComboBox()
         self.logic_combo.addItems(["AND", "OR"])
-        self.logic_combo.currentTextChanged.connect(self.filter_changed.emit)
+        self.logic_combo.currentTextChanged.connect(lambda _: self.filter_changed.emit())
         header_layout.addWidget(self.logic_combo)
 
         header_layout.addStretch()
@@ -246,12 +246,8 @@ class FilterBuilder(QWidget):
         self.rules_layout.setContentsMargins(0, 5, 0, 5)
 
         # Placeholder label
-        self.placeholder_label = QLabel(
-            "No filters applied. Click '+ Add Filter Rule' to start."
-        )
-        self.placeholder_label.setStyleSheet(
-            "color: gray; font-style: italic; padding: 20px;"
-        )
+        self.placeholder_label = QLabel("No filters applied. Click '+ Add Filter Rule' to start.")
+        self.placeholder_label.setStyleSheet("color: gray; font-style: italic; padding: 20px;")
         self.placeholder_label.setAlignment(Qt.AlignCenter)
         self.rules_layout.addWidget(self.placeholder_label)
 
@@ -264,9 +260,7 @@ class FilterBuilder(QWidget):
         rule.remove_requested.connect(self._remove_rule)
         rule.apply_requested.connect(self.apply_filters.emit)
         rule.field_input.editTextChanged.connect(lambda: self.filter_changed.emit())
-        rule.operator_combo.currentTextChanged.connect(
-            lambda: self.filter_changed.emit()
-        )
+        rule.operator_combo.currentTextChanged.connect(lambda: self.filter_changed.emit())
         rule.value_input.textChanged.connect(lambda: self.filter_changed.emit())
 
         # Apply available fields if we have them

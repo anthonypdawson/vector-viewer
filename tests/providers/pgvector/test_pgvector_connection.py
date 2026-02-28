@@ -373,3 +373,56 @@ def test_pgvector_delete_items_handles_exception(mock_pgvector_conn):
 
     res = conn.delete_items("my_table", ids=["id1"])
     assert res is False
+
+
+# ---------------------------------------------------------------------------
+# disconnect / is_connected
+# ---------------------------------------------------------------------------
+
+
+def test_pgvector_disconnect_closes_client():
+    with patch("psycopg2.connect") as mock_connect:
+        mock_client = MagicMock()
+        mock_connect.return_value = mock_client
+        conn = PgVectorConnection()
+        conn.connect()
+        assert conn.is_connected is True
+
+        conn.disconnect()
+        mock_client.close.assert_called_once()
+        assert conn.is_connected is False
+        assert conn._client is None
+
+
+def test_pgvector_disconnect_when_not_connected_is_safe():
+    conn = PgVectorConnection()
+    conn.disconnect()  # should not raise
+    assert conn.is_connected is False
+
+
+def test_pgvector_is_connected_false_before_connect():
+    conn = PgVectorConnection()
+    assert conn.is_connected is False
+
+
+# ---------------------------------------------------------------------------
+# get_supported_filter_operators
+# ---------------------------------------------------------------------------
+
+
+def test_pgvector_get_supported_filter_operators_all_present():
+    conn = PgVectorConnection()
+    ops = conn.get_supported_filter_operators()
+    assert isinstance(ops, list)
+    assert len(ops) > 0
+    names = [o["name"] for o in ops]
+    for expected in ["=", "!=", ">", ">=", "<", "<="]:
+        assert expected in names
+
+
+def test_pgvector_get_supported_filter_operators_server_side_flags():
+    conn = PgVectorConnection()
+    ops = conn.get_supported_filter_operators()
+    # Every returned operator should have the server_side key
+    for op in ops:
+        assert "server_side" in op

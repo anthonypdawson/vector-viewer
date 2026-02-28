@@ -44,8 +44,9 @@ class _MinimalConnection(VectorDBConnection):
     def count_collection(self, name: str) -> int:
         return 0
 
-    def query_collection(self, collection_name, query_texts=None, query_embeddings=None,
-                         n_results=10, where=None, where_document=None):
+    def query_collection(
+        self, collection_name, query_texts=None, query_embeddings=None, n_results=10, where=None, where_document=None
+    ):
         return None
 
     def get_all_items(self, collection_name, limit=None, offset=None, where=None):

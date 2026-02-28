@@ -243,3 +243,113 @@ def test_get_embedding_function_for_collection_with_sample(monkeypatch):
     ef = conn._get_embedding_function_for_collection("c")
     assert ef is not None
     assert isinstance(ef, DimensionAwareEmbeddingFunction)
+
+
+# ---------------------------------------------------------------------------
+# disconnect / is_connected
+# ---------------------------------------------------------------------------
+
+
+def test_chroma_disconnect_clears_client_and_collection():
+    conn = ChromaDBConnection()
+    conn.connect()
+    assert conn.is_connected is True
+
+    conn._current_collection = object()  # sentinel
+    conn.disconnect()
+    assert conn.is_connected is False
+    assert conn._client is None
+    assert conn._current_collection is None
+
+
+def test_chroma_is_connected_false_before_connect():
+    conn = ChromaDBConnection()
+    assert conn.is_connected is False
+
+
+# ---------------------------------------------------------------------------
+# count_collection
+# ---------------------------------------------------------------------------
+
+
+def test_count_collection_returns_zero_without_connection():
+    conn = ChromaDBConnection()
+    assert conn.count_collection("any") == 0
+
+
+def test_count_collection_returns_col_count(tmp_path):
+    conn = ChromaDBConnection(path=str(tmp_path))
+    conn.connect()
+    conn._client.get_or_create_collection("col1")
+    # add a document so count is 1
+    col = conn._client.get_collection("col1")
+    col.add(ids=["id1"], documents=["hello"], embeddings=[[0.1, 0.2]])
+    assert conn.count_collection("col1") == 1
+    conn.disconnect()
+
+
+def test_count_collection_exception_returns_zero(monkeypatch):
+    conn = ChromaDBConnection()
+    conn.connect()
+    mock_col = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
+    mock_col.count.side_effect = RuntimeError("boom")
+    monkeypatch.setattr(conn, "get_collection", lambda name: mock_col)
+    assert conn.count_collection("any") == 0
+    conn.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# update_items
+# ---------------------------------------------------------------------------
+
+
+def test_update_items_returns_false_without_collection():
+    conn = ChromaDBConnection()
+    # no client, get_collection returns None
+    result = conn.update_items("col", ids=["id1"], documents=["new"])
+    assert result is False
+
+
+def test_update_items_success_with_precomputed_embeddings(tmp_path):
+    conn = ChromaDBConnection(path=str(tmp_path))
+    conn.connect()
+    conn._client.get_or_create_collection("col")
+    col = conn._client.get_collection("col")
+    col.add(ids=["id1"], documents=["original"], embeddings=[[0.1, 0.2]])
+
+    result = conn.update_items("col", ids=["id1"], documents=["updated"], embeddings=[[0.3, 0.4]])
+    assert result is True
+    conn.disconnect()
+
+
+def test_update_items_exception_returns_false(monkeypatch):
+    conn = ChromaDBConnection()
+    conn.connect()
+    mock_col = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
+    mock_col.update.side_effect = RuntimeError("update fail")
+    monkeypatch.setattr(conn, "get_collection", lambda name: mock_col)
+    result = conn.update_items("col", ids=["id1"], documents=["x"], embeddings=[[0.1]])
+    assert result is False
+    conn.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# get_supported_filter_operators
+# ---------------------------------------------------------------------------
+
+
+def test_get_supported_filter_operators_all_present():
+    conn = ChromaDBConnection()
+    ops = conn.get_supported_filter_operators()
+    names = [o["name"] for o in ops]
+    for expected in ["=", "!=", ">", ">=", "<", "<=", "in", "not in", "contains", "not contains"]:
+        assert expected in names
+
+
+def test_get_supported_filter_operators_server_side_flags():
+    conn = ChromaDBConnection()
+    ops = conn.get_supported_filter_operators()
+    server_only = {o["name"] for o in ops if o["server_side"]}
+    client_only = {o["name"] for o in ops if not o["server_side"]}
+    assert "=" in server_only
+    assert "contains" in client_only

@@ -222,3 +222,196 @@ def test_show_context_menu_no_block(monkeypatch, qtbot):
 
     pos = table.visualItemRect(table.item(0, 0)).center()
     show_context_menu(table, pos, ctx, lambda idx: None)
+
+
+# ---------------------------------------------------------------------------
+# populate_table — edge cases (uncovered branches)
+# ---------------------------------------------------------------------------
+
+
+def test_populate_table_no_current_data(qtbot):
+    """populate_table with no current_data clears table rows."""
+    from vector_inspector.ui.views.metadata.metadata_table import populate_table
+
+    table = QTableWidget()
+    table.setRowCount(5)
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = None
+
+    populate_table(table, ctx)
+
+    assert table.rowCount() == 0
+
+
+def test_populate_table_empty_ids(qtbot):
+    """populate_table with empty ids clears table rows."""
+    from vector_inspector.ui.views.metadata.metadata_table import populate_table
+
+    table = QTableWidget()
+    table.setRowCount(3)
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = {"ids": [], "documents": [], "metadatas": []}
+
+    populate_table(table, ctx)
+
+    assert table.rowCount() == 0
+
+
+def test_populate_table_restores_column_order(qtbot):
+    """populate_table called twice restores column order."""
+    from vector_inspector.ui.views.metadata.metadata_table import populate_table
+
+    table = QTableWidget()
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = {
+        "ids": ["a"],
+        "documents": ["doc"],
+        "metadatas": [{"x": 1, "y": 2}],
+    }
+
+    # First populate — sets up columns
+    populate_table(table, ctx)
+    assert table.columnCount() >= 2
+
+    # Second populate — exercises column order restoration code
+    ctx.current_data = {
+        "ids": ["b"],
+        "documents": ["doc2"],
+        "metadatas": [{"x": 10, "y": 20}],
+    }
+    populate_table(table, ctx)
+
+    assert table.rowCount() == 1
+    assert table.item(0, 0).text() == "b"
+
+
+# ---------------------------------------------------------------------------
+# update_pagination_controls — no current_data early return
+# ---------------------------------------------------------------------------
+
+
+def test_update_pagination_no_data(qtbot):
+    """update_pagination_controls returns early when ctx.current_data is None."""
+    from PySide6.QtWidgets import QLabel, QPushButton
+
+    from vector_inspector.ui.views.metadata.metadata_table import update_pagination_controls
+
+    label = QLabel("old")
+    prev = QPushButton()
+    nxt = QPushButton()
+    qtbot.addWidget(label)
+    qtbot.addWidget(prev)
+    qtbot.addWidget(nxt)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = None
+
+    update_pagination_controls(ctx, label, prev, nxt)
+
+    # Label text should be unchanged because we returned early
+    assert label.text() == "old"
+
+
+# ---------------------------------------------------------------------------
+# copy_vectors_to_json — no current_data
+# ---------------------------------------------------------------------------
+
+
+@patch("vector_inspector.ui.views.metadata.metadata_table.QMessageBox")
+def test_copy_vectors_no_current_data(mock_qmsg, mock_table):
+    """copy_vectors_to_json shows warning when ctx.current_data is None."""
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = None
+
+    copy_vectors_to_json(mock_table, ctx, [0])
+
+    mock_qmsg.warning.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# show_context_menu — early return branches
+# ---------------------------------------------------------------------------
+
+
+def test_show_context_menu_no_item_at_position(monkeypatch, qtbot):
+    """show_context_menu returns early when no item at position."""
+    table = QTableWidget()
+    table.setColumnCount(1)
+    table.setRowCount(1)
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = {"ids": ["a"], "documents": ["d"], "metadatas": [{}]}
+
+    from PySide6.QtCore import QPoint
+
+    # Position outside any item
+    pos = QPoint(9999, 9999)
+    # Should not raise
+    show_context_menu(table, pos, ctx, lambda idx: None)
+
+
+def test_show_context_menu_no_current_data(monkeypatch, qtbot):
+    """show_context_menu returns early when ctx.current_data is None."""
+    table = QTableWidget()
+    table.setColumnCount(1)
+    table.setRowCount(1)
+    table.setItem(0, 0, QTableWidgetItem("a"))
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = None
+
+    pos = table.visualItemRect(table.item(0, 0)).center()
+    # Should not raise or show menu
+    show_context_menu(table, pos, ctx, lambda idx: None)
+
+
+# ---------------------------------------------------------------------------
+# update_row_in_place — edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_update_row_no_current_data(qtbot):
+    """update_row_in_place returns False when ctx.current_data is None."""
+    table = QTableWidget()
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = None
+
+    result = update_row_in_place(table, ctx, {"id": "x", "document": "d", "metadata": {}})
+    assert result is False
+
+
+def test_update_row_with_metadata_columns(qtbot):
+    """update_row_in_place updates metadata columns and emits dataChanged."""
+    from vector_inspector.ui.views.metadata.metadata_table import populate_table
+
+    table = QTableWidget()
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = {
+        "ids": ["id1"],
+        "documents": ["original doc"],
+        "metadatas": [{"name": "Alice", "age": "30"}],
+    }
+
+    populate_table(table, ctx)
+
+    result = update_row_in_place(
+        table,
+        ctx,
+        {"id": "id1", "document": "new doc", "metadata": {"name": "Bob", "age": "25"}},
+    )
+
+    assert result is True
+    assert ctx.current_data["metadatas"][0]["name"] == "Bob"
+    assert ctx.current_data["metadatas"][0]["age"] == "25"
