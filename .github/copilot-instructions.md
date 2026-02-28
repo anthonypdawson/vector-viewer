@@ -1,17 +1,16 @@
-# Copilot Instructions for Vector Inspector & Vector Studio
+# Copilot Instructions for Vector Inspector
 
-Authoritative instructions live in the private pro repo:
-`vector-studio/copilot-instructions.md`.
+This file defines the **core rules** Copilot must follow at all times when working in Vector Inspector.
+Detailed conventions are in scoped instruction files that load automatically based on context:
 
+- `.github/instructions/coding.instructions.md` — Ruff config, error handling, UI patterns, AppState,
+  ThreadedTaskRunner, settings, cache, extension hooks, common implementation patterns (`src/**`)
+- `.github/instructions/testing.instructions.md` — pytest/Qt rules, fixtures, coverage target,
+  directory structure, conftest conventions (`tests/**`)
+- `.github/instructions/workflows.instructions.md` — install/run, PDM dependency management,
+  build/release, release notes format (`**`)
 
-
-This file defines the rules Copilot must follow when assisting with
-Vector Inspector (VI) and Vector Studio (VS). It establishes memory
-policies, architectural boundaries, coding conventions, testing
-patterns, and implementation rules. Copilot must treat this file as
-the authoritative guide for all reasoning and code generation.
-
-## 1. COPILOT’S ROLE & SCOPE
+## 1. COPILOT'S ROLE & SCOPE
 
 Copilot assists with:
 - Vector Inspector (free-tier PySide6 desktop app)
@@ -21,7 +20,7 @@ Copilot must:
 - Follow all rules in this file
 - Respect VI/VS architectural boundaries
 - Prefer existing patterns over inventing new ones
-- Keep UI consistent with VI’s established design language
+- Keep UI consistent with VI's established design language
 - Avoid speculative features or redesigns
 
 Copilot must NOT:
@@ -37,36 +36,36 @@ Vector Studio uses an MCP (Model Context Protocol) memory server for
 persistent project knowledge. The Markdown file
 `vector-studio/docs/copilot-working-notes.md` is a human-readable mirror.
 
-- Transient learnings → stored in `vector-studio/docs/copilot-working-notes.md`
-- Persistent memory → stored in the MCP server
-- JSON mirrors → allowed only when tooling requires them
+- Transient learnings -> stored in `vector-studio/docs/copilot-working-notes.md`
+- Persistent memory -> stored in the MCP server
+- JSON mirrors -> allowed only when tooling requires them
 
-“When you are asked to persist memory, or you determine something is worth
+"When you are asked to persist memory, or you determine something is worth
 persisting, you must record it in the MCP server, and then update the
-Markdown file to reflect the current state.”
+Markdown file to reflect the current state."
 
 ### 2.1 REQUIRED PERSISTENCE CHECKLIST (ALWAYS PRESENT)
 
 Whenever a decision is made or new project information should be remembered:
 
-1. Record to MCP  
+1. Record to MCP
    Structured observation with rationale, tags, ISO timestamp.
 
-2. Mirror machine-readable (if required)  
+2. Mirror machine-readable (if required)
    Update `vector-studio/docs/copilot-memory.json` (key, value, ts).
 
-3. Regenerate human-readable  
+3. Regenerate human-readable
    Update `vector-studio/docs/copilot-working-notes.md`.
 
-4. Tag & Partition  
-   Tags: `strategy`, `ux`, `policy`  
-   Partition: `Vector Inspector` or `Vector Studio`  
+4. Tag & Partition
+   Tags: `strategy`, `ux`, `policy`
+   Partition: `Vector Inspector` or `Vector Studio`
    (never `vector-viewer`)
 
-5. Commit message  
+5. Commit message
    `copilot-memory: add <short-key> — <summary>`
 
-6. Confirm destructive changes  
+6. Confirm destructive changes
    Ask before irreversible updates.
 
 ## 3. VI / VS ARCHITECTURAL BOUNDARIES & UI OWNERSHIP
@@ -77,11 +76,11 @@ This is one of the most important sections for Copilot.
 
 Vector Inspector (VI) owns ALL UI elements:
 - All QActions, QMenus, QMenuItems, QToolButtons, QDockWidgets, QWidget controls
-- All right‑click menu entries
+- All right-click menu entries
 - All toolbar and panel controls
-- All disabled “Premium / Requires Vector Studio” stubs
+- All disabled "Premium / Requires Vector Studio" stubs
 
-Vector Studio (VS) MUST NOT create or duplicate UI controls.  
+Vector Studio (VS) MUST NOT create or duplicate UI controls.
 VS only injects behavior into existing VI controls.
 
 ### 3.2 DISABLED STUBS IN INSPECTOR
@@ -89,8 +88,8 @@ VS only injects behavior into existing VI controls.
 When a feature is Premium:
 - VI creates the UI control
 - VI disables it
-- VI attaches tooltip: “Requires Vector Studio”
-- VI connects the signal to a no‑op stub
+- VI attaches tooltip: "Requires Vector Studio"
+- VI connects the signal to a no-op stub
 
 Example pattern:
 
@@ -98,7 +97,7 @@ Example pattern:
     actionViewSimilar.setToolTip("Requires Vector Studio");
     connect(actionViewSimilar, QAction.triggered, this, MainWindow.premiumStub);
 
-`premiumStub()` must do nothing except optionally show a simple “Requires Vector Studio” message.
+`premiumStub()` must do nothing except optionally show a simple "Requires Vector Studio" message.
 
 ### 3.3 STUDIO BEHAVIOR INJECTION
 
@@ -115,19 +114,22 @@ VS MUST NOT:
 
 ### 3.4 NO CROSS-LAYER LOGIC LEAKAGE
 
-- VI contains no Premium logic.  
+- VI contains no Premium logic.
 - VS contains no UI definitions.
 
-All advanced workflows, algorithms, and implementations live in VS.  
+All advanced workflows, algorithms, and implementations live in VS.
 All UI surfaces live in VI.
 
 ### 3.5 ABSOLUTE RULE
 
-- Never duplicate a control.  
-- Never move UI creation into VS.  
-- Never place implementation logic in VI.  
+- Never duplicate a control.
+- Never move UI creation into VS.
+- Never place implementation logic in VI.
 
 ## 4. CODING SAFETY RULES & CONVENTIONS
+
+> Detailed conventions (Ruff, error handling, UI patterns, AppState, etc.) are in
+> `.github/instructions/coding.instructions.md` which loads automatically for `src/**` files.
 
 ### 4.1 IMPORT STYLE
 
@@ -184,190 +186,13 @@ See `docs/EMBEDDING_TRUTHINESS.md` for detailed patterns and rationale.
   - Rationale: built-in generics are clearer, concise, and avoid deprecation warnings from `typing`.
   - Exception: continue to use `typing` constructs (e.g., `TypedDict`, `Protocol`, or `Literal`) when those specific types are required or when supporting older Python versions.
 
-### 4.6 RUFF LINTING RULES
+## 5. TESTING RULES
 
-This project uses Ruff for linting and formatting. Keep these settings
-synced with `pyproject.toml` so contributors and automation follow the
-same rules.
-
-- **Config (source: `pyproject.toml`)**
-
-```toml
-[tool.ruff]
-line-length = 120
-target-version = "py312"
-extend-exclude = ["build", "dist", ".venv"]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "auto"
-skip-magic-trailing-comma = false
-
-[tool.ruff.lint]
-select = [
-    "E", "F", "W", "I", "UP", "B", "A", "C4", "DTZ",
-    "T20", "RET", "SIM", "ARG", "RUF",
-]
-ignore = ["E501", "I001", "UP045", "SIM105"]
-
-[tool.ruff.lint.isort]
-combine-as-imports = true
-known-first-party = ["vector_inspector"]
-```
-
-- **Quick rules summary**
-  - **Line length:** 120 characters.
-  - **Target Python:** 3.12 (`py312`) — runtime still supports >=3.11.
-  - **Excludes:** `build`, `dist`, `.venv`.
-  - **Formatting:** prefer double quotes, use spaces for indentation, platform line endings.
-  - **Ignored rules:** `E501` (line length enforced by config), `I001`, `UP045`, `SIM105`.
-  - **isort:** combine `as` imports and treat `vector_inspector` as first-party.
-
-**Selected rule groups (human-readable)**
-
-- `E`: pycodestyle (PEP 8) errors — style errors such as indentation, spacing, and other PEP 8 violations.
-- `F`: pyflakes checks — static issues like undefined names and unused imports.
-- `W`: pycodestyle warnings — non-fatal style warnings.
-- `I`: `isort` import-order and grouping checks.
-- `UP`: pyupgrade rules — automatic Python syntax modernizations (e.g., prefer f-strings, modern dict/set syntax).
-- `B`: Bugbear plugin — heuristics catching likely bugs and suboptimal patterns.
-- `A`: annotation checks (flake8-annotations style) — enforces presence/consistency of type annotations.
-- `C4`: complexity-related checks — code complexity metrics and related concerns.
-- `DTZ`: documentation/typing helpers (plugin group) — docstring/typing-related lint checks (project uses the DTZ group where applicable).
-- `T20`: typing/typing-safety checks (plugin group) — additional type-related checks gathered by Ruff plugins.
-- `RET`: return-value / early-return related checks — rules about return usage and control-flow returns.
-- `SIM`: simplification suggestions — replace complex constructs with simpler equivalents (e.g., simplify boolean expressions, comprehensions).
-- `ARG`: argument-related checks — issues with function arguments (shadowing, unused args, incorrect defaults).
-- `RUF`: Ruff-specific rules — core Ruff rules that don't map to upstream tools.
-
-**Ignored rule examples (why they're suppressed)**
-
-- `E501`: line-length — intentionally ignored because `line-length` is enforced centrally via the `line-length` setting.
-- `I001`: isort startup/internal informational message — suppressed to avoid noisy diagnostics.
-- `UP045`: a specific pyupgrade rule chosen to be ignored in this codebase.
-- `SIM105`: a specific simplification rule that the team has chosen not to enforce.
-
-If you want the full, line-by-line meaning for any of these codes (for example `SIM105` or `UP045`), ask Copilot which ones and it will provide the exact rule description and rationale.
-
-If you update these settings in `pyproject.toml`, please mirror the change here.
-
-### 4.7 Error Handling Convention
-
-Follow these layer-specific rules so errors surface cleanly without leaking implementation details into the UI or swallowing failures silently.
-
-- **Service layer** — raise exceptions; do not catch broadly. Let the caller decide how to present the error.
-- **QThread workers** — catch exceptions in `run()` and emit the `error` signal with a plain string message. Never modify the UI from a thread.
-- **UI layer** — connect the worker's `error` signal to a handler that shows `QMessageBox.critical()` or updates a status label. Handle only specific, expected exceptions; do not catch exceptions broadly (avoid `except Exception:`). Log events with the project's logging utility (include `exc_info=True` for unexpected errors) and send telemetry only after redacting PII. The user-facing message should be clear and actionable without technical jargon or stack traces. For unexpected exceptions, log full details with a correlation id and show a generic error message to the user.
-- **Extension hooks** — wrap handler calls in `try/except` and log failures; do not let a plugin crash the main app.
-- **Top-level unhandled exceptions** — covered by `vector_inspector.utils.exception_handler`; no additional handling needed.
-
-```python
-# Typical QThread → view error flow
-thread.error.connect(self._on_error)
-
-def _on_error(self, message: str) -> None:
-    self.loading_dialog.hide()
-    QMessageBox.critical(self, "Error", message)
-```
-
-## 5. TESTING RULES (PYTEST + QT)
-
-### 5.1 Running Tests
-
-  pdm run pytest --cov=vector_inspector --cov-report=html
-  pdm run pytest tests/test_metadata_navigation.py
-  pdm run pytest -n auto
-  QT_QPA_PLATFORM=offscreen pdm run pytest
+> Full testing rules are in `.github/instructions/testing.instructions.md` which loads
+> automatically for `tests/**` files.
 
 Always run tests using `pdm run pytest`. Do not run tests directly with
-`python -m pytest` or the `pytest` CLI without `pdm` — the project relies on
-the `pdm` environment and dependency isolation to produce consistent test
-results across developer machines and CI.
-
-- Tests use `pytest` with `pytest-qt` for Qt widget testing.
-- `tests/conftest.py` provides `fake_provider` fixture — a mock vector DB for isolated testing.
-- To get the report of which files need coverage you can use the command line
-    `pdm run pytest -q --cov=vector_inspector --cov-report term-missing` 
-
-**Coverage target:** Aim for 80% on new code. This is a guideline, not an absolute requirement — if a code path is only reachable through excessive mocking or is genuinely impractical to test (e.g., OS-specific crash handlers), skip it and leave a comment explaining why. Do not over-engineer test fixtures or add fragile tests just to hit the number.
-
-### 5.2 Organization
-
-- Tests should be organized by feature, not by type.
-  - Good: `test_plot_selection.py` contains all plot selection tests (with and without Qt).
-  - Bad: separate `test_plot_selection_qt.py` and `test_plot_selection_unit.py`.
-
-### 5.3 Qt & Providers
-
-- Always use `qtbot` for Qt signal/slot testing, even for simple signal emission checks.
-- Use `qtbot` for any test involving Qt widgets, signals, or user interactions.
-- Testing with fake providers:
-
-    def test_something(fake_provider):
-        # fake_provider comes pre-populated with test_collection
-        result = fake_provider.get_all_items("test_collection")
-        assert result["ids"] == ["id1", "id2", "id3"]
-
-- Use `empty_fake_provider` fixture when testing "no data" scenarios.
-- Mock `ConnectionInstance` when testing UI components.
-- CI uses `QT_QPA_PLATFORM=offscreen` for headless Qt testing.
-
-**Shared fixtures in `tests/conftest.py`** — always prefer these over duplicating setup in individual test files:
-
-| Fixture | Type | Description |
-|---|---|---|
-| `fake_provider` | `FakeProvider` | Pre-populated with `test_collection` (ids `id1`/`id2`/`id3`, embeddings `[1,0]`/`[0,1]`/`[0.5,0.5]`). Use for most provider-dependent tests. |
-| `empty_fake_provider` | `FakeProvider` | Empty provider with no collections. Use for "no data" and first-create scenarios. |
-| `fake_provider_with_name` | `tuple[FakeProvider, str]` | Returns `(provider, "test_collection")`. Use when the collection name is needed as a variable. |
-| `app_state_with_fake_provider` | `AppState` | `AppState` with `fake_provider` already set as `provider`. Use for full-stack view tests. |
-| `task_runner` | `ThreadedTaskRunner` | Fresh `ThreadedTaskRunner` instance. Pass alongside `app_state` when constructing views. |
-| `fake_settings` | `FakeSettings` | Minimal settings stub; suppresses the splash dialog and exposes `get`/`set_use_accent_enabled`. Use for settings-dependent component tests. |
-
-**Fixture ownership:** If you create a new fixture that is broadly useful (more than one test file would benefit from it), or you discover a fixture defined in a test file that logically belongs in `conftest.py`, move it there. Keep `conftest.py` as the single source of truth for shared test infrastructure.
-
-### 5.4 Unit test directory structure
-
-- Organize tests by *feature area* (views, components, providers, services, metadata), not by test type.
-- Recommended top-level layout:
-  - `tests/components/` — small widget and component tests (QWidgets, dialogs).
-  - `tests/views/` — full view integration tests that exercise multiple components.
-  - `tests/providers/` — provider implementations and DB adapter tests (Chroma, Pinecone, Qdrant, etc.).
-  - `tests/services/` — business-logic/service-level unit tests (visualization, backup, cache).
-  - `tests/metadata/` — metadata-specific helpers and features.
-  - `tests/fakes/` or `tests/fixtures/` — shared fake providers, common test data, utility fixtures.
-
-- File naming and scope:
-  - Name files by feature: `test_profile_manager_panel.py`, `test_connection_view.py`.
-  - Keep tests small and focused; prefer multiple small test files over one large file per feature.
-
-- Qt testing tips:
-  - Use `qtbot` for any test interacting with Qt widgets or signals.
-  - Stub blocking native dialogs (`QMessageBox`, `QFileDialog`, `QInputDialog`, `QProgressDialog`) in `tests/conftest.py` when possible.
-  - Replace or run QThread-based workers synchronously in tests to avoid race conditions.
-
-- Provider tests:
-  - Inject fake provider clients via fixtures or `sys.modules` to avoid heavy third-party SDK imports.
-  - Mock external SDK symbols (e.g., `pinecone.Pinecone`) rather than relying on module-level attributes to make tests robust to import order.
-
-- Running tests:
-  - Always run via `pdm run pytest` to ensure the correct environment.
-  - Use `QT_QPA_PLATFORM=offscreen` in CI for headless runs.
-
-### 5.5 Required tests for new functionality
-
-- Any new functionality, public API, UI surface, or code path added to the project MUST include unit tests that exercise the behavior.
-- Tests for UI-related changes must use `qtbot` where appropriate (see section 5.3).
-- Place new tests under the appropriate `tests/` feature directory following the existing conventions (components, views, services, providers, etc.).
-- Tests should be small, focused, and deterministic; prefer fixtures (e.g., `fake_provider`) and mocks to avoid external dependencies.
-- When adding behavior that affects multiple layers (UI + service), include both a unit test for the service logic and a lightweight widget test for the UI glue where practical.
-- Add tests that cover edge cases and error paths for any new code paths to prevent regressions.
-- If a change is exploratory or a spike, include at least one regression test capturing the expected outcome before landing the change.
-- Always reuse or extend existing fixtures and test utilities where possible to maintain consistency and reduce boilerplate in tests.
-- Always use the same test files and organization patterns as existing tests for the relevant feature area to keep the test suite coherent and navigable.
-- **Do not leave source-file line numbers in test comments, docstrings, or section headers** (e.g. `# line 123`, `"""Lines 45-67: ..."""`, `(lines 100-110)`). They are acceptable as a temporary aid while actively writing coverage tests, but must be removed before the work is considered done. Line numbers change whenever the source is modified, making stale references misleading and noisy. Describe *what* the test exercises, not *where* in the file it lives.
-
-
+`python -m pytest` or the `pytest` CLI without `pdm`.
 
 ## 6. PROJECT OVERVIEW & ARCHITECTURE
 
@@ -385,8 +210,8 @@ results across developer machines and CI.
 
 UI Layer (`src/vector_inspector/ui/`):
 - Qt widgets and views.
-- `views/` → main screens (e.g., `metadata_view.py`, `visualization_view.py`).
-- `components/` → reusable dialogs and widgets (e.g., `item_details_dialog.py`,
+- `views/` -> main screens (e.g., `metadata_view.py`, `visualization_view.py`).
+- `components/` -> reusable dialogs and widgets (e.g., `item_details_dialog.py`,
   `loading_dialog.py`).
 - Complex views use submodules (e.g., `ui/views/metadata/` for table, threads, I/O, filters).
 
@@ -397,9 +222,9 @@ Service Layer (`src/vector_inspector/services/`):
 
 Core Layer (`src/vector_inspector/core/`):
 - Provider abstractions and connection management.
-- `connections/` → each provider implements `VectorDBConnection`.
-- `connection_manager.py` → `ConnectionInstance` proxy via `__getattr__`.
-- `cache_manager.py` → caches data by (database, collection) key.
+- `connections/` -> each provider implements `VectorDBConnection`.
+- `connection_manager.py` -> `ConnectionInstance` proxy via `__getattr__`.
+- `cache_manager.py` -> caches data by (database, collection) key.
 
 ### 6.3 Data Flow Pattern
 
@@ -411,379 +236,30 @@ Core Layer (`src/vector_inspector/core/`):
 
 ## 7. PROJECT CONVENTIONS
 
+> Detailed conventions (cache, AppState, signals, settings, ThreadedTaskRunner, etc.) are in
+> `.github/instructions/coding.instructions.md` which loads automatically for `src/**` files.
+
 ### 7.1 Provider Abstraction
 
 - Never call provider SDKs directly in UI or services — always use `ConnectionInstance`.
 - Access the connection via `app_state.provider` in UI components.
 - All providers implement `VectorDBConnection` (see `core/connections/base_connection.py`).
 - `ConnectionInstance.__getattr__` forwards unknown methods to the underlying `database`.
-- Example: `app_state.provider.get_all_items()` → `ChromaDBConnection.get_all_items()`.
+- Example: `app_state.provider.get_all_items()` -> `ChromaDBConnection.get_all_items()`.
 - Profile names are injected onto connections: `self.database.profile_name = name`.
 
-### 7.2 UI Design Patterns
-
-- Keep views thin: business logic belongs in services, not Qt widgets.
-- Double-click = view (read-only): table double-clicks open read-only details dialog.
-- Right-click → edit: editing is explicit via context menu, not double-click.
-- Inline details pane (metadata & search views):
-  - Collapsible bottom pane.
-  - Updates on row selection (not just double-click).
-  - Shows header bar, document preview, collapsible metadata/vector sections.
-  - Remembers collapsed/expanded state and splitter height via settings.
-  - “Open full details” button opens the modal dialog.
-  - See `ui/components/inline_details_pane.py` for implementation.
-- Background loading: use QThread subclasses (see `metadata_threads.py`) for long operations.
-- Context menus: use extension hooks for pro features — see `extensions/__init__.py`.
-
-### 7.3 Cache Management
-
-- `CacheManager` is a singleton service (see section 7.4) that stores per-(database, collection) state:
-  data, scroll position, filters, search query.
-- Access via `app_state.cache_manager` (preferred) or `CacheManager()` (deprecated).
-- Cache keys: `(database_name, collection_name)` tuples.
-- Invalidation: call `app_state.cache_manager.invalidate(db, coll)` after mutations.
-- Always check `app_state.cache_manager.get(db, coll)` before loading from DB.
-- See `metadata_view.py` `set_collection()` for cache hit/miss pattern.
-
-**Example:**
-
-```python
-# Preferred
-cached_entry = self.app_state.cache_manager.get(database, collection)
-if cached_entry:
-    # Use cached data
-    self.populate_table(cached_entry.data)
-else:
-    # Load from database
-    data = self.app_state.provider.get_all_items(collection)
-    self.app_state.cache_manager.set(database, collection, CacheEntry(data=data))
-```
-
-### 7.4 AppState Pattern (Centralized State Management)
-
-Vector Inspector uses `AppState` as a centralized state container for application-wide services and state.
-
-**Core Services (Singleton Pattern)**
-
-Three core services use singleton pattern to prevent state inconsistencies:
-
-1. `SettingsService` - Application settings persistence
-2. `CacheManager` - Per-(database, collection) caching
-3. `EmbeddingModelRegistry` - Known embedding models registry
-
-Each service implements singleton via `__new__`:
-
-```python
-class SettingsService:
-    _instance: Optional['SettingsService'] = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-    
-    def __init__(self):
-        if '_initialized' in self.__dict__:
-            return
-        self._initialized = True
-        # ... initialization code
-```
-
-**Why Singleton?**
-
-The singleton pattern ensures that whether code uses:
-- `app_state.settings_service` (preferred)
-- `SettingsService()` (direct instantiation)
-- `get_settings_service()` (deprecated helper)
-
-All three access the **same instance**, preventing state fragmentation.
-
-**AppState Usage**
-
-All UI views and components should receive `app_state` as a required parameter:
-
-```python
-class MetadataView(QWidget):
-    def __init__(self, app_state: AppState, task_runner: ThreadedTaskRunner):
-        super().__init__()
-        self.app_state = app_state
-        self.task_runner = task_runner
-```
-
-**DO NOT** use `Optional[AppState]` with fallback logic - this is legacy code that should be removed.
-
-**Accessing Services**
-
-Prefer `app_state` properties over direct instantiation:
-
-```python
-# PREFERRED
-settings = self.app_state.settings_service
-cache = self.app_state.cache_manager
-registry = self.app_state.model_registry
-provider = self.app_state.provider
-
-# DEPRECATED (but still works due to singleton)
-settings = SettingsService()
-cache = get_cache_manager()
-```
-
-**Signal-Based Reactivity**
-
-AppState uses Qt signals for change propagation:
-
-```python
-# AppState signals
-app_state.connection_changed.connect(self._on_connection_changed)
-app_state.collection_changed.connect(self._on_collection_changed)
-
-# SettingsService signals
-app_state.settings_service.signals.setting_changed.connect(self._on_setting_changed)
-```
-
-**Feature Flags**
-
-Feature flags are properties on AppState:
-
-```python
-if self.app_state.advanced_features_enabled:
-    # Enable advanced clustering options
-    self.hdbscan_option.setEnabled(True)
-```
-
-**Backward Compatibility**
-
-Deprecated helper functions exist for utilities and standalone dialogs:
-- `get_settings_service()` → returns `SettingsService()` singleton
-- `get_cache_manager()` → returns `CacheManager()` singleton
-- `get_model_registry()` → returns `EmbeddingModelRegistry()` singleton
-
-These are maintained for minimal disruption but new code should use `app_state.*`.
-
-**Testing**
-
-Tests can reset singletons for isolation:
-
-```python
-def test_something():
-    # Reset singleton
-    SettingsService._instance = None
-    SettingsService._initialized = False
-    
-    # Create fresh instance
-    service = SettingsService()
-```
-
-**Migration Note**
-
-The codebase has been migrated from optional AppState parameters to required parameters.
-All views now require `app_state: AppState` with no `Optional` type or legacy fallback code.
-
-### 7.5 Signal/Slot Patterns (Qt)
-
-- Connect signals to private methods:
-  `button.clicked.connect(self._on_click)`.
-- Use lambda for parameterized slots:
-  `action.triggered.connect(lambda: self._export("json"))`.
-- Thread signals:
-  `thread.finished.connect(self._on_complete)` and `thread.error.connect(self._on_error)`.
-- Debouncing: use `QTimer.singleShot()` for delayed actions (e.g., filter changes).
-
-### 7.6 Settings & Paths
-
-- `SettingsService` is a singleton service (see section 7.4) for application settings persistence.
-- Access via `app_state.settings_service` (preferred) or `SettingsService()` (deprecated).
-- User settings stored in: `~/.vector-inspector/settings.json`.
-- Relative paths: resolved from project root (where `pyproject.toml` is).
-- Example: `./data/chroma_db` → absolute path computed from root.
-- Connection configs: saved to settings on disconnect, auto-restored on startup.
-
-**Example:**
-
-```python
-# Preferred
-last_connection = self.app_state.settings_service.get_last_connection()
-self.app_state.settings_service.save_last_connection(config)
-
-# Settings signals
-self.app_state.settings_service.signals.setting_changed.connect(self._on_setting_changed)
-```
-
-### 7.7 Logging (Project-Level)
-
-- Always use `vector_inspector.utils.logging`.
-- Never use `print()` or stdlib `logging` directly.
-- Ensures consistent formatting and easier log redirection.
-
-### 7.8 ThreadedTaskRunner
-
-`ThreadedTaskRunner` (`vector_inspector.services.task_runner`) is the standard way to run background work across the app. It is a `QObject` (not a `QThread`) that manages a pool of `TaskRunner` threads internally.
-
-**When to use it vs raw QThread subclasses:**
-- Use `ThreadedTaskRunner.run_task()` for one-off or simple background functions (fetching data, calling an API, running a computation).
-- Use a dedicated `QThread` subclass (e.g. `DataLoadThread`, `SearchThread`) only when the background task requires complex state, incremental progress emission, or custom cancellation logic that doesn't fit the generic callback model.
-
-**Usage:**
-
-```python
-self.task_runner.run_task(
-    my_function,          # plain callable — runs in background thread
-    arg1, arg2,           # positional args forwarded to my_function
-    task_id="my-task",    # optional; cancels any prior task with the same id
-    on_finished=self._on_done,   # called with the return value on success
-    on_error=self._on_error,     # called with error string on exception
-    on_progress=self._on_prog,   # called with (message, percent) if task reports progress
-)
-```
-
-- All views receive `task_runner: ThreadedTaskRunner` as a constructor parameter alongside `app_state`. Create one instance per top-level window and pass it down.
-- `TaskRunner` (the underlying thread) emits `result_ready`, `error`, and `progress` signals and auto-cleans up after itself.
-- Call `task_runner.cancel_task(task_id)` to abort a running task; call `cancel_all()` on shutdown.
-
-## 8. EXTENSION SYSTEM (VECTOR STUDIO)
-
-- Hook pattern: pro features register handlers without modifying free code.
-- `table_context_menu_hook.register(handler)` → adds custom menu items to table context menus.
-- `settings_panel_hook.register(handler)` → adds custom sections to Settings dialog.
-- Example: Vector Studio adds “Find Similar” via `table_context_menu_hook`.
-- Handlers are exception-safe: failures are logged but do not crash the app.
-
-## 9. COMMON IMPLEMENTATION PATTERNS
-
-### 9.1 Adding a New Vector DB Provider
-
-1. Create `src/vector_inspector/core/connections/yourprovider_connection.py`.
-2. Subclass `VectorDBConnection` and implement abstract methods.
-3. Register in `core/connections/provider_factory.py`.
-4. Add connection UI in `ui/components/connection_dialog.py`.
-5. Follow examples like `lancedb_connection.py` or `pgvector_connection.py`.
-
-### 9.2 Adding a Clustering Algorithm
-
-1. Extend `core/clustering.py` `run_clustering()` function.
-2. Add lazy import in `utils/lazy_imports.py` if new dependency.
-3. Update `VisualizationView` dropdown options.
-4. Follow HDBSCAN integration as a reference.
-
-### 9.3 Modifying Table Behavior
-
-- Table population: edit `ui/views/metadata/metadata_table.py` `populate_table()`.
-- Context menu: add items in `show_context_menu()` or use extension hooks.
-- Double-click: handled by view’s `_on_row_double_clicked()` method.
-- In-place updates: use `update_row_in_place()` to refresh single rows without full reload.
-
-### 9.4 Background Data Loading (QThread Pattern)
-
-1. Create QThread subclass in `metadata_threads.py` (or similar).
-2. Emit `finished` signal with data, `error` signal with error message.
-3. Connect signals in view:
-
-       thread.finished.connect(self._on_data_loaded)
-       thread.error.connect(self._on_error)
-
-4. Show `LoadingDialog` while thread runs:
-
-       self.loading_dialog.show_loading("Message")
-
-5. Hide the loading dialog in both success and error handlers.
-6. Threads must not modify UI directly; views handle UI updates.
-7. Parent threads to the view and clean them up after completion.
-8. Never reuse thread instances.
-9. Example: see `DataLoadThread` in `metadata_threads.py`.
-
-### 9.5 Adding Inline Details to a View
-
-1. Import `InlineDetailsPane` from `ui/components/inline_details_pane.py`.
-2. Create pane with mode:
-
-       self.details_pane = InlineDetailsPane(view_mode="data_browser")
-       # or "search"
-
-3. Add to splitter as bottom section:
-
-       splitter.addWidget(self.details_pane)
-
-4. Connect row selection:
-
-       table.itemSelectionChanged.connect(self._on_selection_changed)
-
-5. Update pane in selection handler:
-
-       self.details_pane.update_item(item_data)
-
-6. Connect full details signal:
-
-       self.details_pane.open_full_details.connect(self._open_full_details_from_pane)
-
-7. Save splitter sizes on move:
-
-       splitter.splitterMoved.connect(lambda: self._save_splitter_sizes(splitter))
-
-8. Save pane state on close: implement `closeEvent` that calls `self.details_pane.save_state()`.
-9. See `metadata_view.py` or `search_view.py` for full examples.
-
-## 10. DEVELOPER WORKFLOWS
-
-### 10.1 Install & Run
-
-    pip install pdm
-    pdm install -d
-    pdm run python -m vector_inspector
-
-    ./scripts/run.sh      # Linux/macOS
-    ./scripts/run.bat     # Windows
-
-### 10.2 Build & Release
-
-- PyPI upload: `./pypi-upload.sh` (requires `~/.pypirc`).
-- Versioning: managed by `bumpver` (see `bumpver.toml`).
-- CI/CD: GitHub Actions in `.github/workflows/`:
-  - `ci-tests.yml` → tests on push/PR.
-  - `release-and-publish.yml` → publishes to PyPI on tags.
-  - `nuitka.yml` → experimental native compilation.
-
-### 10.3 Managing Dependencies (PDM)
-
-- Add a runtime dependency: `pdm add <package>`
-- Add a dev/test-only dependency: `pdm add -d <package>`
-- Heavy or optional dependencies (e.g. `sklearn`, `umap-learn`, `hdbscan`, `plotly`) **must** be added via `utils/lazy_imports.py` rather than a top-level import, so startup time is not affected and the app degrades gracefully when they are absent.
-- After editing `pyproject.toml` manually, run `pdm install` to sync the lock file.
-- Never `pip install` into the project's venv directly — always use `pdm add` so the lock file stays current.
-
-## 11. RELEASE NOTES
-
-All release notes are added in `docs/RELEASE_REASON.md`, not in this file.  
-This file is cleared when the version is incremented and a new release is created.
-
-**Format:**
-
-```markdown
-## Release Notes (0.x.y) — YYYY-MM-DD
-
-### Section heading
-- Individual change
-- Individual change
-
-### Another section (omit if empty)
-- Individual change
-
----
-```
-
-- The heading uses the *next* version number and today's date (update the date whenever new entries are added).
-- Group changes under short section headings (e.g. `### UI`, `### Providers`, `### Testing`, `### Bug Fixes`). Omit a section if it has no entries.
-- Each bullet is one user-visible or developer-visible change, written in plain language.
-- The file ends with a horizontal rule `---` on its own line.
-- When a release is cut, this file is cleared and a fresh heading for the next version is started.
-- **When to add an entry:** Any change substantial enough to matter to a user or developer should be recorded — new features, changed behavior, bug fixes, provider additions, UI changes, breaking changes, and significant internal improvements (e.g., new test infrastructure or CI changes). Skip trivial refactors, whitespace fixes, and internal rename-only changes that have no visible effect.
-
-## 12. REFERENCES
+## 8. REFERENCES
 
 - `docs/architecture.md` — high-level diagram and rationale.
 - `README.md` — install, usage, feature overview.
 - `docs/artifact_resolution.md` — LLM-based similarity explanation design.
+- `.github/instructions/coding.instructions.md` — full coding conventions for `src/**`.
+- `.github/instructions/testing.instructions.md` — full testing rules for `tests/**`.
+- `.github/instructions/workflows.instructions.md` — developer workflows and release notes.
 
-## 13. AUTHORITATIVE NOTE
+## 9. CROSS-REPO NOTE
 
-Authoritative instructions live in the private pro repo:
-`vector-studio/copilot-instructions.md`.
+Vector Studio (the premium extension layer) has its own instructions in
+`vector-studio/.github/copilot-instructions.md`. Those rules cover VS-specific extension hooks,
+behavior injection, and premium feature patterns only. This file is the authority for
+Vector Inspector.
