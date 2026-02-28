@@ -125,50 +125,6 @@ def test_global_exception_hook_telemetry_failure_is_silenced(monkeypatch):
     assert called.get("original") is True
 
 
-def test_qt_message_handler_warning_msg(monkeypatch):
-    """The installed Qt message handler logs warning and critical messages."""
-    import vector_inspector.utils.exception_handler as eh
-
-    logged = []
-
-    monkeypatch.setattr(
-        "vector_inspector.utils.exception_handler.log_error",
-        lambda msg, *a, **kw: logged.append(str(msg)),
-    )
-
-    # Fake telemetry that won't raise
-    class FakeTelemetry:
-        def send_error_event(self, *a, **k):
-            pass
-
-    monkeypatch.setattr(eh, "_get_telemetry_service", lambda: FakeTelemetry())
-
-    # Re-install the handler so we can call it directly
-    eh.setup_qt_exception_handler()
-
-    # Import the installed handler and invoke it manually
-    from PySide6.QtCore import QMessageLogContext
-
-    ctx = QMessageLogContext()
-    # Invoke via qInstallMessageHandler capture trick: re-install with a wrapper
-    handler_holder = {}
-
-    def capture_handler(msg_type, context, message):
-        handler_holder["fn"] = None  # just capture it was called
-
-    # We need to extract the installed handler. Instead, reinstall and call
-    # through the Qt system which is tricky. Instead, let's skip calling via Qt
-    # and directly test by calling the installed message handler.
-    # Re-establish: call setup again, then trigger a Qt warning message ourselves.
-    # The simplest approach is to verify setup does not raise (already tested)
-    # and separately test the inner logic by inspecting what was registered.
-    # Since qInstallMessageHandler returns the old handler, capture it:
-
-    # Just call setup again to ensure coverage of function body
-    eh.setup_qt_exception_handler()
-    assert True  # No exception raised
-
-
 def test_qt_message_handler_routes_messages(monkeypatch):
     """Qt message handler logs warning/critical/fatal via log_error."""
     from PySide6.QtCore import QMessageLogContext, QtMsgType

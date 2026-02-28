@@ -92,14 +92,10 @@ def test_get_sklearn_optics_mocked(monkeypatch):
     """OPTICS branch via a fake sklearn.cluster module."""
     _reset_lazy_caches()
 
-    fake_cluster = types.ModuleType("sklearn.cluster")
-
     class FakeOPTICS:
         pass
 
-    fake_cluster.OPTICS = FakeOPTICS
-
-    # sklearn.cluster is likely already imported; patch the attribute
+    # sklearn.cluster is likely already imported; patch the attribute directly
     import sklearn.cluster as real_cluster
 
     monkeypatch.setattr(real_cluster, "OPTICS", FakeOPTICS)

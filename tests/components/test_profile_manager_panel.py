@@ -672,7 +672,7 @@ def test_save_profile_create_and_update_and_config_kwargs(qtbot, fake_service, m
 
 
 def test_fetch_databases_real_implementation(qtbot, fake_service, monkeypatch):
-    """Exercises the real _fetch_databases method (not a stub) to cover its FNDA:0 path."""
+    """_fetch_databases starts a DatabaseFetchThread with parsed connection values and updates the UI state."""
     panel_mod = __import__(
         "vector_inspector.ui.components.profile_manager_panel",
         fromlist=["ProfileEditorDialog"],

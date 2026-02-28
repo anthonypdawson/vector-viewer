@@ -75,7 +75,7 @@ def make_dialog(monkeypatch, qtbot, backups=None, settings_initial=None, collect
 
 
 def test_refresh_backups_list_no_backups(monkeypatch, qtbot):
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
     # After init, backups_list should show the no-backups item
     assert dlg.backups_list.count() == 1
     item = dlg.backups_list.item(0)
@@ -91,7 +91,7 @@ def test_refresh_backups_list_with_backups(monkeypatch, qtbot):
         "file_path": os.path.join(os.getcwd(), "colA.zip"),
         "file_size": 1024 * 1024 * 2,
     }
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
     assert dlg.backups_list.count() == 1
     item = dlg.backups_list.item(0)
     assert "colA" in item.text()
@@ -104,7 +104,7 @@ def test_select_backup_dir_updates_settings_and_refresh(monkeypatch, qtbot):
 
     monkeypatch.setattr(brd.QFileDialog, "getExistingDirectory", lambda *a, **k: os.getcwd())
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
+    dlg, _, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
     # Call select backup dir
     dlg._select_backup_dir()
     # backup_dir should be updated to cwd and settings.set called
@@ -114,7 +114,7 @@ def test_select_backup_dir_updates_settings_and_refresh(monkeypatch, qtbot):
 
 def test_create_backup_no_collection_shows_warning(monkeypatch, qtbot):
     # When no collection is selected, creating backup should warn and not start thread
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={}, collection_name="")
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={}, collection_name="")
 
     called = {}
 
@@ -139,7 +139,7 @@ def test_on_backup_selected_enables_buttons(monkeypatch, qtbot):
         "file_path": os.path.join(os.getcwd(), "colA.zip"),
         "file_size": 1024,
     }
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
     # Select the item programmatically
     dlg.backups_list.setCurrentRow(0)
     dlg._on_backup_selected()
@@ -155,7 +155,7 @@ def test_on_backup_selected_enables_buttons(monkeypatch, qtbot):
 def test_on_backup_finished_hides_loading_and_shows_info(monkeypatch, qtbot):
     import vector_inspector.ui.components.backup_restore_dialog as brd
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={}, collection_name="colA")
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={}, collection_name="colA")
 
     shown = {}
     monkeypatch.setattr(brd.QMessageBox, "information", lambda p, t, m: shown.update({"title": t, "msg": m}))
@@ -171,7 +171,7 @@ def test_on_backup_finished_hides_loading_and_shows_info(monkeypatch, qtbot):
 def test_on_backup_error_hides_loading_and_shows_warning(monkeypatch, qtbot):
     import vector_inspector.ui.components.backup_restore_dialog as brd
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
 
     warned = {}
     monkeypatch.setattr(brd.QMessageBox, "warning", lambda p, t, m: warned.update({"title": t, "msg": m}))
@@ -191,7 +191,7 @@ def test_on_backup_error_hides_loading_and_shows_warning(monkeypatch, qtbot):
 def test_on_restore_finished_shows_success_message(monkeypatch, qtbot):
     import vector_inspector.ui.components.backup_restore_dialog as brd
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
 
     shown = {}
     monkeypatch.setattr(brd.QMessageBox, "information", lambda p, t, m: shown.update({"title": t, "msg": m}))
@@ -206,7 +206,7 @@ def test_on_restore_finished_shows_success_message(monkeypatch, qtbot):
 def test_on_restore_error_shows_warning(monkeypatch, qtbot):
     import vector_inspector.ui.components.backup_restore_dialog as brd
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
 
     warned = {}
     monkeypatch.setattr(brd.QMessageBox, "warning", lambda p, t, m: warned.update({"title": t, "msg": m}))
@@ -245,7 +245,7 @@ def test_delete_backup_no_selection_does_nothing(monkeypatch, qtbot):
         brd.QMessageBox, "question", lambda *a, **k: called.update({"q": True}) or brd.QMessageBox.StandardButton.No
     )
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={})
     dlg.backups_list.clearSelection()
     dlg._delete_backup()
 
@@ -257,7 +257,7 @@ def test_delete_backup_confirm_yes_calls_service(monkeypatch, qtbot):
     import vector_inspector.ui.components.backup_restore_dialog as brd
 
     sample = _make_sample_backup()
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
 
     monkeypatch.setattr(
         brd.QMessageBox,
@@ -286,7 +286,7 @@ def test_delete_backup_confirm_no_does_not_delete(monkeypatch, qtbot):
         lambda *a, **k: brd.QMessageBox.StandardButton.No,
     )
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[sample], settings_initial={})
     dlg.backups_list.setCurrentRow(0)
     original_count = dlg.backups_list.count()
     dlg._delete_backup()
@@ -322,7 +322,7 @@ def test_create_backup_with_collection_starts_thread(monkeypatch, qtbot):
 
     monkeypatch.setattr(brd, "BackupThread", FakeThread)
 
-    dlg, service, settings = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={}, collection_name="my_col")
+    dlg, *_ = make_dialog(monkeypatch, qtbot, backups=[], settings_initial={}, collection_name="my_col")
     dlg._create_backup()
 
     assert started.get("called") is True

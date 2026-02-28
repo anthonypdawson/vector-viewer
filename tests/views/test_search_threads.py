@@ -41,6 +41,7 @@ def test_search_thread_emits_error_when_no_connection(qtbot):
     with qtbot.waitSignal(thread.error, timeout=5000) as blocker:
         thread.start()
     assert "No database connection" in blocker.args[0]
+    thread.wait()
 
 
 def test_search_thread_emits_error_on_exception(qtbot):
@@ -53,6 +54,7 @@ def test_search_thread_emits_error_on_exception(qtbot):
     with qtbot.waitSignal(thread.error, timeout=5000) as blocker:
         thread.start()
     assert "search failed" in blocker.args[0]
+    thread.wait()
 
 
 def test_search_thread_emits_error_when_results_none(qtbot):
@@ -65,6 +67,7 @@ def test_search_thread_emits_error_when_results_none(qtbot):
     with qtbot.waitSignal(thread.error, timeout=5000) as blocker:
         thread.start()
     assert blocker.args[0]  # some error message
+    thread.wait()
 
 
 def test_search_thread_passes_server_filter(qtbot):
