@@ -331,6 +331,7 @@ results across developer machines and CI.
 - If a change is exploratory or a spike, include at least one regression test capturing the expected outcome before landing the change.
 - Always reuse or extend existing fixtures and test utilities where possible to maintain consistency and reduce boilerplate in tests.
 - Always use the same test files and organization patterns as existing tests for the relevant feature area to keep the test suite coherent and navigable.
+- **Do not leave source-file line numbers in test comments, docstrings, or section headers** (e.g. `# line 123`, `"""Lines 45-67: ..."""`, `(lines 100-110)`). They are acceptable as a temporary aid while actively writing coverage tests, but must be removed before the work is considered done. Line numbers change whenever the source is modified, making stale references misleading and noisy. Describe *what* the test exercises, not *where* in the file it lives.
 
 
 
