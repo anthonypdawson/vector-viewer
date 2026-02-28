@@ -7,8 +7,10 @@
 [![PyPI Version](https://img.shields.io/pypi/v/vector-inspector.svg?cacheSeconds=300)](https://pypi.org/project/vector-inspector/)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/vector-inspector?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/vector-inspector)
 
+The ultimate toolkit for vector databases - a comprehensive desktop app to inspect, query, and visualize your embeddings across Chroma, Qdrant, Weaviate, Pinecone, LanceDB, pgvector and more.
 
-A comprehensive desktop application for visualizing, querying, and managing vector database data. Similar to SQL database viewers, Vector Inspector provides an intuitive GUI for exploring vector embeddings, metadata, and performing similarity searches across multiple vector database providers.
+
+Similar to SQL viewers (DBeaver/TablePlus) but built for vector databases, Vector Inspector offers an intuitive GUI for exploring embeddings, metadata, similarity search, and CRUD across multiple providers.
 
 <p align="center">
   <a href="site/images/demo.gif" target="_blank">
