@@ -92,7 +92,7 @@ select = [
     "ARG",
     "RUF",
 ]
-ignore = ["E501", "I001", "UP045", "SIM105"]
+ignore = ["E501", "I001", "UP045", "SIM105", "SIM108"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
@@ -108,7 +108,9 @@ package-dir = "src"
 cmd = "python -m vector_inspector.main"
 env = { PYTHONPATH = "src" }
 
-
+[tool.pdm.scripts.bumpver]
+cmd = "python scripts/bumpver.py"
+env = { PYTHONPATH = "src" }
 
 
 # content below this line added by briefcase convert
