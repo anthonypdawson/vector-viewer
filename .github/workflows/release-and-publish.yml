@@ -91,6 +91,7 @@ jobs:
       run: rm -rf dist/
 
     - name: Read release reason from file (safe multiline)
+      if: steps.get_version.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true')
       id: release_reason
       run: |
         # Always use docs/RELEASE_REASON.md if it exists
