@@ -114,7 +114,7 @@ def test_connection_thread_run_direct_failure():
     thread.finished.connect(lambda s, c, e, d, corr: results.append((s, c, e)))
     thread.run()
     assert results and results[0][0] is False
-    assert "failed" in results[0][2].lower()
+    assert "failed" in str(results[0][2]).lower()
 
 
 def test_connection_thread_run_direct_exception():
@@ -123,7 +123,7 @@ def test_connection_thread_run_direct_exception():
     thread.finished.connect(lambda s, c, e, d, corr: results.append((s, c, e)))
     thread.run()
     assert results and results[0][0] is False
-    assert "Cannot reach host" in results[0][2]
+    assert "Cannot reach host" in str(results[0][2])
 
 
 # ---------------------------------------------------------------------------
@@ -260,3 +260,168 @@ def test_cleanup_no_running_threads(monkeypatch):
 
     ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
     ctrl.cleanup()  # Should not raise
+
+
+def test_save_embedding_model_config(monkeypatch):
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService()
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    called = {}
+
+    class FakeSettings:
+        def save_embedding_model(self, **kw):
+            called.update(kw)
+
+    # Patch the real SettingsService used inside the controller helper.
+    # Note: the controller imports SettingsService inside the helper method,
+    # so we patch the original service path. This is intentional — if the
+    # implementation moves the import location the test will need updating.
+    monkeypatch.setattr(
+        "vector_inspector.services.settings_service.SettingsService",
+        FakeSettings,
+        raising=True,
+    )
+
+    conn = type("C", (), {"name": "profileA"})()
+    ctrl._save_embedding_model_config(conn, "conn1", "col1", {"embedder_name": "m", "embedder_type": "t"})
+
+    assert called.get("profile_name") == "profileA"
+    assert called.get("collection_name") == "col1"
+    assert called.get("model_name") == "m"
+
+
+def test_refresh_collections_after_creation(monkeypatch):
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService()
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    class Conn:
+        def list_collections(self):
+            return ["a", "b"]
+
+    conn = Conn()
+    ctrl._refresh_collections_after_creation(conn, "conn1")
+    assert mgr._collections_updates and mgr._collections_updates[-1] == ("conn1", ["a", "b"])
+
+
+def test_handle_collection_complete_calls_helpers(monkeypatch):
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService()
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    # patch helpers to observe calls
+    called = {"save": False, "refresh": False}
+    monkeypatch.setattr(ctrl, "_save_embedding_model_config", lambda *a, **k: called.__setitem__("save", True))
+    monkeypatch.setattr(
+        ctrl, "_refresh_collections_after_creation", lambda *a, **k: called.__setitem__("refresh", True)
+    )
+
+    # patch QMessageBox to avoid GUI
+    monkeypatch.setattr(cc_module.QMessageBox, "information", staticmethod(lambda *a, **k: None))
+    monkeypatch.setattr(cc_module.QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+
+    class Progress:
+        def setValue(self, *a, **k):
+            pass
+
+        def close(self, *a, **k):
+            pass
+
+    progress = Progress()
+    conn = type("C", (), {"name": "p"})()
+    ctrl._handle_collection_complete(
+        connection=conn,
+        connection_id="c",
+        collection_name="col",
+        config={"add_sample": True, "embedder_name": "m", "embedder_type": "t"},
+        progress_dialog=progress,
+        success=True,
+        message="ok",
+    )
+
+    assert called["save"] is True
+    assert called["refresh"] is True
+
+
+def test_handle_collection_complete_failure_and_no_save_or_refresh(monkeypatch):
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService()
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    # patch helpers to observe calls
+    called = {"save": False, "refresh": False}
+    monkeypatch.setattr(ctrl, "_save_embedding_model_config", lambda *a, **k: called.__setitem__("save", True))
+    monkeypatch.setattr(
+        ctrl, "_refresh_collections_after_creation", lambda *a, **k: called.__setitem__("refresh", True)
+    )
+
+    # patch QMessageBox to capture warning invocation
+    warned = {"called": False}
+    monkeypatch.setattr(
+        cc_module.QMessageBox, "warning", staticmethod(lambda *a, **k: warned.__setitem__("called", True))
+    )
+    monkeypatch.setattr(cc_module.QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+    class Progress:
+        def setValue(self, *a, **k):
+            pass
+
+        def close(self, *a, **k):
+            pass
+
+    progress = Progress()
+    conn = type("C", (), {"name": "p"})()
+    # success=False should trigger warning and NOT call save or refresh
+    ctrl._handle_collection_complete(
+        connection=conn,
+        connection_id="c",
+        collection_name="col",
+        config={"add_sample": True, "embedder_name": "m", "embedder_type": "t"},
+        progress_dialog=progress,
+        success=False,
+        message="failed",
+    )
+
+    assert warned["called"] is True
+    assert called["save"] is False
+    assert called["refresh"] is False
+
+
+def test_handle_collection_complete_no_sample_does_not_save_but_refreshes(monkeypatch):
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService()
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    # patch helpers to observe calls
+    called = {"save": False, "refresh": False}
+    monkeypatch.setattr(ctrl, "_save_embedding_model_config", lambda *a, **k: called.__setitem__("save", True))
+    monkeypatch.setattr(
+        ctrl, "_refresh_collections_after_creation", lambda *a, **k: called.__setitem__("refresh", True)
+    )
+
+    # patch QMessageBox to avoid GUI
+    monkeypatch.setattr(cc_module.QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+    class Progress:
+        def setValue(self, *a, **k):
+            pass
+
+        def close(self, *a, **k):
+            pass
+
+    progress = Progress()
+    conn = type("C", (), {"name": "p"})()
+    # add_sample=False should NOT call save, but should refresh
+    ctrl._handle_collection_complete(
+        connection=conn,
+        connection_id="c",
+        collection_name="col",
+        config={"add_sample": False, "embedder_name": "m", "embedder_type": "t"},
+        progress_dialog=progress,
+        success=True,
+        message="ok",
+    )
+
+    assert called["save"] is False
+    assert called["refresh"] is True

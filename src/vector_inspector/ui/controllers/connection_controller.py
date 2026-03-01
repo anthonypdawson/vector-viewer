@@ -1,5 +1,6 @@
 """Controller for managing connection lifecycle and threading."""
 
+import functools
 import hashlib
 import time
 import uuid
@@ -23,7 +24,8 @@ from vector_inspector.ui.workers.collection_worker import CollectionCreationWork
 class ConnectionThread(QThread):
     """Background thread for connecting to database."""
 
-    finished = Signal(bool, list, str, float, str)  # success, collections, error_message, duration_ms, correlation_id
+    # success, collections, error_obj_or_none, duration_ms, correlation_id
+    finished = Signal(bool, list, object, float, str)
 
     def __init__(self, connection: VectorDBConnection, correlation_id: str, provider: str):
         super().__init__()
@@ -39,12 +41,13 @@ class ConnectionThread(QThread):
             duration_ms = int((time.time() - start_time) * 1000)
             if success:
                 collections = self.connection.list_collections()
-                self.finished.emit(True, collections, "", duration_ms, self.correlation_id)
+                self.finished.emit(True, collections, None, duration_ms, self.correlation_id)
             else:
-                self.finished.emit(False, [], "Connection failed", duration_ms, self.correlation_id)
+                # emit an Exception so callers can inspect class/type
+                self.finished.emit(False, [], Exception("Connection failed"), duration_ms, self.correlation_id)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            self.finished.emit(False, [], str(e), duration_ms, self.correlation_id)
+            self.finished.emit(False, [], e, duration_ms, self.correlation_id)
 
 
 class ModelMetadataLoadThread(QThread):
@@ -159,22 +162,19 @@ class ConnectionController(QObject):
 
             # Send connection attempt telemetry
             try:
-                telemetry = TelemetryService()
                 # Hash host/path for privacy
                 host_value = config.get("host") or config.get("path") or "unknown"
                 host_hash = hashlib.sha256(host_value.encode()).hexdigest()[:16]
-                telemetry.queue_event(
-                    {
-                        "event_name": "db.connection_attempt",
+                payload = {
+                    "metadata": {
+                        "db_type": provider,
+                        "host_hash": host_hash,
+                        "connection_id": connection_id,
+                        "correlation_id": correlation_id,
                         "app_version": get_version(),
-                        "metadata": {
-                            "db_type": provider,
-                            "host_hash": host_hash,
-                            "connection_id": connection_id,
-                            "correlation_id": correlation_id,
-                        },
                     }
-                )
+                }
+                TelemetryService.send_event("db.connection_attempt", payload)
             except Exception:
                 pass  # Best effort telemetry
 
@@ -202,7 +202,7 @@ class ConnectionController(QObject):
         provider: str,
         success: bool,
         collections: list,
-        error: str,
+        error: object,
         duration_ms: float,
         correlation_id: str,
     ):
@@ -211,18 +211,19 @@ class ConnectionController(QObject):
 
         # Send connection result telemetry
         try:
-            telemetry = TelemetryService()
             metadata = {
-                "success": success,
-                "db_type": provider,
-                "duration_ms": duration_ms,
-                "correlation_id": correlation_id,
+                "metadata": {
+                    "success": success,
+                    "db_type": provider,
+                    "duration_ms": duration_ms,
+                    "correlation_id": correlation_id,
+                }
             }
             if not success:
-                metadata["error_code"] = "CONNECTION_FAILED"
-                metadata["error_class"] = type(error).__name__ if error else "Unknown"
-            telemetry.queue_event({"event_name": "db.connection_result", "metadata": metadata})
-            telemetry.send_batch()
+                metadata["metadata"]["error_code"] = "CONNECTION_FAILED"
+                # If an exception object was passed, capture its class name; otherwise fall back to string class
+                metadata["metadata"]["error_class"] = type(error).__name__ if error is not None else "Unknown"
+            TelemetryService.send_event("db.connection_result", metadata)
         except Exception:
             pass  # Best effort telemetry
 
@@ -231,6 +232,9 @@ class ConnectionController(QObject):
         if thread:
             thread.wait()  # Wait for thread to fully finish
             thread.deleteLater()
+
+        # Prepare a plain error message for UI/state updates
+        error_message = str(error) if error else ""
 
         if success:
             # Update state to connected
@@ -242,16 +246,16 @@ class ConnectionController(QObject):
             # Then update collections (UI item now exists to receive them)
             self.connection_manager.update_collections(connection_id, collections)
         else:
-            # Update state to error
-            self.connection_manager.update_connection_state(connection_id, ConnectionState.ERROR, error)
+            # Update state to error (store string message)
+            self.connection_manager.update_connection_state(connection_id, ConnectionState.ERROR, error_message)
 
-            QMessageBox.warning(self.parent_widget, "Connection Failed", f"Failed to connect: {error}")
+            QMessageBox.warning(self.parent_widget, "Connection Failed", f"Failed to connect: {error_message}")
 
             # Remove the failed connection
             self.connection_manager.close_connection(connection_id)
 
         # Emit signal for UI updates
-        self.connection_completed.emit(connection_id, success, collections, error)
+        self.connection_completed.emit(connection_id, success, collections, error_message)
 
     def create_collection_with_dialog(self, connection_id: str = None) -> bool:
         """Show dialog to create a new collection with optional sample data.
@@ -387,84 +391,14 @@ class ConnectionController(QObject):
             parent=self,
         )
 
-        def on_progress(message: str, current: int, total: int):
-            """Update progress dialog."""
-            from vector_inspector.core.logging import log_info
-
-            log_info(f"Collection creation progress: {message} ({current}/{total})")
-            progress_dialog.setLabelText(message)
-            progress_dialog.setMaximum(total)
-            progress_dialog.setValue(current)
-            QApplication.processEvents()
-
-        def on_complete(success: bool, message: str):
-            """Handle completion."""
-            from vector_inspector.core.logging import log_error, log_info
-
-            progress_dialog.setValue(3)
-            progress_dialog.close()
-
-            # Save embedding model information if collection was created successfully with sample data
-            if success and config["add_sample"]:
-                try:
-                    from vector_inspector.services.settings_service import SettingsService
-
-                    settings = SettingsService()
-
-                    # Get profile name from connection
-                    profile_name = connection.name if hasattr(connection, "name") else str(connection_id)
-
-                    # Save the embedding model configuration
-                    settings.save_embedding_model(
-                        profile_name=profile_name,
-                        collection_name=collection_name,
-                        model_name=config["embedder_name"],
-                        model_type=config["embedder_type"],
-                    )
-                    log_info(f"Saved embedding model config: {config['embedder_name']} for {collection_name}")
-                except Exception as e:
-                    # Log but don't fail - collection is created successfully
-                    log_error(f"Failed to save embedding model configuration: {e}")
-
-            # Show result
-            if success:
-                log_info(f"Collection creation successful: {message}")
-                QMessageBox.information(self.parent_widget, "Success", message)
-            else:
-                log_error(f"Collection creation failed: {message}")
-                QMessageBox.warning(self.parent_widget, "Error", message)
-
-            # Refresh collections
-            if success:
-                try:
-                    collections = connection.list_collections()
-                    self.connection_manager.update_collections(connection_id, collections)
-                    log_info("Refreshed collection list")
-                except Exception as e:
-                    log_error(f"Failed to refresh collections: {e}")
-
-            # Clean up worker reference
-            if hasattr(self, "_active_worker"):
-                self._active_worker = None
-
-        def on_error(error: str):
-            """Handle error."""
-            from vector_inspector.core.logging import log_error
-
-            log_error(f"Collection creation error: {error}")
-            progress_dialog.close()
-
-            error_message = f"Error: {error}" if error else "An unknown error occurred"
-            QMessageBox.critical(self.parent_widget, "Error", error_message)
-
-            # Clean up worker reference
-            if hasattr(self, "_active_worker"):
-                self._active_worker = None
-
-        # Connect signals
-        worker.progress_update.connect(on_progress)
-        worker.creation_complete.connect(on_complete)
-        worker.error_occurred.connect(on_error)
+        # Connect signals to controller methods (use partials to bind context)
+        worker.progress_update.connect(functools.partial(self._handle_collection_progress, progress_dialog))
+        worker.creation_complete.connect(
+            functools.partial(
+                self._handle_collection_complete, connection, connection_id, collection_name, config, progress_dialog
+            )
+        )
+        worker.error_occurred.connect(functools.partial(self._handle_collection_error, progress_dialog))
 
         # Store worker reference to prevent garbage collection
         self._active_worker = worker
@@ -472,7 +406,96 @@ class ConnectionController(QObject):
         # Start worker (non-blocking)
         worker.start()
 
-        return True  # Successfully started the operation
+    def _handle_collection_progress(
+        self, progress_dialog: QProgressDialog, message: str, current: int, total: int
+    ) -> None:
+        from vector_inspector.core.logging import log_info
+
+        log_info(f"Collection creation progress: {message} ({current}/{total})")
+        progress_dialog.setLabelText(message)
+        progress_dialog.setMaximum(total)
+        progress_dialog.setValue(current)
+        QApplication.processEvents()
+
+    def _handle_collection_complete(
+        self,
+        connection,
+        connection_id: str,
+        collection_name: str,
+        config: dict,
+        progress_dialog: QProgressDialog,
+        success: bool,
+        message: str,
+    ) -> None:
+        from vector_inspector.core.logging import log_error, log_info
+
+        progress_dialog.setValue(3)
+        progress_dialog.close()
+
+        # Save embedding model information if collection was created successfully with sample data
+        if success and config["add_sample"]:
+            self._save_embedding_model_config(connection, connection_id, collection_name, config)
+
+        # Show result
+        if success:
+            log_info(f"Collection creation successful: {message}")
+            QMessageBox.information(self.parent_widget, "Success", message)
+        else:
+            log_error(f"Collection creation failed: {message}")
+            QMessageBox.warning(self.parent_widget, "Error", message)
+
+        # Refresh collections
+        if success:
+            self._refresh_collections_after_creation(connection, connection_id)
+
+        # Clean up worker reference
+        if hasattr(self, "_active_worker"):
+            self._active_worker = None
+
+    def _save_embedding_model_config(self, connection, connection_id: str, collection_name: str, config: dict) -> None:
+        from vector_inspector.core.logging import log_error, log_info
+
+        try:
+            from vector_inspector.services.settings_service import SettingsService
+
+            settings = SettingsService()
+
+            # Get profile name from connection
+            profile_name = connection.name if hasattr(connection, "name") else str(connection_id)
+
+            # Save the embedding model configuration
+            settings.save_embedding_model(
+                profile_name=profile_name,
+                collection_name=collection_name,
+                model_name=config["embedder_name"],
+                model_type=config["embedder_type"],
+            )
+            log_info(f"Saved embedding model config: {config['embedder_name']} for {collection_name}")
+        except Exception as e:
+            log_error(f"Failed to save embedding model configuration: {e}")
+
+    def _refresh_collections_after_creation(self, connection, connection_id: str) -> None:
+        from vector_inspector.core.logging import log_error, log_info
+
+        try:
+            collections = connection.list_collections()
+            self.connection_manager.update_collections(connection_id, collections)
+            log_info("Refreshed collection list")
+        except Exception as e:
+            log_error(f"Failed to refresh collections: {e}")
+
+    def _handle_collection_error(self, progress_dialog: QProgressDialog, error: str) -> None:
+        from vector_inspector.core.logging import log_error
+
+        log_error(f"Collection creation error: {error}")
+        progress_dialog.close()
+
+        error_message = f"Error: {error}" if error else "An unknown error occurred"
+        QMessageBox.critical(self.parent_widget, "Error", error_message)
+
+        # Clean up worker reference
+        if hasattr(self, "_active_worker"):
+            self._active_worker = None
 
     def cleanup(self):
         """Clean up connection threads on shutdown."""

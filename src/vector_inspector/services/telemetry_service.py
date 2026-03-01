@@ -88,9 +88,7 @@ class TelemetryService:
         sent = []
         for event in self.queue:
             try:
-                log_info(
-                    f"[Telemetry] Sending to {TELEMETRY_ENDPOINT}\nPayload: {json.dumps(event, indent=2)}"
-                )
+                log_info(f"[Telemetry] Sending to {TELEMETRY_ENDPOINT}\nPayload: {json.dumps(event, indent=2)}")
                 resp = requests.post(TELEMETRY_ENDPOINT, json=event, timeout=5)
                 log_info(f"[Telemetry] Response: {resp.status_code} {resp.text}")
                 if resp.status_code in (200, 201):
@@ -173,3 +171,23 @@ class TelemetryService:
 
     def get_queue(self):
         return list(self.queue)
+
+    @classmethod
+    def send_event(cls, event_name: str, payload: dict) -> None:
+        """Convenience classmethod to send a single telemetry event (best-effort).
+
+        This creates a short-lived TelemetryService instance, queues the event,
+        and attempts to send the batch immediately. It is intended for
+        fire-and-forget usage from call sites that don't require batching.
+        """
+        try:
+            svc = cls()
+            # If caller passed an envelope that already includes event_name, respect it
+            if "event_name" in payload:
+                event = payload
+            else:
+                event = {"event_name": event_name, **(payload or {})}
+            svc.queue_event(event)
+            svc.send_batch()
+        except Exception as e:
+            log_error(f"[Telemetry] send_event failed: {e}")
