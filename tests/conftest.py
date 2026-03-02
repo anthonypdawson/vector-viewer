@@ -4,6 +4,8 @@ import os
 # Ensure headless Qt platform as early as possible to avoid GUI initialization
 # before tests or imported modules can touch Qt.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Do NOT force-disable telemetry here — tests explicitly verify telemetry
+# behaviour and will set `VI_NO_TELEMETRY` themselves where needed.
 
 import pytest
 

@@ -321,3 +321,49 @@ class PlotPanel(QWidget):
     def get_current_html(self) -> Optional[str]:
         """Get the current plot HTML for saving/export."""
         return self._current_html
+
+    def dispose(self) -> None:
+        """Explicitly dispose of WebEngine objects to avoid profile-release warnings.
+
+        This removes the web channel, requests deletion of the page and view,
+        and clears references so Qt can tear them down in the correct order.
+        """
+        try:
+            if hasattr(self, "web_view") and self.web_view is not None:
+                try:
+                    page = self.web_view.page()
+                    # Disconnect web channel if set on the page
+                    try:
+                        page.setWebChannel(None)
+                    except Exception:
+                        pass
+                    page.deleteLater()
+                except Exception:
+                    pass
+
+                try:
+                    self.web_view.setParent(None)
+                except Exception:
+                    pass
+                try:
+                    self.web_view.deleteLater()
+                except Exception:
+                    pass
+                self.web_view = None
+
+            if hasattr(self, "channel") and self.channel is not None:
+                try:
+                    self.channel.deleteLater()
+                except Exception:
+                    pass
+                self.channel = None
+
+            if hasattr(self, "_event_bridge") and self._event_bridge is not None:
+                try:
+                    self._event_bridge.deleteLater()
+                except Exception:
+                    pass
+                self._event_bridge = None
+        except Exception:
+            # Best-effort disposal; do not raise during app shutdown
+            pass

@@ -727,17 +727,39 @@ class MainWindow(InspectorShell):
 
     def closeEvent(self, event):
         """Handle application close."""
-        # Clean up connection controller
-        self.connection_controller.cleanup()
+        # Dispose visualization WebEngine objects first so pages/views are
+        # deleted before any lower-level shutdown (profiles/connections).
+        try:
+            if self.visualization_view is not None:
+                try:
+                    self.visualization_view.cleanup_temp_html()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
-        # Clean up temp HTML files from visualization view
-        if self.visualization_view is not None:
+        # Let Qt process pending deletion events to avoid profile-release races
+        try:
+            from PySide6.QtWidgets import QApplication
+
             try:
-                self.visualization_view.cleanup_temp_html()
+                QApplication.processEvents()
             except Exception:
                 pass
+        except Exception:
+            pass
+
+        # Clean up connection controller
+        try:
+            self.connection_controller.cleanup()
+        except Exception:
+            pass
+
         # Close all connections
-        self.connection_manager.close_all_connections()
+        try:
+            self.connection_manager.close_all_connections()
+        except Exception:
+            pass
 
         # Save window geometry if enabled
         try:

@@ -628,6 +628,30 @@ class VisualizationView(QWidget):
         import contextlib
         import os
 
+        from PySide6.QtWidgets import QApplication
+
+        # Dispose webengine objects in child panels first so pages/views
+        # are deleted before the WebEngineProfile is released by Qt.
+        try:
+            try:
+                if hasattr(self, "plot_panel") and getattr(self.plot_panel, "dispose", None):
+                    self.plot_panel.dispose()
+            except Exception:
+                pass
+            try:
+                if hasattr(self, "histogram_panel") and getattr(self.histogram_panel, "dispose", None):
+                    self.histogram_panel.dispose()
+            except Exception:
+                pass
+
+            # Let Qt process deletion events to avoid race conditions
+            try:
+                QApplication.processEvents()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         for f in getattr(self, "temp_html_files", []):
             with contextlib.suppress(Exception):
                 os.remove(f)
