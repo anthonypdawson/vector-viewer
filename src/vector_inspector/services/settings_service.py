@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -45,6 +46,12 @@ class SettingsService:
 
         self.settings_dir = Path.home() / ".vector-inspector"
         self.settings_file = self.settings_dir / "settings.json"
+        # Allow --config (propagated via VI_CONFIG_PATH) to use an alternate
+        # settings file for this run only.  Never persisted; read once at init.
+        _config_override = os.environ.get("VI_CONFIG_PATH")
+        if _config_override:
+            self.settings_file = Path(_config_override)
+            self.settings_dir = self.settings_file.parent
         self.settings: dict[str, Any] = {}
         self._load_settings()
 

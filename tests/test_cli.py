@@ -1,11 +1,12 @@
 """Tests for CLI entry-point argument parsing (--version, --help, telemetry)."""
 
+import os
 from unittest.mock import patch
 
 import pytest
 
 from vector_inspector import get_version
-from vector_inspector._cli import GITHUB_URL, _maybe_send_first_run_telemetry, parse_cli_args
+from vector_inspector._cli import GITHUB_URL, _handle_dump_settings, _maybe_send_first_run_telemetry, parse_cli_args
 
 # ---------------------------------------------------------------------------
 # Output / exit-code tests (no subprocess needed; captured via capsys)
@@ -141,3 +142,85 @@ def test_first_run_telemetry_skipped_when_already_done(monkeypatch):
     _maybe_send_first_run_telemetry("--help")
 
     assert fake_telemetry.queued == []
+
+
+# ---------------------------------------------------------------------------
+# Runtime-only flag → env var mapping
+# ---------------------------------------------------------------------------
+
+
+def test_no_telemetry_flag_sets_env_var(monkeypatch):
+    monkeypatch.delenv("VI_NO_TELEMETRY", raising=False)
+    parse_cli_args(["--no-telemetry"])
+    assert os.environ.get("VI_NO_TELEMETRY") == "1"
+
+
+def test_no_telemetry_prevents_first_run_event(monkeypatch):
+    monkeypatch.setenv("VI_NO_TELEMETRY", "1")
+    # Returns immediately without importing services; must not raise.
+    _maybe_send_first_run_telemetry("--version")
+
+
+def test_no_telemetry_skips_event_when_env_set(monkeypatch):
+    monkeypatch.setenv("VI_NO_TELEMETRY", "1")
+    # Patch the lazy import path; if VI_NO_TELEMETRY guard doesn't fire first,
+    # the import would raise — proving the env var short-circuits correctly.
+    with patch(
+        "vector_inspector.services.settings_service.SettingsService", side_effect=AssertionError("should not be called")
+    ):
+        _maybe_send_first_run_telemetry("--help")  # must not raise
+
+
+def test_log_level_flag_sets_env_var(monkeypatch):
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    parse_cli_args(["--log-level", "debug"])
+    assert os.environ.get("LOG_LEVEL") == "DEBUG"
+
+
+def test_log_level_flag_case_insensitive(monkeypatch):
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    parse_cli_args(["--log-level", "INFO"])
+    assert os.environ.get("LOG_LEVEL") == "INFO"
+
+
+def test_no_splash_flag_sets_env_var(monkeypatch):
+    monkeypatch.delenv("VI_NO_SPLASH", raising=False)
+    parse_cli_args(["--no-splash"])
+    assert os.environ.get("VI_NO_SPLASH") == "1"
+
+
+def test_config_flag_sets_env_var(monkeypatch, tmp_path):
+    cfg = str(tmp_path / "custom.json")
+    monkeypatch.delenv("VI_CONFIG_PATH", raising=False)
+    parse_cli_args(["--config", cfg])
+    assert os.environ.get("VI_CONFIG_PATH") == cfg
+
+
+# ---------------------------------------------------------------------------
+# --dump-settings
+# ---------------------------------------------------------------------------
+
+
+def test_dump_settings_prints_json_and_exits_zero(tmp_path, capsys):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text('{"foo": "bar"}', encoding="utf-8")
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_dump_settings(str(settings_file))
+    assert exc_info.value.code == 0
+    assert '"foo"' in capsys.readouterr().out
+
+
+def test_dump_settings_empty_dict_when_file_missing(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_dump_settings(str(tmp_path / "nonexistent.json"))
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out.strip() == "{}"
+
+
+def test_dump_settings_via_parse_cli_args(tmp_path, capsys):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text('{"key": "value"}', encoding="utf-8")
+    with patch("vector_inspector._cli._maybe_send_first_run_telemetry"), pytest.raises(SystemExit) as exc_info:
+        parse_cli_args(["--dump-settings", "--config", str(settings_file)])
+    assert exc_info.value.code == 0
+    assert '"key"' in capsys.readouterr().out

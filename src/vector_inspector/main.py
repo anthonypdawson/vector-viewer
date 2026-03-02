@@ -12,24 +12,26 @@ from vector_inspector.core.logging import log_error
 # Run early telemetry before importing any Qt/PySide modules. Keep this
 # minimal and tolerant of failure so missing GUI requirements don't prevent
 # the app from reporting an attempted launch.
-try:
-    from vector_inspector import get_version
-    from vector_inspector.services.telemetry_service import TelemetryService
-
+# Skipped when --no-telemetry was passed (sets VI_NO_TELEMETRY=1 via _cli.py).
+if not os.environ.get("VI_NO_TELEMETRY"):
     try:
-        telemetry = TelemetryService()
-        telemetry.send_launch_ping(app_version=get_version())
-    except Exception as _err:
-        # Best-effort: avoid raising here so that missing telemetry deps
-        # don't stop the application from proceeding.
+        from vector_inspector import get_version
+        from vector_inspector.services.telemetry_service import TelemetryService
+
         try:
-            sys.stderr.write(f"[Telemetry] Early send failed: {_err}\n")
-        except Exception:
-            pass
-except Exception:
-    # If telemetry or version lookup fail, continue — we still want to
-    # attempt to start the app and report later when possible.
-    pass
+            telemetry = TelemetryService()
+            telemetry.send_launch_ping(app_version=get_version())
+        except Exception as _err:
+            # Best-effort: avoid raising here so that missing telemetry deps
+            # don't stop the application from proceeding.
+            try:
+                sys.stderr.write(f"[Telemetry] Early send failed: {_err}\n")
+            except Exception:
+                pass
+    except Exception:
+        # If telemetry or version lookup fail, continue — we still want to
+        # attempt to start the app and report later when possible.
+        pass
 
 # Defer Qt/PySide imports until after we've attempted early telemetry.
 
@@ -126,13 +128,15 @@ def main():
 
     app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "..", "assets", "logo.ico")))
 
-    # Show loading screen (if not disabled in settings)
-    loading = show_loading_screen(
-        app_name="Vector Inspector",
-        version=f"v{app_version}",
-        tagline="The missing toolset for your vector data",
-        loading_text="Initializing providers…",
-    )
+    # Show loading screen unless --no-splash was passed (sets VI_NO_SPLASH=1 via _cli.py).
+    loading = None
+    if not os.environ.get("VI_NO_SPLASH"):
+        loading = show_loading_screen(
+            app_name="Vector Inspector",
+            version=f"v{app_version}",
+            tagline="The missing toolset for your vector data",
+            loading_text="Initializing providers…",
+        )
 
     # Heavy imports after loading screen is visible
     if loading:

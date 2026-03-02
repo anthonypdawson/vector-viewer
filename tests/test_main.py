@@ -3,6 +3,8 @@ import sys
 
 
 def test_early_telemetry_called(monkeypatch):
+    # Ensure VI_NO_TELEMETRY doesn't suppress the early ping in this test.
+    monkeypatch.delenv("VI_NO_TELEMETRY", raising=False)
     called = {}
 
     class FakeTelemetry:
