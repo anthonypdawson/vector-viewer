@@ -87,6 +87,7 @@ Settings
 └── Advanced
     └── Logging, debug options
 ```
+For existing settings, just move them into the appropriate section without changing the UI controls too much. For LLM settings, design new controls as needed (dropdowns, file pickers, sliders).
 
 ### LLM Settings Section (detail)
 
