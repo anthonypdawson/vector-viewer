@@ -175,6 +175,7 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
     openai_key.setObjectName("llm_openai_key")
     openai_key.setEchoMode(QLineEdit.EchoMode.Password)
     openai_key.setPlaceholderText("sk-…")
+    openai_key.setMaximumWidth(200)
     openai_model, openai_refresh_btn = _make_model_combo(settings_service.get_llm_openai_model())
     openai_model.setObjectName("llm_openai_model")
     openai_model_row = QHBoxLayout()
