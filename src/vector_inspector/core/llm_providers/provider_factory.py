@@ -25,6 +25,14 @@ class LLMProviderFactory:
       1. User-configured provider (when not ``'auto'``).
       2. Ollama — probed at ``llm.ollama_url`` (default ``localhost:11434``).
       3. llama-cpp — in-process fallback (model must be present in cache).
+
+    ``openai-compatible`` is never auto-detected; it must be set explicitly via
+    ``llm.provider = 'openai-compatible'`` in settings or the
+    ``VI_LLM_PROVIDER`` environment variable.
+
+    When a provider is unavailable (``is_available() == False``) the factory
+    still returns it; the runtime manager surfaces the unhealthy state via
+    ``health()`` rather than silently falling back to another provider.
     """
 
     @classmethod
@@ -104,26 +112,6 @@ class LLMProviderFactory:
         )
 
     @classmethod
-    def _make_fake(cls, settings) -> LLMProvider:
-        """Return a FakeLLMProvider for tests and CI (VI_LLM_PROVIDER=fake)."""
-        try:
-            from tests.utils.fake_llm_provider import FakeLLMProvider
-        except ImportError:
-            try:
-                from fake_llm_provider import FakeLLMProvider  # type: ignore[no-redef]
-            except ImportError as exc:
-                raise ImportError(
-                    "FakeLLMProvider not importable. Ensure tests/ is on sys.path when using VI_LLM_PROVIDER=fake."
-                ) from exc
-        return FakeLLMProvider(
-            seed=int(settings.get("llm.fake_seed", 0) or 0),
-            fragment_size=int(settings.get("llm.fake_fragment_size", 2) or 2),
-            latency_ms=int(settings.get("llm.fake_latency_ms", 0) or 0),
-            error_rate=float(settings.get("llm.fake_error_rate", 0.0) or 0.0),
-            default_model=settings.get("llm.fake_default_model", "fake-model") or "fake-model",
-        )
-
-    @classmethod
     def _make_llama_cpp(cls, settings) -> LLMProvider:
         from .llama_cpp_provider import LlamaCppProvider
 
@@ -163,6 +151,13 @@ class LLMProviderInstance:
     Call ``refresh()`` after the user changes LLM settings in the
     Settings dialog so the provider is re-created from updated values.
     All ``LLMProvider`` methods are forwarded to the active provider.
+
+    .. note::
+        Prefer ``LLMRuntimeManager`` (available via ``AppState.llm_provider``)
+        for new code: it adds provider-selection precedence, env var support,
+        health TTL caching, and request-id injection.  ``LLMProviderInstance``
+        is retained as a lighter-weight alternative when those features are not
+        needed.
     """
 
     def __init__(self, settings) -> None:
@@ -183,10 +178,25 @@ class LLMProviderInstance:
     # ------------------------------------------------------------------
 
     def generate(self, prompt: str, **opts) -> str:
+        """Generate text from a plain-text prompt.
+
+        The prompt is wrapped into a single user message and forwarded to
+        ``generate_messages()``.  For multi-turn or system-prompt use cases
+        call ``get_provider().generate_messages()`` directly.
+
+        Args:
+            prompt: Plain text prompt.
+            **opts: Overrides forwarded to ``generate_messages()``
+                    (e.g., ``temperature``, ``max_tokens``).
+                    Pass ``model`` to override the active model name.
+        """
         self._ensure()
         if self._provider is None:
             raise RuntimeError("No LLM provider is available.")
-        return self._provider.generate(prompt, **opts)
+        messages = [{"role": "user", "content": prompt}]
+        model = opts.pop("model", self._provider.get_model_name())
+        result = self._provider.generate_messages(messages, model=model, stream=False, **opts)
+        return result  # type: ignore[return-value]
 
     def is_available(self) -> bool:
         self._ensure()

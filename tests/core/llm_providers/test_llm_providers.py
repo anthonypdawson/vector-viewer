@@ -136,7 +136,7 @@ class TestLLMProviderInstance:
     def test_wraps_provider_and_forwards_generate(self):
         s = _make_settings(**{"llm.provider": OLLAMA})
         mock_provider = MagicMock()
-        mock_provider.generate.return_value = "hello"
+        mock_provider.generate_messages.return_value = "hello"
         mock_provider.is_available.return_value = True
         mock_provider.get_model_name.return_value = "llama3.2"
         mock_provider.get_provider_name.return_value = "ollama"
@@ -147,7 +147,11 @@ class TestLLMProviderInstance:
             result = instance.generate("test prompt")
 
         assert result == "hello"
-        mock_provider.generate.assert_called_once_with("test prompt")
+        mock_provider.generate_messages.assert_called_once_with(
+            [{"role": "user", "content": "test prompt"}],
+            model="llama3.2",
+            stream=False,
+        )
 
     def test_is_available_reflects_provider(self):
         s = _make_settings(**{"llm.provider": LLAMA_CPP})

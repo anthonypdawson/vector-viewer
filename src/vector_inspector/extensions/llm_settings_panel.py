@@ -15,6 +15,8 @@ tier; Vector Studio enables and wires them.
 
 from __future__ import annotations
 
+from datetime import UTC
+
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -56,7 +58,7 @@ class _HealthCheckThread(QThread):
                 return
             self.health_ready.emit(provider.get_health())
         except Exception as exc:
-            from datetime import UTC, datetime
+            from datetime import datetime
 
             from vector_inspector.core.llm_providers.types import HealthResult
 
@@ -147,7 +149,9 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
     auto_page = QWidget()
     auto_layout = QVBoxLayout(auto_page)
     auto_layout.setContentsMargins(0, 2, 0, 2)
-    auto_layout.addWidget(QLabel("Tries providers in order: llama-cpp → ollama → openai-compatible."))
+    auto_layout.addWidget(
+        QLabel("Tries providers in order: ollama → llama-cpp. Does not auto-detect openai-compatible.")
+    )
     stack.addWidget(auto_page)
 
     # 1: ollama

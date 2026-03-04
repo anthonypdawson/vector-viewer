@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -482,3 +482,610 @@ class TestRemediationHintConstraint:
         h = p.get_health()
         if not h.ok and h.remediation_hint:
             assert len(h.remediation_hint) <= 200
+
+
+# ---------------------------------------------------------------------------
+# Item 12 — Provider list_models() and get_health() paths
+# ---------------------------------------------------------------------------
+
+
+class TestOllamaListModels:
+    def test_list_models_returns_metadata_list(self):
+        p = OllamaProvider(model="llama3.2")
+        fake_response = b'{"models": [{"name": "llama3.2"}, {"name": "mistral"}]}'
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.read.return_value = fake_response
+            mock_open.return_value = mock_resp
+            models = p.list_models()
+        assert len(models) == 2
+        assert models[0].model_name == "llama3.2"
+        assert models[1].model_name == "mistral"
+
+    def test_list_models_fallback_on_error(self):
+        p = OllamaProvider(model="llama3.2")
+        with patch("urllib.request.urlopen", side_effect=OSError("unreachable")):
+            models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == "llama3.2"
+
+    def test_get_health_ok_path(self):
+        p = OllamaProvider(model="llama3.2")
+        fake_data = b'{"models": [{"name": "llama3.2"}], "version": "0.5.1"}'
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.read.return_value = fake_data
+            mock_open.return_value = mock_resp
+            h = p.get_health()
+        assert h.ok is True
+        assert h.provider == "ollama"
+        assert "llama3.2" in h.models
+        assert h.version == "0.5.1"
+
+    def test_get_health_failure_path(self):
+        p = OllamaProvider(base_url="http://127.0.0.1:19999")
+        with patch("urllib.request.urlopen", side_effect=OSError("unreachable")):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is True
+        assert h.remediation_hint is not None
+
+
+class TestOpenAICompatibleListModels:
+    def test_list_models_returns_metadata_list(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4")
+        fake_data = b'{"data": [{"id": "gpt-4"}, {"id": "gpt-3.5-turbo"}]}'
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.read.return_value = fake_data
+            mock_open.return_value = mock_resp
+            models = p.list_models()
+        assert len(models) == 2
+        assert models[0].model_name == "gpt-4"
+
+    def test_list_models_fallback_on_error(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4")
+        with patch("urllib.request.urlopen", side_effect=OSError("unreachable")):
+            models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == "gpt-4"
+
+    def test_list_models_empty_base_url_returns_configured_model(self):
+        p = OpenAICompatibleProvider(base_url="", model="gpt-4o")
+        models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == "gpt-4o"
+
+    def test_get_health_ok_path(self):
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4")
+        fake_data = b'{"data": [{"id": "gpt-4"}]}'
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.read.return_value = fake_data
+            mock_open.return_value = mock_resp
+            h = p.get_health()
+        assert h.ok is True
+        assert h.provider == "openai-compatible"
+
+    def test_get_health_401_gives_api_key_hint(self):
+        import urllib.error
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4", api_key="bad")
+        err = urllib.error.HTTPError(url="", code=401, msg="Unauthorized", hdrs=None, fp=None)  # type: ignore[arg-type]
+        err.read = lambda: b"Unauthorized"
+        with patch("urllib.request.urlopen", side_effect=err):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.remediation_hint is not None
+        assert "API key" in h.remediation_hint
+
+    def test_get_health_no_url_returns_not_ok(self):
+        p = OpenAICompatibleProvider(base_url="", model="")
+        h = p.get_health()
+        assert h.ok is False
+        assert h.remediation_hint is not None
+
+    def test_get_health_network_error_retryable(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:9999", model="m")
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is True
+
+
+class TestLlamaCppListModels:
+    def test_list_models_returns_single_configured_model(self, tmp_path):
+
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
+
+        # Create a dummy GGUF file so _resolve_model_path() finds it
+        model_file = tmp_path / "my-model.gguf"
+        model_file.write_bytes(b"")
+        p = LlamaCppProvider(model_path=str(model_file))
+        models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == "my-model.gguf"
+
+    def test_list_models_default_filename_when_no_path(self):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import (
+            DEFAULT_MODEL_FILENAME,
+            LlamaCppProvider,
+        )
+
+        p = LlamaCppProvider(model_path="")
+        # No file exists → falls back to DEFAULT_MODEL_FILENAME
+        models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == DEFAULT_MODEL_FILENAME
+
+
+# ---------------------------------------------------------------------------
+# Item 14 — LLMRuntimeManager: selection precedence, env vars, health caching
+# ---------------------------------------------------------------------------
+
+
+class TestRuntimeManagerSelection:
+    def test_env_var_overrides_auto_when_no_explicit_config(self, monkeypatch):
+        monkeypatch.setenv("VI_LLM_PROVIDER", OLLAMA)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        s = _make_settings(**{"llm.provider": "auto"})
+        mgr = LLMRuntimeManager(settings=s)
+        with patch.object(OllamaProvider, "is_available", return_value=False):
+            debug = mgr.get_selection_debug()
+        assert debug["selected_provider"] == OLLAMA
+        env_reason = next(r for r in debug["reasons"] if r["source"] == "env" and r["key"] == "VI_LLM_PROVIDER")
+        assert env_reason["outcome"] == "selected"
+
+    def test_explicit_config_beats_env_var(self, monkeypatch):
+        monkeypatch.setenv("VI_LLM_PROVIDER", OPENAI_COMPATIBLE)
+        s = _make_settings(**{"llm.provider": OLLAMA})
+        mgr = LLMRuntimeManager(settings=s)
+        debug = mgr.get_selection_debug()
+        assert debug["selected_provider"] == OLLAMA
+        cfg_reason = next(r for r in debug["reasons"] if r["source"] == "app_config")
+        assert cfg_reason["outcome"] == "selected"
+
+    def test_autodetect_used_when_no_explicit_or_env(self, monkeypatch):
+        monkeypatch.delenv("VI_LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        s = _make_settings(**{"llm.provider": "auto"})
+        mgr = LLMRuntimeManager(settings=s)
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.status = 200
+            mock_open.return_value = mock_resp
+            debug = mgr.get_selection_debug()
+        assert debug["selected_provider"] == OLLAMA
+        autodetect_reason = next(r for r in debug["reasons"] if r["source"] == "autodetect")
+        assert autodetect_reason["outcome"] == "selected"
+
+    def test_fallback_to_openai_when_api_key_present(self, monkeypatch):
+        monkeypatch.delenv("VI_LLM_PROVIDER", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+        s = _make_settings(**{"llm.provider": "auto", "llm.openai_api_key": ""})
+        mgr = LLMRuntimeManager(settings=s)
+        with patch("urllib.request.urlopen", side_effect=OSError("no ollama")):
+            debug = mgr.get_selection_debug()
+        assert debug["selected_provider"] == OPENAI_COMPATIBLE
+        assert debug["api_key_present"] is True
+
+    def test_fallback_to_ollama_when_no_api_key(self, monkeypatch):
+        monkeypatch.delenv("VI_LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        s = _make_settings(**{"llm.provider": "auto", "llm.openai_api_key": ""})
+        mgr = LLMRuntimeManager(settings=s)
+        with patch("urllib.request.urlopen", side_effect=OSError("no ollama")):
+            debug = mgr.get_selection_debug()
+        assert debug["selected_provider"] == OLLAMA
+
+
+class TestRuntimeManagerHealthCaching:
+    def test_health_returns_cached_result_within_ttl(self):
+        from tests.utils.fake_llm_provider import FakeLLMProvider as FLP
+
+        mgr = LLMRuntimeManager(settings=None, health_ttl=60)
+        mgr._provider = FLP()
+
+        first = mgr.probe()
+        # Replace provider with one that always fails — cache should still return ok
+        mgr._provider = FLP(mode="error_inject", error_rate=1.0)
+        cached = mgr.health()
+
+        assert cached.ok is True
+        assert cached is first
+
+    def test_invalidate_health_cache_forces_new_probe(self):
+        from tests.utils.fake_llm_provider import FakeLLMProvider as FLP
+
+        mgr = LLMRuntimeManager(settings=None, health_ttl=60)
+        mgr._provider = FLP()
+        mgr.probe()
+        mgr.invalidate_health_cache()
+        mgr._provider = FLP(mode="error_inject", error_rate=1.0)
+        fresh = mgr.health()
+
+        assert fresh.ok is False
+
+    def test_refresh_clears_health_cache(self):
+        s = _make_settings(**{"llm.provider": OLLAMA})
+        mgr = LLMRuntimeManager(settings=s)
+        with patch.object(OllamaProvider, "get_health") as mock_health:
+            mock_health.return_value = FakeLLMProvider().get_health()
+            mgr.probe()
+        assert mgr._health_cache is not None
+        mgr.refresh()
+        assert mgr._health_cache is None
+
+    def test_generate_request_id_is_uuid4(self):
+        import re
+
+        mgr = LLMRuntimeManager(settings=None)
+        rid = mgr.generate_request_id()
+        assert re.match(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            rid,
+        ), f"Not a UUID4: {rid}"
+
+    def test_generate_request_id_is_unique(self):
+        mgr = LLMRuntimeManager(settings=None)
+        ids = {mgr.generate_request_id() for _ in range(20)}
+        assert len(ids) == 20
+
+
+# ---------------------------------------------------------------------------
+# Item 4 — BaseProvider default implementations
+# ---------------------------------------------------------------------------
+
+
+class TestBaseProviderDefaults:
+    """Test the default method implementations in LLMProvider base class."""
+
+    def _make_minimal(self, available: bool = True):
+        from vector_inspector.core.llm_providers.base_provider import LLMProvider
+
+        _avail = available
+
+        class _Minimal(LLMProvider):
+            def generate_messages(self, messages, model, stream=False, **kwargs):
+                if stream:
+                    return self.stream_messages(messages, model, **kwargs)
+                return "response"
+
+            def is_available(self):
+                return _avail
+
+            def get_model_name(self):
+                return "minimal-model"
+
+            def get_provider_name(self):
+                return "minimal"
+
+        return _Minimal()
+
+    def test_get_info_returns_name_and_provider(self):
+        p = FakeLLMProvider()
+        info = p.get_info()
+        assert info.name == p.get_model_name()
+        assert info.provider == p.get_provider_name()
+
+    def test_default_get_health_ok_when_available(self):
+        p = self._make_minimal(available=True)
+        h = p.get_health()
+        assert h.ok is True
+        assert h.provider == "minimal"
+        assert "minimal-model" in h.models
+        assert h.remediation_hint is None
+        assert h.retryable is False
+
+    def test_default_get_health_not_ok_when_unavailable(self):
+        p = self._make_minimal(available=False)
+        h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is True
+        assert h.remediation_hint is not None
+        assert "minimal" in h.remediation_hint
+
+
+# ---------------------------------------------------------------------------
+# Ollama: streaming, error paths, model name
+# ---------------------------------------------------------------------------
+
+
+class TestOllamaProviderFull:
+    def test_get_model_name(self):
+        p = OllamaProvider(model="mistral")
+        assert p.get_model_name() == "mistral"
+
+    def test_generate_messages_stream_path_delegates(self):
+        p = OllamaProvider(model="llama3.2")
+        sentinel = object()
+        with patch.object(p, "_validate_model"), patch.object(p, "stream_messages", return_value=sentinel):
+            result = p.generate_messages([{"role": "user", "content": "hi"}], model="llama3.2", stream=True)
+        assert result is sentinel
+
+    def test_generate_messages_raises_provider_error_on_network_failure(self):
+        p = OllamaProvider(model="llama3.2")
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            with pytest.raises(ProviderError) as exc_info:
+                p.generate_messages([{"role": "user", "content": "hi"}], model="llama3.2")
+        assert exc_info.value.provider_name == "ollama"
+        assert exc_info.value.retryable is True
+
+    def test_stream_messages_yields_delta_and_done(self):
+        import json
+
+        p = OllamaProvider(model="llama3.2")
+        chunks = [
+            json.dumps({"message": {"content": "Hello"}, "done": False}).encode(),
+            json.dumps({"message": {"content": " world"}, "done": True}).encode(),
+        ]
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.__iter__ = lambda s: iter(chunks)
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", return_value=mock_resp):
+            events = list(p.stream_messages([{"role": "user", "content": "Hi"}], model="llama3.2"))
+        delta_events = [e for e in events if e.type == "delta"]
+        done_events = [e for e in events if e.type == "done"]
+        assert delta_events[0].content == "Hello"
+        assert delta_events[1].content == " world"
+        assert done_events[0].meta["finish_reason"] == "stop"
+
+    def test_stream_messages_skips_empty_lines(self):
+        import json
+
+        p = OllamaProvider(model="llama3.2")
+        chunks = [
+            b"",
+            b"\n",
+            json.dumps({"message": {"content": "x"}, "done": True}).encode(),
+        ]
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.__iter__ = lambda s: iter(chunks)
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", return_value=mock_resp):
+            events = list(p.stream_messages([{"role": "user", "content": "hi"}], model="llama3.2"))
+        assert any(e.type == "done" for e in events)
+
+    def test_stream_messages_raises_provider_error_on_network_failure(self):
+        p = OllamaProvider(model="llama3.2")
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            with pytest.raises(ProviderError):
+                list(p.stream_messages([{"role": "user", "content": "hi"}], model="llama3.2"))
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible: is_available, stream, error paths, model name
+# ---------------------------------------------------------------------------
+
+
+class TestOpenAICompatibleFull:
+    def test_is_available_true_when_server_responds_200(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4")
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.status = 200
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            assert p.is_available() is True
+
+    def test_get_model_name(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost", model="gpt-4o")
+        assert p.get_model_name() == "gpt-4o"
+
+    def test_generate_messages_stream_path_delegates(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="m")
+        sentinel = object()
+        with patch.object(p, "_validate_model"), patch.object(p, "stream_messages", return_value=sentinel):
+            result = p.generate_messages([{"role": "user", "content": "hi"}], model="m", stream=True)
+        assert result is sentinel
+
+    def test_generate_messages_raises_retryable_on_429(self):
+        import urllib.error
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="m")
+        err = urllib.error.HTTPError(
+            url="",
+            code=429,
+            msg="Rate limit",
+            hdrs=None,
+            fp=None,  # type: ignore[arg-type]
+        )
+        err.read = lambda: b"Too many requests"
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", side_effect=err):
+            with pytest.raises(ProviderError) as exc_info:
+                p.generate_messages([{"role": "user", "content": "hi"}], model="m")
+        assert exc_info.value.retryable is True
+        assert exc_info.value.http_status == 429
+
+    def test_generate_messages_raises_non_retryable_on_400(self):
+        import urllib.error
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="m")
+        err = urllib.error.HTTPError(
+            url="",
+            code=400,
+            msg="Bad request",
+            hdrs=None,
+            fp=None,  # type: ignore[arg-type]
+        )
+        err.read = lambda: b"Bad request"
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", side_effect=err):
+            with pytest.raises(ProviderError) as exc_info:
+                p.generate_messages([{"role": "user", "content": "hi"}], model="m")
+        assert exc_info.value.retryable is False
+
+    def test_generate_messages_raises_provider_error_on_generic_exception(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="m")
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            with pytest.raises(ProviderError) as exc_info:
+                p.generate_messages([{"role": "user", "content": "hi"}], model="m")
+        assert exc_info.value.retryable is True
+
+    def test_stream_messages_yields_delta_and_done(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="m")
+        sse_lines = [
+            b'data: {"choices": [{"delta": {"content": "hello"}}]}\n',
+            b'data: {"choices": [{"delta": {"content": " world"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.__iter__ = lambda s: iter(sse_lines)
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", return_value=mock_resp):
+            events = list(p.stream_messages([{"role": "user", "content": "hi"}], model="m"))
+        delta_events = [e for e in events if e.type == "delta"]
+        done_events = [e for e in events if e.type == "done"]
+        assert len(delta_events) == 2
+        assert delta_events[0].content == "hello"
+        assert done_events[0].meta["finish_reason"] == "stop"
+
+    def test_stream_messages_skips_non_data_lines(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="m")
+        sse_lines = [b": comment\n", b"\n", b"event: message\n", b"data: [DONE]\n"]
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.__iter__ = lambda s: iter(sse_lines)
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", return_value=mock_resp):
+            events = list(p.stream_messages([{"role": "user", "content": "hi"}], model="m"))
+        assert sum(1 for e in events if e.type == "done") == 1
+
+    def test_stream_messages_raises_on_network_error(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="m")
+        with patch.object(p, "_validate_model"), patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            with pytest.raises(ProviderError):
+                list(p.stream_messages([{"role": "user", "content": "hi"}], model="m"))
+
+
+# ---------------------------------------------------------------------------
+# LlamaCpp: cache helpers, download, generate paths, health, capabilities
+# ---------------------------------------------------------------------------
+
+
+class TestLlamaCppFull:
+    def test_get_llm_cache_dir_uses_custom_dir(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import get_llm_cache_dir
+        from vector_inspector.services.settings_service import SettingsService
+
+        custom = str(tmp_path / "custom_cache")
+        with patch.object(SettingsService, "get", return_value=custom):
+            result = get_llm_cache_dir()
+        assert result == tmp_path / "custom_cache"
+        assert result.exists()
+
+    def test_list_cached_models_empty_when_dir_missing(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import list_cached_models
+
+        missing = tmp_path / "nonexistent"
+        with patch("vector_inspector.core.llm_providers.llama_cpp_provider.get_llm_cache_dir", return_value=missing):
+            assert list_cached_models() == []
+
+    def test_list_cached_models_returns_sorted_gguf_names(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import list_cached_models
+
+        (tmp_path / "model_b.gguf").write_bytes(b"")
+        (tmp_path / "model_a.gguf").write_bytes(b"")
+        (tmp_path / "other.txt").write_bytes(b"")
+        with patch("vector_inspector.core.llm_providers.llama_cpp_provider.get_llm_cache_dir", return_value=tmp_path):
+            result = list_cached_models()
+        assert result == ["model_a.gguf", "model_b.gguf"]
+
+    def test_download_default_model_returns_existing_if_cached(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import (
+            DEFAULT_MODEL_FILENAME,
+            download_default_model,
+        )
+
+        existing = tmp_path / DEFAULT_MODEL_FILENAME
+        existing.write_bytes(b"cached")
+        with patch("vector_inspector.core.llm_providers.llama_cpp_provider.get_llm_cache_dir", return_value=tmp_path):
+            result = download_default_model()
+        assert result == existing
+
+    def test_download_default_model_calls_urlretrieve_and_progress(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import (
+            DEFAULT_MODEL_FILENAME,
+            DEFAULT_MODEL_HF_URL,
+            download_default_model,
+        )
+
+        def _fake_retrieve(url, dest, callback):
+            Path(dest).write_bytes(b"fake-model")
+            if callback:
+                callback(1, 512, 1024)
+
+        progress_calls: list[tuple[int, int]] = []
+        with patch("vector_inspector.core.llm_providers.llama_cpp_provider.get_llm_cache_dir", return_value=tmp_path):
+            with patch("urllib.request.urlretrieve", side_effect=_fake_retrieve) as mock_retr:
+                result = download_default_model(progress_callback=lambda d, t: progress_calls.append((d, t)))
+        assert mock_retr.call_args[0][0] == DEFAULT_MODEL_HF_URL
+        assert result.name == DEFAULT_MODEL_FILENAME
+        assert len(progress_calls) > 0
+        assert progress_calls[0] == (512, 1024)
+
+    def test_generate_messages_stream_path_delegates(self):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
+
+        p = LlamaCppProvider()
+        sentinel = object()
+        with patch.object(p, "stream_messages", return_value=sentinel):
+            result = p.generate_messages([{"role": "user", "content": "hi"}], model="m", stream=True)
+        assert result is sentinel
+
+    def test_generate_messages_raises_when_model_load_fails(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
+
+        model_file = tmp_path / "model.gguf"
+        model_file.write_bytes(b"")
+        p = LlamaCppProvider(model_path=str(model_file))
+        mock_llama = MagicMock()
+        mock_llama.Llama.side_effect = RuntimeError("load failed")
+        with patch.dict("sys.modules", {"llama_cpp": mock_llama}):
+            with pytest.raises(RuntimeError, match="load failed"):
+                p.generate_messages([{"role": "user", "content": "hi"}], model="m")
+
+    def test_get_capabilities_returns_llama_cpp_caps(self):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
+
+        p = LlamaCppProvider()
+        caps = p.get_capabilities()
+        assert caps.provider_name == "llama-cpp"
+        assert "system" in caps.roles_supported
+        assert caps.supports_streaming is False
+
+    def test_get_health_ok_when_llama_available_and_model_found(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
+
+        model_file = tmp_path / "model.gguf"
+        model_file.write_bytes(b"")
+        p = LlamaCppProvider(model_path=str(model_file))
+        mock_llama = MagicMock()
+        with patch.dict("sys.modules", {"llama_cpp": mock_llama}):
+            h = p.get_health()
+        assert h.ok is True
+        assert h.provider == "llama-cpp"
+        assert "model.gguf" in h.models
+
+    def test_get_health_not_ok_when_model_not_found(self, tmp_path):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
+
+        p = LlamaCppProvider(model_path=str(tmp_path / "missing.gguf"))
+        mock_llama = MagicMock()
+        with patch.dict("sys.modules", {"llama_cpp": mock_llama}):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.remediation_hint is not None

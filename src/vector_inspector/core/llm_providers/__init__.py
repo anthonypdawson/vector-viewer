@@ -3,10 +3,15 @@
 Provides a pluggable interface for text generation backed by:
 - llama-cpp-python (in-process, zero-setup default)
 - Ollama (local server, used opportunistically when running)
-- OpenAI-compatible REST API (cloud or local proxy)
+- OpenAI-compatible REST API (cloud or local proxy; provider id ``openai-compatible``)
 - Fake provider (tests and CI: VI_LLM_PROVIDER=fake)
 
-Auto-detection order: user-configured → Ollama → llama-cpp.
+Auto-detection order (when provider is set to ``auto``):
+  user-configured → env vars → Ollama (reachability probe) → llama-cpp.
+  openai-compatible is NOT auto-detected; it must be configured explicitly.
+
+Preferred entrypoint: ``LLMRuntimeManager`` (wired via ``AppState.llm_provider``).
+``LLMProviderInstance`` is a simpler wrapper without env-var/health/request-id support.
 """
 
 from .base_provider import LLMModelInfo, LLMProvider

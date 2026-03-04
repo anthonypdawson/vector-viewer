@@ -1,8 +1,13 @@
 """Centralized application state with signal-based reactivity."""
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from PySide6.QtCore import QObject, Signal
+
+from vector_inspector.core.llm_providers import LLMProvider
+
+if TYPE_CHECKING:
+    from vector_inspector.core.llm_providers.runtime_manager import LLMRuntimeManager
 
 from vector_inspector.core.cache_manager import CacheManager
 from vector_inspector.core.connection_manager import ConnectionInstance
@@ -96,18 +101,39 @@ class AppState(QObject):
         self._is_loading: bool = False
         self._loading_message: str = ""
 
-        # LLM provider instance (lazy-initialised on first access)
-        self._llm_provider_instance = None
+        # LLM runtime manager (lazy-initialised on first access)
+        self._llm_runtime_manager: LLMRuntimeManager | None = None
+
+    # LLM runtime manager property
+    @property
+    def llm_runtime_manager(self) -> "LLMRuntimeManager":
+        """Return the active LLMRuntimeManager, creating it on first access.
+
+        The runtime manager handles provider selection precedence (app config →
+        env vars → auto-detect → fallback), health caching, and request_id
+        injection.
+
+        - Use ``app_state.llm_runtime_manager`` to access manager-level APIs
+          (for example, refreshing cached health or adjusting provider
+          selection behavior).
+        - Use ``app_state.llm_provider`` to obtain the ``LLMProvider``.
+          Call ``app_state.llm_provider.get_provider()`` only when you need the
+          underlying ``LLMProvider`` to perform low-level operations such as
+          ``generate_messages()``.
+
+        Prefer the runtime manager's high-level APIs over direct provider
+        internals unless you have a specific, well-justified need.
+        """
+        if self._llm_runtime_manager is None:
+            from vector_inspector.core.llm_providers import LLMRuntimeManager
+
+            self._llm_runtime_manager = LLMRuntimeManager(self.settings_service)
+        return self._llm_runtime_manager
 
     # LLM provider property
     @property
-    def llm_provider(self):
-        """Return the active LLMProviderInstance, creating it on first access."""
-        if self._llm_provider_instance is None:
-            from vector_inspector.core.llm_providers import LLMProviderInstance  # noqa: PLC0415
-
-            self._llm_provider_instance = LLMProviderInstance(self.settings_service)
-        return self._llm_provider_instance
+    def llm_provider(self) -> "LLMProvider":
+        return self.llm_runtime_manager.get_provider()
 
     # Provider property
     @property

@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from vector_inspector.core.logging import log_error, log_info
 
 from .base_provider import LLMProvider
 
-# Default model: Phi-3-mini-4k Q4_K_M — ~2.4 GB, good CPU quality/size balance.
-DEFAULT_MODEL_FILENAME = "Phi-3-mini-4k-instruct-Q4_K_M.gguf"
+if TYPE_CHECKING:
+    from .types import HealthResult, ModelMetadata, ProviderCapabilities, StreamEvent
+
+# Default model: Phi-3-mini-4k Q4_K_M — ~2.2 GB, recommended quality/size balance.
+# Filename per the official microsoft/Phi-3-mini-4k-instruct-gguf HuggingFace repo.
+DEFAULT_MODEL_FILENAME = "Phi-3-mini-4k-instruct-q4.gguf"
 DEFAULT_MODEL_HF_URL = (
-    "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-Q4_K_M.gguf"
+    "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
 )
 
 
@@ -158,8 +163,8 @@ class LlamaCppProvider(LLMProvider):
         messages: list[dict[str, str]],
         model: str,
         stream: bool = False,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> str | Generator[StreamEvent, None, None]:
         """Generate using llama-cpp-python's create_chat_completion (supports system messages)."""
         if stream:
             return self.stream_messages(messages, model, **kwargs)
@@ -187,12 +192,17 @@ class LlamaCppProvider(LLMProvider):
     # list_models / get_capabilities / get_health
     # ------------------------------------------------------------------
 
-    def list_models(self):
+    def list_models(self) -> list[ModelMetadata]:
+        """Return a single-item list with the currently configured local GGUF model.
+
+        llama-cpp operates on one model file at a time; the list reflects the
+        active or default model path rather than a scannable model directory.
+        """
         from .types import ModelMetadata
 
         return [ModelMetadata(model_name=self.get_model_name(), context_window=self._context_length)]
 
-    def get_capabilities(self):
+    def get_capabilities(self) -> ProviderCapabilities:
         from .types import CAPABILITIES_SCHEMA_VERSION, ProviderCapabilities
 
         return ProviderCapabilities(
@@ -202,11 +212,12 @@ class LlamaCppProvider(LLMProvider):
             supports_tools=False,
             concurrency="single-threaded",
             max_context_tokens=self._context_length,
-            roles_supported=["user", "assistant"],
+            # llama-cpp-python's create_chat_completion passes system messages through.
+            roles_supported=["system", "user", "assistant"],
             model_list=self.list_models(),
         )
 
-    def get_health(self):
+    def get_health(self) -> HealthResult:
         import datetime
 
         from .types import HealthResult

@@ -447,3 +447,107 @@ def test_set_get_use_accent_enabled(temp_home):
     svc = _fresh(temp_home)
     svc.set_use_accent_enabled(True)
     assert svc.get_use_accent_enabled() is True
+
+
+# ---------------------------------------------------------------------------
+# Item 13 — LLM provider settings getters / setters
+# ---------------------------------------------------------------------------
+
+
+def test_llm_provider_default_is_auto(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_provider() == "auto"
+
+
+def test_llm_provider_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_provider("ollama")
+    assert svc.get_llm_provider() == "ollama"
+
+
+def test_llm_model_path_default_empty(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_model_path() == ""
+
+
+def test_llm_model_path_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_model_path("/models/phi3.gguf")
+    assert svc.get_llm_model_path() == "/models/phi3.gguf"
+
+
+def test_llm_ollama_url_default(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_ollama_url() == "http://localhost:11434"
+
+
+def test_llm_ollama_url_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_ollama_url("http://192.168.1.10:11434")
+    assert svc.get_llm_ollama_url() == "http://192.168.1.10:11434"
+
+
+def test_llm_ollama_model_default(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_ollama_model() == "llama3.2"
+
+
+def test_llm_ollama_model_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_ollama_model("mistral")
+    assert svc.get_llm_ollama_model() == "mistral"
+
+
+def test_llm_openai_url_default_empty(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_openai_url() == ""
+
+
+def test_llm_openai_url_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_openai_url("https://api.openai.com/v1")
+    assert svc.get_llm_openai_url() == "https://api.openai.com/v1"
+
+
+def test_llm_openai_api_key_default_empty(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_openai_api_key() == ""
+
+
+def test_llm_openai_api_key_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_openai_api_key("sk-test-1234")
+    assert svc.get_llm_openai_api_key() == "sk-test-1234"
+
+
+def test_llm_openai_model_default_empty(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_openai_model() == ""
+
+
+def test_llm_openai_model_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_openai_model("gpt-4o-mini")
+    assert svc.get_llm_openai_model() == "gpt-4o-mini"
+
+
+def test_llm_context_length_default(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_context_length() == 4096
+
+
+def test_llm_context_length_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_context_length(8192)
+    assert svc.get_llm_context_length() == 8192
+
+
+def test_llm_temperature_default(temp_home):
+    svc = _fresh(temp_home)
+    assert svc.get_llm_temperature() == pytest.approx(0.1)
+
+
+def test_llm_temperature_roundtrip(temp_home):
+    svc = _fresh(temp_home)
+    svc.set_llm_temperature(0.7)
+    assert svc.get_llm_temperature() == pytest.approx(0.7)
