@@ -3,11 +3,13 @@
 This page explains how to install the `llama-cpp-python` bindings used by
 `LlamaCppProvider`. It covers common platforms and both CPU-only and GPU setups.
 
-This project exposes an extra which includes LLM dependencies:
+This project exposes an optional dependency group which includes LLM dependencies.
 
-    pdm add -d "vector-inspector[llm]"
+If you are working inside a local clone of this repository (developer):
 
-or (pip):
+    pdm install -G llm
+
+If you are installing from PyPI into another project:
 
     pip install "vector-inspector[llm]"
 

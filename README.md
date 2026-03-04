@@ -111,13 +111,13 @@ vector-inspector
 ### Optional LLM runtime (llama-cpp-python)
 llama-cpp-python is optional and only needed for the in-process LLM provider (`llama-cpp`).
 
-- Install via PDM extra (developer / recommended):
+- Install via PDM optional-dependency group (developer / recommended):
 
 ```bash
-pdm add -d "vector-inspector[llm]"
+pdm install -G llm
 ```
 
-- Platform-specific pip install (end users):
+- Platform-specific pip install (end users / PyPI):
 
 Windows (pre-built CPU wheel index):
 ```powershell
@@ -142,8 +142,8 @@ pip install llama-cpp-python --prefer-binary \
 
 Notes:
 - If you cannot build native wheels on Windows, use the Windows pre-built index above.
-- Use Settings → LLM → "Download default model" to fetch the default Phi-3-mini GGUF model into the local cache.
-- If you prefer not to install, configure Ollama (local server) or an OpenAI-compatible API in Settings → LLM.
+- **Vector Studio users** can use **Settings → LLM → "Download default model"** to automatically download the default Phi-3-mini GGUF model into the local cache. This button is disabled in the free Vector Inspector tier.
+- **Free-tier users** should download a GGUF model manually (or use the scripts above) and set the path in Settings → LLM, or configure Ollama (local server) or an OpenAI-compatible API instead.
 
 ---
 ## Table of Contents

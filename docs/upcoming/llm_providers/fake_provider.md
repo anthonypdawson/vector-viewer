@@ -27,6 +27,16 @@ This file describes a minimal fake provider implementation intended for tests, C
 - `error_rate: float` — probability [0.0-1.0] to inject transient errors.
 - `default_model: str` — reported model name from `models()`.
 
+## Selection via environment variable
+
+The fake provider can be selected like any real provider:
+
+```bash
+export VI_LLM_PROVIDER=fake
+```
+
+This registers the fake provider through the standard provider factory so the full runtime manager selection path is exercised in tests, including `selection_debug` output and `health()` probing.
+
 ## API surface
 
 Implement the same interface as real providers:
@@ -52,9 +62,16 @@ Streaming events:
 {type: 'done',  content: '',  meta: {'request_id':'r-1', 'finish_reason':'stop'}}
 ```
 
+## `request_id` behavior
+
+- **With `seed` set**: `request_id` values are deterministic, formatted as `f"r-{seed}-{n}"` where `n` is the 0-based request count for this provider instance. Tests using a fixed seed can assert on exact `request_id` values.
+- **Without `seed`**: `request_id` values are sequential (`f"r-{n}"`), incrementing per request. Not deterministic across provider instances.
+- The fake provider echoes the `request_id` in all streaming `meta` objects and in any emitted `ProviderError`, matching the contract for real providers.
+
 ## Use in tests
 
 - Unit tests should instantiate the fake provider with `seed` and assert deterministic outputs.
 - Integration tests can use `error_inject` to validate retry and fallback behaviors in the runtime manager.
+- Use `VI_LLM_PROVIDER=fake` in CI environment variables to exercise the full selection path without any real provider.
 
 Implementation note: add `tests/utils/fake_provider.py` implementing this spec in a follow-up PR.

@@ -10,10 +10,10 @@ This quick reference shows example environment variables and selection behavior 
 
 ## Environment variables (examples)
 
-- `VI_LLM_PROVIDER` — preferred provider id (e.g., `llama-cpp`, `ollama`, `openai`).
+- `VI_LLM_PROVIDER` — preferred provider id (e.g., `llama-cpp`, `ollama`, `openai-compatible`).
 - `VI_LLM_MODEL` — default model name to use when none is specified in calls.
 - `VI_OLLAMA_URL` — Ollama HTTP endpoint (e.g., `http://localhost:11434`).
-- `OPENAI_API_KEY` — API key for OpenAI-compatible providers (used by `openai` runtime).
+- `OPENAI_API_KEY` — API key for OpenAI-compatible providers (used by `openai-compatible` runtime).
 - `VI_LLM_DEBUG` — enable structured debug logging for selection and requests.
 
 ## Example setups
@@ -41,7 +41,7 @@ export VI_LLM_MODEL=vicuna-13b
 3) OpenAI-compatible (cloud)
 
 ```bash
-export VI_LLM_PROVIDER=openai
+export VI_LLM_PROVIDER=openai-compatible
 export OPENAI_API_KEY=sk-xxxx
 export VI_LLM_MODEL=gpt-4o-mini
 ```
@@ -53,8 +53,13 @@ When `VI_LLM_DEBUG=1`, the runtime manager logs a structured `selection_debug` l
 ```json
 {
   "selected_provider": "ollama",
-  "reason": {"source":"env","key":"VI_LLM_PROVIDER","value":"ollama","timestamp":"2026-03-03T12:00:00Z"},
-  "fallbacks": []
+  "selected_model": "llama3.2",
+  "reasons": [
+    {"source": "env", "key": "VI_LLM_PROVIDER", "value": "ollama", "timestamp": "2026-03-03T12:00:00+00:00", "precedence_rank": 2, "outcome": "selected"}
+  ],
+  "fallbacks_considered": [],
+  "api_key_present": false,
+  "api_key_value": "[REDACTED]"
 }
 ```
 
