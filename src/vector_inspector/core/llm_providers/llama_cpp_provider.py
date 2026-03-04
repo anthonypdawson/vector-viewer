@@ -12,8 +12,7 @@ from .base_provider import LLMProvider
 # Default model: Phi-3-mini-4k Q4_K_M — ~2.4 GB, good CPU quality/size balance.
 DEFAULT_MODEL_FILENAME = "Phi-3-mini-4k-instruct-Q4_K_M.gguf"
 DEFAULT_MODEL_HF_URL = (
-    "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf"
-    "/resolve/main/Phi-3-mini-4k-instruct-Q4_K_M.gguf"
+    "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-Q4_K_M.gguf"
 )
 
 
@@ -126,7 +125,7 @@ class LlamaCppProvider(LLMProvider):
                 "or set a model path in Settings → LLM."
             )
         try:
-            from llama_cpp import Llama  # noqa: PLC0415
+            from llama_cpp import Llama
 
             log_info("Loading llama-cpp model: %s", model_path)
             self._llm = Llama(
@@ -140,26 +139,12 @@ class LlamaCppProvider(LLMProvider):
             log_error("Failed to load llama-cpp model: %s", exc)
             raise
 
-    # ------------------------------------------------------------------
-    # LLMProvider interface
-    # ------------------------------------------------------------------
-
     def is_available(self) -> bool:
         try:
-            import llama_cpp  # noqa: F401, PLC0415
+            import llama_cpp  # noqa: F401
         except ImportError:
             return False
         return self._resolve_model_path() is not None
-
-    def generate(self, prompt: str, **opts) -> str:
-        self._load_model()
-        output = self._llm(
-            prompt,
-            temperature=opts.get("temperature", self._temperature),
-            max_tokens=opts.get("max_tokens", 512),
-            echo=False,
-        )
-        return output["choices"][0]["text"].strip()
 
     def get_model_name(self) -> str:
         p = self._resolve_model_path()
@@ -167,3 +152,101 @@ class LlamaCppProvider(LLMProvider):
 
     def get_provider_name(self) -> str:
         return "llama-cpp"
+
+    def generate_messages(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        stream: bool = False,
+        **kwargs,
+    ):
+        """Generate using llama-cpp-python's create_chat_completion (supports system messages)."""
+        if stream:
+            return self.stream_messages(messages, model, **kwargs)
+        self._load_model()
+        try:
+            output = self._llm.create_chat_completion(
+                messages=messages,
+                temperature=kwargs.get("temperature", self._temperature),
+                max_tokens=kwargs.get("max_tokens", 512),
+            )
+            return output["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            log_error("llama-cpp generate_messages failed: %s", exc)
+            from .errors import ProviderError
+
+            raise ProviderError(
+                str(exc),
+                provider_name="llama-cpp",
+                model_name=self.get_model_name(),
+                underlying_error=exc,
+                retryable=False,
+            ) from exc
+
+    # ------------------------------------------------------------------
+    # list_models / get_capabilities / get_health
+    # ------------------------------------------------------------------
+
+    def list_models(self):
+        from .types import ModelMetadata
+
+        return [ModelMetadata(model_name=self.get_model_name(), context_window=self._context_length)]
+
+    def get_capabilities(self):
+        from .types import CAPABILITIES_SCHEMA_VERSION, ProviderCapabilities
+
+        return ProviderCapabilities(
+            schema_version=CAPABILITIES_SCHEMA_VERSION,
+            provider_name="llama-cpp",
+            supports_streaming=False,
+            supports_tools=False,
+            concurrency="single-threaded",
+            max_context_tokens=self._context_length,
+            roles_supported=["user", "assistant"],
+            model_list=self.list_models(),
+        )
+
+    def get_health(self):
+        import datetime
+
+        from .types import HealthResult
+
+        now = datetime.datetime.now(datetime.UTC).isoformat()
+        try:
+            import llama_cpp  # noqa: F401
+        except ImportError:
+            return HealthResult(
+                ok=False,
+                provider="llama-cpp",
+                models=[],
+                version=None,
+                last_checked=now,
+                retryable=False,
+                remediation_hint=(
+                    "Install llama-cpp-python: "
+                    "pip install 'vector-inspector[llm]' "
+                    "(see docs/llm_providers/quickstart.md)"
+                )[:200],
+            )
+        model_path = self._resolve_model_path()
+        if model_path is None:
+            return HealthResult(
+                ok=False,
+                provider="llama-cpp",
+                models=[],
+                version=None,
+                last_checked=now,
+                retryable=False,
+                remediation_hint=(
+                    f"No model found in {get_llm_cache_dir()}. Download a GGUF model or set llm.model_path in Settings."
+                )[:200],
+            )
+        return HealthResult(
+            ok=True,
+            provider="llama-cpp",
+            models=[model_path.name],
+            version=None,
+            last_checked=now,
+            retryable=False,
+            remediation_hint=None,
+        )

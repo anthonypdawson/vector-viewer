@@ -10,11 +10,12 @@ from .base_provider import LLMProvider
 
 # Provider type constants
 AUTO = "auto"
+FAKE = "fake"
 LLAMA_CPP = "llama-cpp"
 OLLAMA = "ollama"
 OPENAI_COMPATIBLE = "openai-compatible"
 
-PROVIDER_TYPES: tuple[str, ...] = (AUTO, LLAMA_CPP, OLLAMA, OPENAI_COMPATIBLE)
+PROVIDER_TYPES: tuple[str, ...] = (AUTO, FAKE, LLAMA_CPP, OLLAMA, OPENAI_COMPATIBLE)
 
 
 class LLMProviderFactory:
@@ -39,6 +40,8 @@ class LLMProviderFactory:
             is completely unusable.
         """
         provider_type = settings.get("llm.provider", AUTO)
+        if provider_type == FAKE:
+            return cls._make_fake(settings)
         if provider_type == OLLAMA:
             return cls._make_ollama(settings)
         if provider_type == LLAMA_CPP:
@@ -77,8 +80,52 @@ class LLMProviderFactory:
     # ------------------------------------------------------------------
 
     @classmethod
+    def _make_fake(cls, settings) -> LLMProvider:
+        """Return a FakeLLMProvider for tests and CI (VI_LLM_PROVIDER=fake)."""
+
+        # The fake provider lives under tests/ to avoid shipping it with the
+        # production package.  When running tests it will be importable.
+        try:
+            from tests.utils.fake_llm_provider import FakeLLMProvider
+        except ImportError:
+            # Fallback: look for it on sys.path (editable installs, tox, etc.)
+            try:
+                from fake_llm_provider import FakeLLMProvider  # type: ignore[no-redef]
+            except ImportError as exc:
+                raise ImportError(
+                    "FakeLLMProvider not importable. Ensure tests/ is on sys.path when using VI_LLM_PROVIDER=fake."
+                ) from exc
+        return FakeLLMProvider(
+            seed=int(settings.get("llm.fake_seed", 0) or 0),
+            fragment_size=int(settings.get("llm.fake_fragment_size", 2) or 2),
+            latency_ms=int(settings.get("llm.fake_latency_ms", 0) or 0),
+            error_rate=float(settings.get("llm.fake_error_rate", 0.0) or 0.0),
+            default_model=settings.get("llm.fake_default_model", "fake-model") or "fake-model",
+        )
+
+    @classmethod
+    def _make_fake(cls, settings) -> LLMProvider:
+        """Return a FakeLLMProvider for tests and CI (VI_LLM_PROVIDER=fake)."""
+        try:
+            from tests.utils.fake_llm_provider import FakeLLMProvider
+        except ImportError:
+            try:
+                from fake_llm_provider import FakeLLMProvider  # type: ignore[no-redef]
+            except ImportError as exc:
+                raise ImportError(
+                    "FakeLLMProvider not importable. Ensure tests/ is on sys.path when using VI_LLM_PROVIDER=fake."
+                ) from exc
+        return FakeLLMProvider(
+            seed=int(settings.get("llm.fake_seed", 0) or 0),
+            fragment_size=int(settings.get("llm.fake_fragment_size", 2) or 2),
+            latency_ms=int(settings.get("llm.fake_latency_ms", 0) or 0),
+            error_rate=float(settings.get("llm.fake_error_rate", 0.0) or 0.0),
+            default_model=settings.get("llm.fake_default_model", "fake-model") or "fake-model",
+        )
+
+    @classmethod
     def _make_llama_cpp(cls, settings) -> LLMProvider:
-        from .llama_cpp_provider import LlamaCppProvider  # noqa: PLC0415
+        from .llama_cpp_provider import LlamaCppProvider
 
         return LlamaCppProvider(
             model_path=settings.get("llm.model_path") or None,
@@ -88,7 +135,7 @@ class LLMProviderFactory:
 
     @classmethod
     def _make_ollama(cls, settings) -> LLMProvider:
-        from .ollama_provider import OllamaProvider  # noqa: PLC0415
+        from .ollama_provider import OllamaProvider
 
         return OllamaProvider(
             base_url=settings.get("llm.ollama_url", "http://localhost:11434"),
@@ -99,7 +146,7 @@ class LLMProviderFactory:
 
     @classmethod
     def _make_openai_compatible(cls, settings) -> LLMProvider:
-        from .openai_compatible_provider import OpenAICompatibleProvider  # noqa: PLC0415
+        from .openai_compatible_provider import OpenAICompatibleProvider
 
         return OpenAICompatibleProvider(
             base_url=settings.get("llm.openai_url", ""),

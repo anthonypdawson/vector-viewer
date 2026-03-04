@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import urllib.request
-from typing import Optional
+from collections.abc import Generator
+from typing import Any
 
-from vector_inspector.core.logging import log_error, log_info
+from vector_inspector.core.logging import log_error
 
 from .base_provider import LLMProvider
+from .errors import ProviderError
+from .types import (
+    CAPABILITIES_SCHEMA_VERSION,
+    HealthResult,
+    ModelMetadata,
+    ProviderCapabilities,
+    StreamEvent,
+)
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
@@ -48,21 +58,36 @@ class OllamaProvider(LLMProvider):
         except Exception:
             return False
 
-    def generate(self, prompt: str, **opts) -> str:
+    def get_model_name(self) -> str:
+        return self._model
+
+    def get_provider_name(self) -> str:
+        return "ollama"
+
+    def generate_messages(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        stream: bool = False,
+        **kwargs: Any,
+    ) -> str | Generator[StreamEvent, None, None]:
+        """Generate using Ollama's native /api/chat endpoint (supports system messages)."""
+        self._validate_model(model)
+        if stream:
+            return self.stream_messages(messages, model, **kwargs)
         payload = json.dumps(
             {
-                "model": self._model,
-                "prompt": prompt,
+                "model": model,
+                "messages": messages,
                 "stream": False,
                 "options": {
-                    "temperature": opts.get("temperature", self._temperature),
+                    "temperature": kwargs.get("temperature", self._temperature),
                     "num_ctx": self._context_length,
                 },
             }
         ).encode()
-
         req = urllib.request.Request(
-            f"{self._base_url}/api/generate",
+            f"{self._base_url}/api/chat",
             data=payload,
             method="POST",
             headers={"Content-Type": "application/json"},
@@ -70,13 +95,149 @@ class OllamaProvider(LLMProvider):
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read())
-                return data.get("response", "").strip()
+                return data["message"]["content"].strip()
         except Exception as exc:
-            log_error("Ollama generate failed: %s", exc)
-            raise
+            log_error("Ollama chat failed: %s", exc)
+            raise ProviderError(
+                str(exc),
+                provider_name="ollama",
+                model_name=model,
+                underlying_error=exc,
+                retryable=True,
+            ) from exc
 
-    def get_model_name(self) -> str:
-        return self._model
+    def stream_messages(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        **kwargs: Any,
+    ) -> Generator[StreamEvent, None, None]:
+        """Stream Ollama /api/chat response as StreamEvents."""
+        self._validate_model(model)
+        request_id = kwargs.get("request_id", "r-0")
+        payload = json.dumps(
+            {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+                "options": {
+                    "temperature": kwargs.get("temperature", self._temperature),
+                    "num_ctx": self._context_length,
+                },
+            }
+        ).encode()
+        req = urllib.request.Request(
+            f"{self._base_url}/api/chat",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                index = 0
+                for line in resp:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = chunk.get("message", {}).get("content", "")
+                    if delta:
+                        yield StreamEvent(
+                            type="delta",
+                            content=delta,
+                            meta={"request_id": request_id, "index": index},
+                        )
+                        index += 1
+                    if chunk.get("done"):
+                        yield StreamEvent(
+                            type="done",
+                            content="",
+                            meta={"request_id": request_id, "finish_reason": "stop"},
+                        )
+                        return
+        except Exception as exc:
+            log_error("Ollama stream failed: %s", exc)
+            raise ProviderError(
+                str(exc),
+                provider_name="ollama",
+                model_name=model,
+                underlying_error=exc,
+                retryable=True,
+            ) from exc
 
-    def get_provider_name(self) -> str:
-        return "ollama"
+    def list_models(self) -> list[ModelMetadata]:
+        """Return models available on the Ollama server."""
+        try:
+            req = urllib.request.Request(
+                f"{self._base_url}/api/tags",
+                method="GET",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=_AVAILABILITY_TIMEOUT) as resp:
+                data = json.loads(resp.read())
+            return [
+                ModelMetadata(model_name=m["name"], context_window=self._context_length) for m in data.get("models", [])
+            ]
+        except Exception:
+            return [ModelMetadata(model_name=self._model, context_window=self._context_length)]
+
+    def get_capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            schema_version=CAPABILITIES_SCHEMA_VERSION,
+            provider_name="ollama",
+            supports_streaming=True,
+            supports_tools=False,
+            concurrency="multi",
+            max_context_tokens=self._context_length,
+            roles_supported=["system", "user", "assistant"],
+            model_list=self.list_models(),
+        )
+
+    def get_health(self) -> HealthResult:
+        now = datetime.datetime.now(datetime.UTC).isoformat()
+        try:
+            req = urllib.request.Request(
+                f"{self._base_url}/api/tags",
+                method="GET",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=_AVAILABILITY_TIMEOUT) as resp:
+                data = json.loads(resp.read())
+            models = [m["name"] for m in data.get("models", [])]
+            version = data.get("version")
+            return HealthResult(
+                ok=True,
+                provider="ollama",
+                models=models,
+                version=version,
+                last_checked=now,
+                retryable=False,
+                remediation_hint=None,
+            )
+        except Exception:
+            return HealthResult(
+                ok=False,
+                provider="ollama",
+                models=[],
+                version=None,
+                last_checked=now,
+                retryable=True,
+                remediation_hint=(
+                    f"Ollama server not reachable at {self._base_url}. "
+                    "Start Ollama with: ollama serve (see docs/llm_providers/quickstart.md)"
+                )[:200],
+            )
+
+    def _validate_model(self, model: str) -> None:
+        """Raise ProviderError if model is not available on this server."""
+        available = {m.model_name for m in self.list_models()}
+        if available and model not in available:
+            raise ProviderError(
+                f"Model {model!r} is not available on Ollama at {self._base_url}. Available: {sorted(available)}",
+                provider_name="ollama",
+                model_name=model,
+                retryable=False,
+            )

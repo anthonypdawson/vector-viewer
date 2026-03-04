@@ -13,7 +13,6 @@ from vector_inspector.core.llm_providers import (
     LLMProviderInstance,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -193,7 +192,7 @@ class TestLLMProviderInstance:
 class TestOllamaProvider:
     def test_is_available_returns_true_on_200(self):
         from unittest.mock import MagicMock
-        import urllib.request
+
         from vector_inspector.core.llm_providers.ollama_provider import OllamaProvider
 
         provider = OllamaProvider()
@@ -207,24 +206,28 @@ class TestOllamaProvider:
 
     def test_is_available_returns_false_on_connection_error(self):
         from vector_inspector.core.llm_providers.ollama_provider import OllamaProvider
-        import urllib.error
 
         provider = OllamaProvider()
         with patch("urllib.request.urlopen", side_effect=OSError("refused")):
             assert provider.is_available() is False
 
-    def test_generate_returns_response_text(self):
+    def test_generate_messages_returns_response_text(self):
         import json
+
         from vector_inspector.core.llm_providers.ollama_provider import OllamaProvider
 
         provider = OllamaProvider()
         mock_resp = MagicMock()
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_resp.read.return_value = json.dumps({"response": "  result text  "}).encode()
+        # /api/chat response shape
+        mock_resp.read.return_value = json.dumps({"message": {"content": "  result text  "}}).encode()
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            result = provider.generate("tell me a story")
+        with patch("urllib.request.urlopen", return_value=mock_resp), patch.object(provider, "_validate_model"):
+            result = provider.generate_messages(
+                [{"role": "user", "content": "tell me a story"}],
+                model="llama3.2",
+            )
 
         assert result == "result text"
 
@@ -248,25 +251,25 @@ class TestOpenAICompatibleProvider:
         provider = OpenAICompatibleProvider(base_url="", model="")
         assert provider.is_available() is False
 
-    def test_generate_parses_chat_completion(self):
+    def test_generate_messages_parses_chat_completion(self):
         import json
+
         from vector_inspector.core.llm_providers.openai_compatible_provider import (
             OpenAICompatibleProvider,
         )
 
-        provider = OpenAICompatibleProvider(
-            base_url="https://api.example.com/v1", model="gpt-test"
-        )
-        payload = {
-            "choices": [{"message": {"content": "  hello world  "}}]
-        }
+        provider = OpenAICompatibleProvider(base_url="https://api.example.com/v1", model="gpt-test")
+        payload = {"choices": [{"message": {"content": "  hello world  "}}]}
         mock_resp = MagicMock()
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_resp.read.return_value = json.dumps(payload).encode()
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            result = provider.generate("hi")
+        with patch("urllib.request.urlopen", return_value=mock_resp), patch.object(provider, "_validate_model"):
+            result = provider.generate_messages(
+                [{"role": "user", "content": "hi"}],
+                model="gpt-test",
+            )
 
         assert result == "hello world"
 
@@ -285,8 +288,9 @@ class TestOpenAICompatibleProvider:
 
 class TestLlamaCppProvider:
     def test_is_available_false_when_llama_cpp_not_installed(self):
-        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
         import sys
+
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
 
         provider = LlamaCppProvider()
         # Simulate llama_cpp not installed
