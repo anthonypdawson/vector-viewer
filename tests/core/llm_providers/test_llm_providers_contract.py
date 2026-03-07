@@ -1089,3 +1089,331 @@ class TestLlamaCppFull:
             h = p.get_health()
         assert h.ok is False
         assert h.remediation_hint is not None
+
+
+# ---------------------------------------------------------------------------
+# LlamaCpp: get_llm_cache_dir falls back to default ~/.vector-inspector/llm_cache
+# ---------------------------------------------------------------------------
+
+
+class TestLlamaCppCacheDirFallback:
+    def test_get_llm_cache_dir_falls_back_to_default(self, tmp_path, monkeypatch):
+        """When SettingsService has no llm.cache_dir set, use ~/.vector-inspector/llm_cache."""
+        from vector_inspector.core.llm_providers.llama_cpp_provider import get_llm_cache_dir
+        from vector_inspector.services.settings_service import SettingsService
+
+        # Patch home dir to a temp location so we don't pollute real home
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        with patch.object(SettingsService, "get", return_value=""):
+            result = get_llm_cache_dir()
+        assert result == tmp_path / ".vector-inspector" / "llm_cache"
+        assert result.exists()
+
+    def test_get_llm_cache_dir_settings_exception_falls_back(self, tmp_path, monkeypatch):
+        """When SettingsService raises, fall back to default path."""
+        from vector_inspector.core.llm_providers.llama_cpp_provider import get_llm_cache_dir
+        from vector_inspector.services.settings_service import SettingsService
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        with patch.object(SettingsService, "get", side_effect=RuntimeError("settings broken")):
+            result = get_llm_cache_dir()
+        assert result == tmp_path / ".vector-inspector" / "llm_cache"
+
+
+# ---------------------------------------------------------------------------
+# OllamaProvider.get_health() — success path (version extraction) + unavailable
+# ---------------------------------------------------------------------------
+
+
+class TestOllamaProviderHealth:
+    def test_get_health_ok_with_models_and_version(self):
+        import json
+
+        p = OllamaProvider()
+        payload = {
+            "models": [{"name": "llama3.2"}, {"name": "mistral"}],
+            "version": "0.5.1",
+        }
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.read.return_value = json.dumps(payload).encode()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            h = p.get_health()
+        assert h.ok is True
+        assert h.provider == "ollama"
+        assert "llama3.2" in h.models
+        assert "mistral" in h.models
+        assert h.version == "0.5.1"
+        assert h.retryable is False
+        assert h.remediation_hint is None
+
+    def test_get_health_not_ok_when_unreachable(self):
+        p = OllamaProvider()
+        with patch("urllib.request.urlopen", side_effect=OSError("connection refused")):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is True
+        assert h.remediation_hint is not None
+        assert len(h.remediation_hint) <= 200
+
+    def test_get_health_includes_url_in_hint_when_unreachable(self):
+        p = OllamaProvider(base_url="http://myserver:11434")
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            h = p.get_health()
+        assert "myserver" in h.remediation_hint
+
+
+# ---------------------------------------------------------------------------
+# OllamaProvider.list_models() — server response and fallback
+# ---------------------------------------------------------------------------
+
+
+class TestOllamaListModels:
+    def test_list_models_returns_from_server(self):
+        import json
+
+        p = OllamaProvider(model="llama3.2")
+        payload = {"models": [{"name": "llama3.2"}, {"name": "phi3"}]}
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.read.return_value = json.dumps(payload).encode()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            models = p.list_models()
+        names = [m.model_name for m in models]
+        assert "llama3.2" in names
+        assert "phi3" in names
+
+    def test_list_models_falls_back_to_default_on_error(self):
+        p = OllamaProvider(model="llama3.2")
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == "llama3.2"
+
+
+# ---------------------------------------------------------------------------
+# OpenAICompatibleProvider.get_health() — 401, success, network error
+# ---------------------------------------------------------------------------
+
+
+class TestOpenAIHealthFull:
+    def test_get_health_ok_returns_model_list(self):
+        import json
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4")
+        payload = {"data": [{"id": "gpt-4"}, {"id": "gpt-3.5-turbo"}]}
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.read.return_value = json.dumps(payload).encode()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            h = p.get_health()
+        assert h.ok is True
+        assert "gpt-4" in h.models
+        assert h.retryable is False
+
+    def test_get_health_401_includes_api_key_hint(self):
+        import urllib.error
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4", api_key="bad-key")
+        err = urllib.error.HTTPError(url="", code=401, msg="Unauthorized", hdrs=None, fp=None)  # type: ignore[arg-type]
+        err.read = lambda: b"Unauthorized"
+        with patch("urllib.request.urlopen", side_effect=err):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is False
+        assert h.remediation_hint is not None
+        assert "API key" in h.remediation_hint
+
+    def test_get_health_retryable_on_429(self):
+        import urllib.error
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4")
+        err = urllib.error.HTTPError(url="", code=429, msg="Rate limit", hdrs=None, fp=None)  # type: ignore[arg-type]
+        err.read = lambda: b"Rate limited"
+        with patch("urllib.request.urlopen", side_effect=err):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is True
+
+    def test_get_health_network_error_includes_url_hint(self):
+        p = OpenAICompatibleProvider(base_url="http://myapi:1234", model="gpt-4")
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is True
+        assert "myapi" in h.remediation_hint
+
+    def test_get_health_not_ok_when_no_url(self):
+        p = OpenAICompatibleProvider(base_url="", model="")
+        h = p.get_health()
+        assert h.ok is False
+        assert h.retryable is False
+        assert "llm.openai_url" in h.remediation_hint
+
+
+# ---------------------------------------------------------------------------
+# OpenAICompatibleProvider.list_models() and _headers()
+# ---------------------------------------------------------------------------
+
+
+class TestOpenAIListModelsAndHeaders:
+    def test_list_models_returns_from_server(self):
+        import json
+
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="gpt-4")
+        payload = {"data": [{"id": "gpt-4"}, {"id": "gpt-4o"}]}
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.read.return_value = json.dumps(payload).encode()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            models = p.list_models()
+        assert [m.model_name for m in models] == ["gpt-4", "gpt-4o"]
+
+    def test_list_models_fallback_on_error(self):
+        p = OpenAICompatibleProvider(base_url="http://localhost:1234", model="my-model")
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == "my-model"
+
+    def test_list_models_no_base_url_returns_default(self):
+        p = OpenAICompatibleProvider(base_url="", model="default-model")
+        models = p.list_models()
+        assert len(models) == 1
+        assert models[0].model_name == "default-model"
+
+    def test_headers_include_bearer_when_api_key_set(self):
+        p = OpenAICompatibleProvider(base_url="http://host", model="m", api_key="sk-abc")
+        headers = p._headers()
+        assert headers.get("Authorization") == "Bearer sk-abc"
+
+    def test_headers_no_auth_when_no_api_key(self):
+        p = OpenAICompatibleProvider(base_url="http://host", model="m", api_key="")
+        headers = p._headers()
+        assert "Authorization" not in headers
+
+
+# ---------------------------------------------------------------------------
+# LLMRuntimeManager: health TTL expiry + _EffectiveSettings
+# ---------------------------------------------------------------------------
+
+
+class TestRuntimeManagerHealthExpiry:
+    def test_probe_always_calls_live_even_with_fresh_cache(self):
+        """probe() bypasses cache unconditionally."""
+        import time
+
+        from tests.utils.fake_llm_provider import FakeLLMProvider as FLP
+
+        mgr = LLMRuntimeManager(settings=None, health_ttl=600)
+        mgr._provider = FLP()
+        first = mgr.probe()
+
+        # Replace with a different health state and probe again
+        mgr._provider = FLP(mode="error_inject", error_rate=1.0)
+        second = mgr.probe()
+
+        assert first.ok is True
+        assert second.ok is False
+
+    def test_health_calls_probe_when_cache_expired(self, monkeypatch):
+        """After TTL seconds, health() re-probes instead of serving cached result."""
+        import time
+
+        from tests.utils.fake_llm_provider import FakeLLMProvider as FLP
+
+        mgr = LLMRuntimeManager(settings=None, health_ttl=1)
+        mgr._provider = FLP()
+        first = mgr.probe()
+        assert first.ok is True
+
+        # Fast-forward monotonic clock by 2s past TTL
+        _original = time.monotonic
+        monkeypatch.setattr(time, "monotonic", lambda: _original() + 2)
+
+        mgr._provider = FLP(mode="error_inject", error_rate=1.0)
+        after_expiry = mgr.health()
+
+        assert after_expiry.ok is False
+
+
+class TestEffectiveSettings:
+    def _make(self, store: dict, provider_id: str, model: str | None = None):
+        from vector_inspector.core.llm_providers.runtime_manager import _EffectiveSettings
+
+        class _Store:
+            def get(self, key, default=None):
+                return store.get(key, default)
+
+        return _EffectiveSettings(_Store(), provider_id, model)
+
+    def test_provider_key_always_returns_selected_provider(self):
+        eff = self._make({"llm.provider": "auto"}, provider_id="ollama")
+        assert eff.get("llm.provider") == "ollama"
+
+    def test_model_override_for_ollama_model_key(self):
+        eff = self._make({}, provider_id="ollama", model="mistral")
+        assert eff.get("llm.ollama_model") == "mistral"
+
+    def test_model_override_for_openai_model_key(self):
+        eff = self._make({}, provider_id="openai-compatible", model="gpt-4o")
+        assert eff.get("llm.openai_model") == "gpt-4o"
+
+    def test_no_model_override_falls_back_to_settings(self):
+        eff = self._make({"llm.ollama_model": "phi3"}, provider_id="ollama", model=None)
+        assert eff.get("llm.ollama_model") == "phi3"
+
+    def test_non_model_key_delegates_to_settings(self):
+        eff = self._make({"llm.ollama_url": "http://custom:11434"}, provider_id="ollama")
+        assert eff.get("llm.ollama_url") == "http://custom:11434"
+
+    def test_non_model_key_returns_default_when_not_set(self):
+        eff = self._make({}, provider_id="ollama")
+        assert eff.get("llm.ollama_url", "http://localhost:11434") == "http://localhost:11434"
+
+    def test_none_settings_returns_default(self):
+        from vector_inspector.core.llm_providers.runtime_manager import _EffectiveSettings
+
+        eff = _EffectiveSettings(None, "ollama", None)
+        assert eff.get("llm.anything", "fallback") == "fallback"
+
+
+# ---------------------------------------------------------------------------
+# LLMProviderFactory: _make_fake ImportError branches + unknown type fallback
+# ---------------------------------------------------------------------------
+
+
+class TestProviderFactoryEdgeCases:
+    def test_make_fake_raises_clear_error_when_not_importable(self):
+        """_make_fake() must raise ImportError with a helpful message when
+        tests.utils.fake_llm_provider is absent."""
+        s = _make_settings(**{"llm.provider": FAKE})
+        # Simulate both import paths failing
+        with patch.dict(
+            "sys.modules",
+            {
+                "tests.utils.fake_llm_provider": None,
+                "fake_llm_provider": None,
+            },
+        ):
+            with pytest.raises(ImportError, match="FakeLLMProvider not importable"):
+                LLMProviderFactory.create_from_settings(s)
+
+    def test_unknown_provider_type_is_tolerated(self):
+        """Unknown type must not raise — falls back to auto-detect silently."""
+        s = _make_settings(**{"llm.provider": "definitely-unknown-backend"})
+        # auto-detect may invoke Ollama & llama-cpp but must not raise
+        provider = LLMProviderFactory.create_from_settings(s)
+        assert provider is not None
+
+    def test_auto_detect_returns_llama_cpp_when_ollama_unavailable(self):
+        from vector_inspector.core.llm_providers.llama_cpp_provider import LlamaCppProvider
+
+        s = _make_settings(**{"llm.provider": "auto"})
+        with patch.object(OllamaProvider, "is_available", return_value=False):
+            provider = LLMProviderFactory.create_from_settings(s)
+        assert isinstance(provider, LlamaCppProvider)
