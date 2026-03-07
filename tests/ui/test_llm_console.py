@@ -9,10 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from tests.utils.fake_llm_provider import FakeLLMProvider
-
 
 # ---------------------------------------------------------------------------
 # Helpers

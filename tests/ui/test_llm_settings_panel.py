@@ -151,8 +151,13 @@ class TestLLMSettingsPanelStructure:
         container, fake_settings = _build_panel(qtbot)
         key_field = container.findChild(QLineEdit, "llm_openai_key")
         long_key = "sk-" + "x" * 200
-        key_field.setText(long_key)
-        key_field.editingFinished.emit()
+        # Prevent the panel from starting a real _ModelListThread during this
+        # unit test (editingFinished triggers a model refresh). Patch the
+        # thread class so `start()` is a no-op to avoid stray QThreads.
+        with patch("vector_inspector.extensions.llm_settings_panel._ModelListThread") as MockThread:
+            MockThread.return_value.start = MagicMock()
+            key_field.setText(long_key)
+            key_field.editingFinished.emit()
         assert fake_settings._store.get("llm.openai_api_key") == long_key
 
 

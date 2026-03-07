@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.core.llm_providers.conftest import _make_settings
 from vector_inspector.core.llm_providers import (
     AUTO,
     LLAMA_CPP,
@@ -12,34 +13,6 @@ from vector_inspector.core.llm_providers import (
     LLMProviderFactory,
     LLMProviderInstance,
 )
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_settings(**overrides):
-    """Return a simple dict-backed settings stub."""
-    defaults = {
-        "llm.provider": AUTO,
-        "llm.model_path": "",
-        "llm.cache_dir": "",
-        "llm.ollama_url": "http://localhost:11434",
-        "llm.ollama_model": "llama3.2",
-        "llm.openai_url": "https://api.openai.com/v1",
-        "llm.openai_api_key": "sk-test",
-        "llm.openai_model": "gpt-4o-mini",
-        "llm.context_length": 4096,
-        "llm.temperature": 0.1,
-    }
-    defaults.update(overrides)
-
-    class _FakeSettings:
-        def get(self, key, default=None):
-            return defaults.get(key, default)
-
-    return _FakeSettings()
-
 
 # ---------------------------------------------------------------------------
 # LLMProviderFactory
