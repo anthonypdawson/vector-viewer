@@ -1,5 +1,14 @@
 """LLM provider configuration panel for the Settings dialog.
 
+NOTE (temporary): The full LLM configuration UI is included in Vector
+Inspector to make local verification and developer testing
+straightforward. The intended long-term design is for Vector Studio to
+inject the full configuration panel via the `settings_panel_hook` while
+Vector Inspector (free tier) exposes only a small status group and a
+disabled "Configure LLM…" stub. This file is therefore a temporary placement
+for the UI and will be migrated into the Vector Studio extension in a
+follow-up change.
+
 This panel is registered automatically via ``settings_panel_hook`` when
 ``vector_inspector.extensions`` is imported.  It renders the provider
 selector, connection fields, and a live health-check button inline — no

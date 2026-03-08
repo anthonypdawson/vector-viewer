@@ -13,6 +13,8 @@
 - Add LLM provider settings keys to `SettingsService` (`llm.provider`, `llm.model_path`, `llm.cache_dir`, `llm.ollama_url`, `llm.ollama_model`, `llm.openai_url`, `llm.openai_api_key`, `llm.openai_model`, `llm.context_length`, `llm.temperature`) with typed getters/setters.
 - Add **LLM Provider** status group to the Settings dialog (free tier): shows configured provider, live availability check button, and a disabled "Configure LLM…" stub that Vector Studio enables.
 - Vector Studio: add full **LLM Configuration** settings panel (provider dropdown, model browser, download button, Ollama/OpenAI-compatible fields, context length, temperature) injected via `settings_panel_hook`.
+  
+	Note: For ease of local verification and testing, this PR temporarily includes the full LLM configuration panel directly in Vector Inspector (see `src/vector_inspector/extensions/llm_settings_panel.py`). The long-term plan is for Vector Studio to inject the full configuration UI via `settings_panel_hook` while the free tier in Vector Inspector exposes only the small status group and a disabled "Configure LLM…" stub. This placement is intentional for developer testing and will be migrated to the Vector Studio extension in a follow-up change.
 
 ### Testing
 - Add 22 unit tests in `tests/core/llm_providers/` covering factory provider selection, auto-detection order and fallback, provider availability mocking, `generate()` response parsing, and `LLMProviderInstance` refresh behaviour.
