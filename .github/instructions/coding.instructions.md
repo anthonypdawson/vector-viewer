@@ -82,10 +82,10 @@ Follow these layer-specific rules so errors surface cleanly without leaking impl
 - **UI layer** — connect the worker's `error` signal to a handler that shows `QMessageBox.critical()` or updates a status label. Handle only specific, expected exceptions; do not catch exceptions broadly (avoid `except Exception:`). Log events with the project's logging utility (include `exc_info=True` for unexpected errors) and send telemetry only after redacting PII. The user-facing message should be clear and actionable without technical jargon or stack traces. For unexpected exceptions, log full details with a correlation id and show a generic error message to the user.
 
 - **User-facing error messaging rule (UI policy)** — When surfacing errors to users from the UI:
-    - Show a short, user-friendly message in the visible UI (e.g., `"Error"`, `"Unavailable"`, or `"Connection failed"`).
+    - Show a short, descriptive, and user-friendly message in the visible UI (for example: "Connection failed — hover for details" or "Could not reach model server — check console"). Keep the visible text concise while still conveying actionable guidance.
     - If the UI does not present a modal dialog with the full diagnostic, make the detailed message available via a widget tooltip (e.g., `QLabel.setToolTip(...)`) so users can view the full diagnostic on hover.
     - Always send the full error/exception details to the application logs (use `vector_inspector.core.logging.log_error`) including stack/exception info where appropriate (`exc_info=True`) so developers can troubleshoot. Redact any PII before logging.
-    - Prefer concise visible messages to avoid resizing or confusing UI, and place only non-sensitive, actionable guidance in the visible message.
+    - Prefer concise visible messages to avoid resizing or confusing UI, and place only non-sensitive, actionable guidance in the visible message. The visible message should, where appropriate, explicitly guide users to the tooltip or console for full details.
 
     Example pattern:
 
@@ -93,13 +93,13 @@ Follow these layer-specific rules so errors surface cleanly without leaking impl
 from vector_inspector.core.logging import log_error
 
 def _on_error(self, full_message: str, visible: str | None = None) -> None:
-        # visible: short text shown to user; full_message: detailed diagnostic
-        short = visible or "Error"
+        # visible: short descriptive guidance shown to user; full_message: detailed diagnostic
+        short = visible or "Operation failed — hover for details"
         self.status_label.setText(short)
         self.status_label.setToolTip(full_message)
         # Log full details for developers (include exception info when available)
         log_error("Operation failed: %s", full_message)
-        # Also show a modal only for errors that require immediate acknowledgement
+        # Use a modal only when immediate acknowledgement is required
         # QMessageBox.critical(self, "Error", short)
 ```
 - **Extension hooks** — wrap handler calls in `try/except` and log failures; do not let a plugin crash the main app.

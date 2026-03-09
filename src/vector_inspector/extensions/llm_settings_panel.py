@@ -382,7 +382,7 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
             # so long diagnostic messages are visible on hover without forcing
             # the dialog to expand.
             if result is None:
-                html = "<font color='red'>No provider configured</font>"
+                html = "<font color='red'>No provider configured — hover for details</font>"
                 tooltip = "No provider configured"
                 log_info("LLM health check: no provider configured")
             elif result.ok:
@@ -399,7 +399,7 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
                 # Keep the visible label concise; place full diagnostic text
                 # in the tooltip and log the full details to the console.
                 hint = f" — {result.remediation_hint}" if result.remediation_hint else ""
-                html = "<font color='red'>Unavailable</font>"
+                html = "<font color='red'>Unavailable — hover for details</font>"
                 tooltip = f"Unavailable{hint}"
                 if result.remediation_hint:
                     log_error("LLM health check failed for %s: %s", result.provider, result.remediation_hint)
