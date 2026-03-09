@@ -68,6 +68,7 @@ class LLMProviderFactory:
     @classmethod
     def _auto_detect(cls, settings) -> Optional[LLMProvider]:
         """Try Ollama first, then fall back to llama-cpp."""
+        # Create candidate providers.
         ollama = cls._make_ollama(settings)
         if ollama.is_available():
             log_info(

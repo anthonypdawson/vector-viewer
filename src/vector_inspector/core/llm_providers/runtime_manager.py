@@ -22,7 +22,7 @@ import time
 import uuid
 from typing import Any
 
-from vector_inspector.core.logging import log_info
+from vector_inspector.core.logging import log_error, log_info
 
 from .base_provider import LLMProvider
 from .types import HealthResult
@@ -65,8 +65,87 @@ class LLMRuntimeManager:
     def get_provider(self) -> LLMProvider:
         """Return the active provider, selecting it on first call."""
         if self._provider is None:
-            self._provider = self._select_provider()
+            self._provider = self._select_provider_safe()
         return self._provider
+
+    def _will_autodetect(self) -> bool:
+        """Return True if provider selection will trigger a blocking network probe.
+
+        Auto-detection only probes when no explicit provider has been configured
+        via app settings or the ``VI_LLM_PROVIDER`` environment variable.
+        """
+        from .provider_factory import AUTO
+
+        cfg_provider = self._settings.get("llm.provider", None) if self._settings else None
+        env_provider = os.environ.get("VI_LLM_PROVIDER")
+        return not (cfg_provider and cfg_provider != AUTO) and not env_provider
+
+    def _select_provider_safe(self) -> LLMProvider:
+        """Select the provider, showing a loading dialog when called on the UI thread.
+
+        When a network probe is needed (auto-detect mode) and the call originates
+        on the Qt main thread, the probe is offloaded to a background ``QThread``
+        and a non-cancellable ``QProgressDialog`` keeps the UI responsive while
+        waiting.  In all other contexts (background threads, tests, CLI) the
+        standard blocking path is used.
+        """
+        try:
+            import threading
+
+            from PySide6.QtWidgets import QApplication
+
+            on_ui_thread = QApplication.instance() is not None and threading.current_thread() is threading.main_thread()
+        except Exception:
+            on_ui_thread = False
+
+        if not on_ui_thread or not self._will_autodetect():
+            return self._select_provider()
+
+        return self._select_provider_with_dialog()
+
+    def _select_provider_with_dialog(self) -> LLMProvider:
+        """Run ``_select_provider()`` in a background thread with a progress dialog."""
+        from PySide6.QtCore import QEventLoop, QThread, Signal
+        from PySide6.QtWidgets import QApplication, QProgressDialog
+
+        result: list[LLMProvider | None] = [None]
+        manager = self
+
+        class _SelectThread(QThread):
+            done = Signal(object)
+
+            def run(self) -> None:
+                try:
+                    self.done.emit(manager._select_provider())
+                except Exception as exc:
+                    log_error("LLM provider selection failed: %s", exc)
+                    from .provider_factory import LLMProviderFactory
+
+                    self.done.emit(LLMProviderFactory._make_ollama(manager._settings))
+
+        loop = QEventLoop()
+        dialog = QProgressDialog("Detecting LLM provider…", "", 0, 0, QApplication.activeWindow())
+        dialog.setWindowTitle("LLM Provider")
+        dialog.setMinimumDuration(200)  # only show if the probe takes > 200 ms
+        dialog.setModal(True)
+
+        thread = _SelectThread()
+
+        def _on_done(provider: LLMProvider) -> None:
+            result[0] = provider
+            dialog.close()
+            loop.quit()
+
+        thread.done.connect(_on_done)
+        thread.start()
+        loop.exec()
+        thread.wait()
+
+        if result[0] is None:  # safety net — should not happen
+            from .provider_factory import LLMProviderFactory
+
+            return LLMProviderFactory._make_ollama(self._settings)
+        return result[0]
 
     def refresh(self) -> None:
         """Re-select the provider from current settings and env vars."""
