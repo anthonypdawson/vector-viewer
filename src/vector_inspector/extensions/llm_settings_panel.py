@@ -24,9 +24,10 @@ tier; Vector Studio enables and wires them.
 
 from __future__ import annotations
 
+import html
 from datetime import UTC
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -69,10 +70,22 @@ class _HealthCheckThread(QThread):
                 return
             self.health_ready.emit(provider.get_health())
         except Exception as exc:
+            import uuid
             from datetime import datetime
 
             from vector_inspector.core.llm_providers.types import HealthResult
 
+            # Log full exception with traceback for developers (redact externally as needed)
+            try:
+                log_error("LLM health check failed (id=%s): %s", uuid.uuid4().hex[:8], exc, exc_info=True)
+            except Exception:
+                # Best-effort logging; don't raise from the health thread
+                pass
+
+            # Emit a short, sanitized remediation hint (<=200 chars) with a correlation id
+            cid = uuid.uuid4().hex[:8]
+            hint = f"Health check failed (id: {cid}) — see application logs for details"
+            hint = hint[:200]
             self.health_ready.emit(
                 HealthResult(
                     ok=False,
@@ -81,7 +94,7 @@ class _HealthCheckThread(QThread):
                     version=None,
                     last_checked=datetime.now(UTC).isoformat(),
                     retryable=False,
-                    remediation_hint=str(exc),
+                    remediation_hint=hint,
                 )
             )
 
@@ -253,6 +266,8 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
     status_label = QLabel("Not checked")
     status_label.setWordWrap(False)
     status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+    # Use plain-text rendering to avoid interpreting user/remote content as HTML.
+    status_label.setTextFormat(Qt.TextFormat.PlainText)
     # Increase max width so messages have more room, but still cap it to avoid
     # unbounded window growth. This is ~double the previous value.
     status_label.setMaximumWidth(1600)
@@ -378,34 +393,33 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
         thread = _HealthCheckThread(settings_service, parent=group)
 
         def _on_health(result) -> None:
-            # Build both an HTML-formatted visible label and a plain-text tooltip
-            # so long diagnostic messages are visible on hover without forcing
-            # the dialog to expand.
+            # Build a concise, plain-text visible label and put full
+            # diagnostics in the tooltip (HTML-escaped to avoid markup
+            # interpretation). Color is applied via stylesheet.
             if result is None:
-                html = "<font color='red'>No provider configured — hover for details</font>"
+                short = "No provider configured — hover for details"
                 tooltip = "No provider configured"
+                status_label.setStyleSheet("color: #d9534f")
                 log_info("LLM health check: no provider configured")
             elif result.ok:
-                # Visible label should be concise — show provider, version,
-                # and a count of available models. The full model list is
-                # available in the tooltip.
                 models_full = ", ".join(result.models) if result.models else "—"
                 model_count = len(result.models) if result.models else 0
                 version_str = f" v{result.version}" if result.version else ""
                 models_text = f"{model_count} model{'s' if model_count != 1 else ''}" if model_count else "—"
-                html = f"<font color='green'>OK — {result.provider}{version_str} ({models_text})</font>"
+                short = f"OK — {result.provider}{version_str} ({models_text})"
                 tooltip = f"OK — {result.provider}{version_str} ({models_full})"
+                status_label.setStyleSheet("color: #28a745")
             else:
-                # Keep the visible label concise; place full diagnostic text
-                # in the tooltip and log the full details to the console.
                 hint = f" — {result.remediation_hint}" if result.remediation_hint else ""
-                html = "<font color='red'>Unavailable — hover for details</font>"
+                short = "Unavailable — hover for details"
                 tooltip = f"Unavailable{hint}"
+                status_label.setStyleSheet("color: #d9534f")
                 if result.remediation_hint:
                     log_error("LLM health check failed for %s: %s", result.provider, result.remediation_hint)
 
-            status_label.setText(html)
-            status_label.setToolTip(tooltip)
+            # Escape the tooltip to prevent HTML injection and set plain text
+            status_label.setText(short)
+            status_label.setToolTip(html.escape(tooltip))
             test_btn.setEnabled(True)
             if thread in _thread_holder:
                 _thread_holder.remove(thread)
