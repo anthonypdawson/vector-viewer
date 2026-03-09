@@ -74,4 +74,4 @@ Streaming events:
 - Integration tests can use `error_inject` to validate retry and fallback behaviors in the runtime manager.
 - Use `VI_LLM_PROVIDER=fake` in CI environment variables to exercise the full selection path without any real provider.
 
-Implementation note: add `tests/utils/fake_provider.py` implementing this spec in a follow-up PR.
+Implementation note: this spec is implemented by `tests/utils/fake_llm_provider.py`.
