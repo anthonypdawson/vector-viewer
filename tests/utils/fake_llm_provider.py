@@ -89,8 +89,13 @@ class FakeLLMProvider(LLMProvider):
     # Error injection helper
     # ------------------------------------------------------------------
 
-    def _maybe_inject_error(self, model: str, request_id: str) -> None:
-        """Raise ProviderError at the configured error_rate probability."""
+    def _maybe_inject_error(self, model: str, _request_id: str) -> None:
+        """Raise ProviderError at the configured error_rate probability.
+
+        The ``_request_id`` parameter is accepted for API compatibility but
+        intentionally unused by the fake provider. It's prefixed with an
+        underscore to indicate the unused intent and to satisfy linters.
+        """
         if self._error_rate > 0 and self._rng.random() < self._error_rate:
             raise ProviderError(
                 "Injected error from FakeLLMProvider",
