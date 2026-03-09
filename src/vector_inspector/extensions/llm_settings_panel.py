@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QVBoxLayout,
@@ -249,6 +250,14 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
 
     # --- Test Connection row ---
     status_label = QLabel("Not checked")
+    # Allow long status/error text to wrap instead of widening the dialog.
+    status_label.setWordWrap(False)
+    status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+    # Increase max width so messages have more room, but still cap it to avoid
+    # unbounded window growth. This is ~double the previous value.
+    status_label.setMaximumWidth(1600)
+    # Ensure the full status/error text is available on hover.
+    status_label.setToolTip("Not checked")
     status_label.setObjectName("llm_status_label")
     test_btn = QPushButton("Test Connection")
     test_btn.setObjectName("llm_check_btn")
@@ -369,15 +378,29 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
         thread = _HealthCheckThread(settings_service, parent=group)
 
         def _on_health(result) -> None:
+            # Build both an HTML-formatted visible label and a plain-text tooltip
+            # so long diagnostic messages are visible on hover without forcing
+            # the dialog to expand.
             if result is None:
-                status_label.setText("<font color='red'>No provider configured</font>")
+                html = "<font color='red'>No provider configured</font>"
+                tooltip = "No provider configured"
             elif result.ok:
-                models_str = ", ".join(result.models[:3]) if result.models else "—"
+                # Visible label should be concise — show provider, version,
+                # and a count of available models. The full model list is
+                # available in the tooltip.
+                models_full = ", ".join(result.models) if result.models else "—"
+                model_count = len(result.models) if result.models else 0
                 version_str = f" v{result.version}" if result.version else ""
-                status_label.setText(f"<font color='green'>OK — {result.provider}{version_str} ({models_str})</font>")
+                models_text = f"{model_count} model{'s' if model_count != 1 else ''}" if model_count else "—"
+                html = f"<font color='green'>OK — {result.provider}{version_str} ({models_text})</font>"
+                tooltip = f"OK — {result.provider}{version_str} ({models_full})"
             else:
                 hint = f" — {result.remediation_hint}" if result.remediation_hint else ""
-                status_label.setText(f"<font color='red'>Unavailable{hint}</font>")
+                html = f"<font color='red'>Unavailable{hint}</font>"
+                tooltip = f"Unavailable{hint}"
+
+            status_label.setText(html)
+            status_label.setToolTip(tooltip)
             test_btn.setEnabled(True)
             if thread in _thread_holder:
                 _thread_holder.remove(thread)
