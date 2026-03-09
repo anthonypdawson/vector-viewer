@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vector_inspector.core.logging import log_error, log_info
 from vector_inspector.extensions import settings_panel_hook
 
 _PROVIDERS = ["auto", "ollama", "openai-compatible", "llama-cpp"]
@@ -250,7 +251,6 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
 
     # --- Test Connection row ---
     status_label = QLabel("Not checked")
-    # Allow long status/error text to wrap instead of widening the dialog.
     status_label.setWordWrap(False)
     status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
     # Increase max width so messages have more room, but still cap it to avoid
@@ -384,6 +384,7 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
             if result is None:
                 html = "<font color='red'>No provider configured</font>"
                 tooltip = "No provider configured"
+                log_info("LLM health check: no provider configured")
             elif result.ok:
                 # Visible label should be concise — show provider, version,
                 # and a count of available models. The full model list is
@@ -395,9 +396,13 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
                 html = f"<font color='green'>OK — {result.provider}{version_str} ({models_text})</font>"
                 tooltip = f"OK — {result.provider}{version_str} ({models_full})"
             else:
+                # Keep the visible label concise; place full diagnostic text
+                # in the tooltip and log the full details to the console.
                 hint = f" — {result.remediation_hint}" if result.remediation_hint else ""
-                html = f"<font color='red'>Unavailable{hint}</font>"
+                html = "<font color='red'>Unavailable</font>"
                 tooltip = f"Unavailable{hint}"
+                if result.remediation_hint:
+                    log_error("LLM health check failed for %s: %s", result.provider, result.remediation_hint)
 
             status_label.setText(html)
             status_label.setToolTip(tooltip)
