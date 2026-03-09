@@ -181,8 +181,14 @@ class OllamaProvider(LLMProvider):
             return [
                 ModelMetadata(model_name=m["name"], context_window=self._context_length) for m in data.get("models", [])
             ]
-        except Exception:
-            return [ModelMetadata(model_name=self._model, context_window=self._context_length)]
+        except Exception as exc:
+            # If we can't reach the server or parse the tag list, treat this as
+            # "model list unavailable" rather than pretending only the default
+            # model exists. This allows subsequent requests to surface a
+            # retryable connectivity error instead of a non-retryable
+            # "model not available" error for non-default models.
+            log_error("Ollama list_models failed: %s", exc)
+            return []
 
     def get_capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(

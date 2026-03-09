@@ -197,8 +197,13 @@ class OpenAICompatibleProvider(LLMProvider):
             return [
                 ModelMetadata(model_name=m["id"], context_window=self._context_length) for m in data.get("data", [])
             ]
-        except Exception:
-            return [ModelMetadata(model_name=self._model, context_window=self._context_length)]
+        except Exception as exc:
+            # If we can't fetch the model list (connectivity, auth, parse errors),
+            # treat it as "model list unavailable" so validation is skipped and
+            # the real connectivity/auth error can surface on request. Log the
+            # full error for diagnostics.
+            log_error("Failed to fetch model list from %s: %s", self._base_url, exc)
+            return []
 
     def get_capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
