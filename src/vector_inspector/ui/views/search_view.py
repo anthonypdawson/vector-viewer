@@ -29,8 +29,10 @@ from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.logging import log_info
 from vector_inspector.services import SearchRunner, ThreadedTaskRunner
 from vector_inspector.services.filter_service import apply_client_side_filters
+from vector_inspector.services.search_ai_service import build_explain_prompt, build_search_context
 from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.state import AppState
+from vector_inspector.ui.components.ask_ai_dialog import AskAIDialog
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
@@ -197,6 +199,11 @@ class SearchView(QWidget):
         self.refresh_button.setToolTip("Reset search input and results")
         self.refresh_button.clicked.connect(self._refresh_search)
         controls_layout.addWidget(self.refresh_button)
+
+        self.ask_ai_button = QPushButton("Ask the AI")
+        self.ask_ai_button.setToolTip("Ask an AI question about the current search results")
+        self.ask_ai_button.clicked.connect(self._ask_ai)
+        controls_layout.addWidget(self.ask_ai_button)
 
         controls_layout.addWidget(self.search_button)
 
@@ -777,6 +784,10 @@ class SearchView(QWidget):
         view_action = menu.addAction("👁️ View Details")
         view_action.triggered.connect(lambda: self._on_row_double_clicked(self.results_table.model().index(row, 0)))
 
+        # Add "Explain result" AI shortcut
+        explain_action = menu.addAction("🔍 Explain result")
+        explain_action.triggered.connect(lambda: self._explain_result(row))
+
         # Add "Copy vector to JSON" action
         selected_rows = [index.row() for index in self.results_table.selectionModel().selectedRows()]
         if not selected_rows:
@@ -810,6 +821,34 @@ class SearchView(QWidget):
         # Only show menu if it has items
         if not menu.isEmpty():
             menu.exec(self.results_table.viewport().mapToGlobal(position))
+
+    def _ask_ai(self, prefilled_prompt: str = "", selected_row: int | None = None) -> None:
+        """Open the Ask the AI dialog for the current search context."""
+        if not self.search_results:
+            QMessageBox.information(self, "Ask the AI", "No search results to analyse yet. Run a search first.")
+            return
+        context = build_search_context(
+            search_input=self.query_input.toPlainText().strip(),
+            search_results=self.search_results,
+            selected_row=selected_row,
+            top_n=self.n_results_spin.value(),
+        )
+        dlg = AskAIDialog(self.app_state, context=context, prefilled_prompt=prefilled_prompt, parent=self)
+        dlg.show()
+
+    def _explain_result(self, row: int) -> None:
+        """Open Ask the AI with a prefilled 'explain this result' prompt for the given row."""
+        if not self.search_results:
+            return
+        context = build_search_context(
+            search_input=self.query_input.toPlainText().strip(),
+            search_results=self.search_results,
+            selected_row=row,
+            top_n=self.n_results_spin.value(),
+        )
+        prefilled = build_explain_prompt(context.get("selected_result"))
+        dlg = AskAIDialog(self.app_state, context=context, prefilled_prompt=prefilled, parent=self)
+        dlg.show()
 
     def _display_results(self, results: dict[str, Any]):
         """Display search results in table."""
