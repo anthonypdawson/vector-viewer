@@ -152,9 +152,7 @@ def _format_context(context: dict[str, Any]) -> str:
     if selected:
         lines.append("")
         score_str = f"{selected['score']:.4f}" if selected["score"] is not None else "N/A"
-        lines.append(
-            f"Currently selected result: #{selected['rank']} id={selected['id']!r} [score={score_str}]"
-        )
+        lines.append(f"Currently selected result: #{selected['rank']} id={selected['id']!r} [score={score_str}]")
         if selected["snippet"]:
             lines.append(f"  snippet: {selected['snippet'].replace(chr(10), ' ')!r}")
         if selected["metadata"]:
