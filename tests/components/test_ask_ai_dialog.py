@@ -22,10 +22,10 @@ from vector_inspector.ui.components.ask_ai_dialog import AskAIDialog, _SearchAIW
 CONTEXT = {
     "search_input": "hello world",
     "top_results": [
-        {"rank": 1, "id": "id1", "score": 0.9, "snippet": "Doc one", "metadata": {"source": "a"}},
-        {"rank": 2, "id": "id2", "score": 0.8, "snippet": "Doc two", "metadata": {"source": "b"}},
+        {"rank": 1, "id": "id1", "distance": 0.9, "snippet": "Doc one", "metadata": {"source": "a"}},
+        {"rank": 2, "id": "id2", "distance": 0.8, "snippet": "Doc two", "metadata": {"source": "b"}},
     ],
-    "selected_result": {"rank": 1, "id": "id1", "score": 0.9, "snippet": "Doc one", "metadata": {"source": "a"}},
+    "selected_result": {"rank": 1, "id": "id1", "distance": 0.9, "snippet": "Doc one", "metadata": {"source": "a"}},
 }
 
 EMPTY_CONTEXT: dict = {"search_input": "", "top_results": [], "selected_result": None}
@@ -174,7 +174,7 @@ def test_context_preview_truncates_long_result_list(qtbot):
     ctx = {
         "search_input": "q",
         "top_results": [
-            {"rank": i + 1, "id": f"id{i}", "score": 0.9 - i * 0.05, "snippet": "s", "metadata": {}} for i in range(6)
+            {"rank": i + 1, "id": f"id{i}", "distance": 0.9 - i * 0.05, "snippet": "s", "metadata": {}} for i in range(6)
         ],
         "selected_result": None,
     }
@@ -186,8 +186,8 @@ def test_context_preview_truncates_long_result_list(qtbot):
 def test_context_preview_score_none_renders_na(qtbot):
     ctx = {
         "search_input": "q",
-        "top_results": [{"rank": 1, "id": "x", "score": None, "snippet": "s", "metadata": {}}],
-        "selected_result": {"rank": 1, "id": "x", "score": None, "snippet": "s", "metadata": {}},
+        "top_results": [{"rank": 1, "id": "x", "distance": None, "snippet": "s", "metadata": {}}],
+        "selected_result": {"rank": 1, "id": "x", "distance": None, "snippet": "s", "metadata": {}},
     }
     dlg = _make_dialog(qtbot, context=ctx)
     assert "N/A" in dlg._context_preview.toPlainText()
@@ -516,3 +516,230 @@ def test_show_event_refreshes_runtime_manager(qtbot):
     qtbot.addWidget(dlg)
     dlg.show()
     assert refresh_calls
+
+
+# ---------------------------------------------------------------------------
+# Result-selection UI (all_results mode)
+# ---------------------------------------------------------------------------
+
+# Flat-format results used for all_results tests (no outer list wrapper).
+_ALL_RESULTS = {
+    "ids": ["r0", "r1", "r2", "r3", "r4"],
+    "documents": ["Doc zero", "Doc one", "Doc two", "Doc three", "Doc four"],
+    "metadatas": [{"tag": str(i)} for i in range(5)],
+    "distances": [0.1, 0.2, 0.3, 0.4, 0.5],
+}
+
+
+def _make_dialog_all_results(qtbot, initial_row_indices=None, app_state=None):
+    if app_state is None:
+        app_state = _make_app_state(FakeLLMProvider())
+    dlg = AskAIDialog(
+        app_state,
+        context=CONTEXT,
+        all_results=_ALL_RESULTS,
+        initial_row_indices=initial_row_indices if initial_row_indices is not None else [0, 1, 2],
+    )
+    qtbot.addWidget(dlg)
+    return dlg
+
+
+def test_result_list_widget_created_when_all_results_provided(qtbot):
+    dlg = _make_dialog_all_results(qtbot)
+    assert dlg._results_list is not None
+
+
+def test_result_list_widget_absent_without_all_results(qtbot):
+    dlg = _make_dialog(qtbot)
+    assert dlg._results_list is None
+
+
+def test_result_list_populated_with_correct_count(qtbot):
+    dlg = _make_dialog_all_results(qtbot)
+    assert dlg._results_list.count() == 5
+
+
+def test_result_list_initial_checked_matches_row_indices(qtbot):
+    from PySide6.QtCore import Qt
+
+    dlg = _make_dialog_all_results(qtbot, initial_row_indices=[0, 2])
+    checked = []
+    for i in range(dlg._results_list.count()):
+        item = dlg._results_list.item(i)
+        if item and item.checkState() == Qt.CheckState.Checked:
+            checked.append(item.data(Qt.ItemDataRole.UserRole))
+    assert set(checked) == {0, 2}
+
+
+def test_token_label_shows_estimate(qtbot):
+    dlg = _make_dialog_all_results(qtbot)
+    assert dlg._token_label is not None
+    text = dlg._token_label.text()
+    assert "token" in text.lower()
+    assert "selected" in text.lower()
+
+
+def test_apply_range_checks_correct_rows(qtbot):
+    from PySide6.QtCore import Qt
+
+    dlg = _make_dialog_all_results(qtbot, initial_row_indices=[])
+    # Set range: rows 2–4 (1-based)
+    dlg._range_from.setValue(2)
+    dlg._range_to.setValue(4)
+    dlg._apply_range()
+    checked_indices = []
+    for i in range(dlg._results_list.count()):
+        item = dlg._results_list.item(i)
+        if item and item.checkState() == Qt.CheckState.Checked:
+            checked_indices.append(item.data(Qt.ItemDataRole.UserRole))
+    # 1-based rows 2–4 → 0-based indices 1–3
+    assert set(checked_indices) == {1, 2, 3}
+
+
+def test_apply_range_inverted_bounds_auto_corrected(qtbot):
+    """apply_range should swap lo/hi when from > to."""
+    from PySide6.QtCore import Qt
+
+    dlg = _make_dialog_all_results(qtbot, initial_row_indices=[])
+    dlg._range_from.setValue(4)
+    dlg._range_to.setValue(2)
+    dlg._apply_range()
+    checked_indices = []
+    for i in range(dlg._results_list.count()):
+        item = dlg._results_list.item(i)
+        if item and item.checkState() == Qt.CheckState.Checked:
+            checked_indices.append(item.data(Qt.ItemDataRole.UserRole))
+    assert set(checked_indices) == {1, 2, 3}
+
+
+def test_reset_selection_restores_initial_indices(qtbot):
+    from PySide6.QtCore import Qt
+
+    dlg = _make_dialog_all_results(qtbot, initial_row_indices=[0, 4])
+    # Change selection then reset
+    dlg._range_from.setValue(1)
+    dlg._range_to.setValue(1)
+    dlg._apply_range()
+    dlg._reset_selection()
+    checked = []
+    for i in range(dlg._results_list.count()):
+        item = dlg._results_list.item(i)
+        if item and item.checkState() == Qt.CheckState.Checked:
+            checked.append(item.data(Qt.ItemDataRole.UserRole))
+    assert set(checked) == {0, 4}
+
+
+def test_rebuild_context_updates_row_count_in_preview(qtbot):
+    """_rebuild_context with a different selection updates the context preview."""
+    dlg = _make_dialog_all_results(qtbot, initial_row_indices=[0])
+    prev_preview = dlg._context_preview.toPlainText()
+    dlg._range_from.setValue(1)
+    dlg._range_to.setValue(3)
+    dlg._apply_range()
+    new_preview = dlg._context_preview.toPlainText()
+    # Selection changed from 1 to 3 results — previews should differ
+    assert new_preview != prev_preview
+
+
+def test_token_label_updates_after_range_change(qtbot):
+    dlg = _make_dialog_all_results(qtbot, initial_row_indices=[0])
+    initial_text = dlg._token_label.text()
+    dlg._range_from.setValue(1)
+    dlg._range_to.setValue(5)
+    dlg._apply_range()
+    new_text = dlg._token_label.text()
+    assert new_text != initial_text
+
+
+def test_on_list_item_changed_syncs_row_indices(qtbot):
+    from PySide6.QtCore import Qt
+
+    dlg = _make_dialog_all_results(qtbot, initial_row_indices=[0, 1, 2])
+    # Uncheck row 0 directly
+    item = dlg._results_list.item(0)
+    item.setCheckState(Qt.CheckState.Unchecked)  # triggers itemChanged signal
+    assert 0 not in dlg._row_indices
+
+
+def test_warn_label_visible_when_many_results_selected(qtbot):
+    from vector_inspector.services.search_ai_service import LLM_CONTEXT_WARN
+
+    # Build a large results set > LLM_CONTEXT_WARN
+    n = LLM_CONTEXT_WARN + 5
+    big_results = {
+        "ids": [f"id{i}" for i in range(n)],
+        "documents": [f"doc {i}" for i in range(n)],
+        "metadatas": [{} for _ in range(n)],
+        "distances": [i * 0.01 for i in range(n)],
+    }
+    dlg = AskAIDialog(
+        _make_app_state(FakeLLMProvider()),
+        context=CONTEXT,
+        all_results=big_results,
+        initial_row_indices=list(range(n)),
+    )
+    qtbot.addWidget(dlg)
+    assert dlg._warn_label is not None
+    # isHidden() reflects the explicit setVisible(True) call independent of parent show state
+    assert not dlg._warn_label.isHidden()
+
+
+# ---------------------------------------------------------------------------
+# closeEvent — worker cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_close_event_does_not_crash_when_no_worker(qtbot):
+    """closeEvent must not raise when _worker is None."""
+    dlg = _make_dialog(qtbot)
+    dlg.close()  # triggers closeEvent; _worker is None → no crash
+
+
+def test_close_event_quits_running_worker(qtbot, monkeypatch):
+    """closeEvent must call quit()/wait() on a running worker."""
+    dlg = _make_dialog(qtbot)
+    worker_mock = MagicMock()
+    worker_mock.isRunning.return_value = True
+    dlg._worker = worker_mock
+    dlg.close()
+    worker_mock.quit.assert_called_once()
+    worker_mock.wait.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _send — worker already running guard
+# ---------------------------------------------------------------------------
+
+
+def test_send_silently_ignored_when_worker_is_running(qtbot):
+    """If a worker is already running, _send() must do nothing (button is disabled)."""
+    dlg = _make_dialog(qtbot)
+    worker_mock = MagicMock()
+    worker_mock.isRunning.return_value = True
+    dlg._worker = worker_mock
+    dlg._prompt_input.setPlainText("Another question")
+    initial_html = dlg._response_area.toHtml()
+    dlg._send()
+    # No new content added — existing HTML unchanged
+    assert dlg._response_area.toHtml() == initial_html
+
+
+# ---------------------------------------------------------------------------
+# _append_error — HTML escaping (security: XSS prevention)
+# ---------------------------------------------------------------------------
+
+
+def test_append_error_escapes_html_in_message(qtbot):
+    """_append_error must HTML-escape the message so injected tags can't execute."""
+    dlg = _make_dialog(qtbot)
+    dlg._append_error("<script>alert('xss')</script>")
+    source = dlg._response_area.toHtml()
+    assert "<script>" not in source
+
+
+def test_append_error_escapes_html_in_tooltip(qtbot):
+    """The expanded full-message tooltip must also be HTML-escaped."""
+    dlg = _make_dialog(qtbot)
+    dlg._append_error("<b>bold error</b>")
+    tip = dlg._status_label.toolTip()
+    assert "<b>" not in tip

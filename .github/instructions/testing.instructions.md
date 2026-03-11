@@ -26,7 +26,7 @@ results across developer machines and CI.
     `pdm run pytest -q --cov=vector_inspector --cov-report term-missing`
 
 **Coverage target:** Aim for 80% on new code. This is a guideline, not an absolute requirement — if a code path is only reachable through excessive mocking or is genuinely impractical to test (e.g., OS-specific crash handlers), skip it and leave a comment explaining why. Do not over-engineer test fixtures or add fragile tests just to hit the number.
- - For non-UI code, prefer pure unit tests with mocks/fakes to keep them fast and deterministic. Aim for 100% coverage on critical logic (e.g., provider interactions, data transformations) and at least 80% on new code paths. Prefer 90% avg
+ - For non-UI code, prefer pure unit tests with mocks/fakes to keep them fast and deterministic. Aim for 100% coverage on critical logic (e.g., provider interactions, data transformations) and at least 80% on new code paths. Target a per-file average of 90% for business-logic modules (services, core).
  - For UI code, use `pytest-qt` to test signal emissions, widget state changes, and user interactions. Focus on testing the glue logic and critical paths; it's acceptable to have lower coverage on complex UI layouts or third-party widget behavior. Use fixtures to set up common UI states and interactions. Prefer 80%+ coverage on new UI components and interactions, but prioritize meaningful tests over arbitrary numbers.
 
 ## Organization

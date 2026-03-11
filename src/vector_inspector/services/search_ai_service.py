@@ -12,13 +12,13 @@ from typing import Any
 _SYSTEM_PROMPT = (
     "You are a helpful assistant embedded in a vector database explorer tool. "
     "The user has performed a similarity search. "
-    "You are given the search query, the top results (with their IDs, snippets, scores, and metadata), "
+    "You are given the search query, the top results (with their IDs, snippets, distances, and metadata), "
     "and optionally a specific result the user has selected. "
     "Answer the user's question clearly and concisely. "
-    "When explaining ranking or relevance, refer to the scores and content provided. "
-    "Important: the provided 'score' values are the ranking criterion (they may be distances where lower is "
-    "closer or similarity scores where higher is closer depending on the provider). Do NOT respond with a "
-    "tautological answer such as 'Because of the score'. Instead, use the snippets, metadata, and any "
+    "When explaining ranking or relevance, refer to the distances and content provided. "
+    "Important: the provided 'distance' values represent how close each result is to the query in vector "
+    "space — lower distance means the result is more similar to the query. Do NOT respond with a "
+    "tautological answer such as 'Because of the distance'. Instead, use the snippets, metadata, and any "
     "matching terms or features in the context to explain *why* the item is relevant to the query. "
     "For example, point out specific keywords or phrases in the snippet that match the query, any metadata "
     "fields that align with the query (source, tags, etc.), or concrete content overlap; explain how those "
@@ -102,7 +102,7 @@ def build_search_context(
                 "rank": rank,
                 "id": str(item_id),
                 "snippet": snippet,
-                "score": dist,
+                "distance": dist,
                 "metadata": dict(meta) if meta else {},
             }
         )
@@ -116,7 +116,7 @@ def build_search_context(
             "rank": selected_row + 1,
             "id": str(ids[selected_row]),
             "snippet": str(doc or "")[:_SNIPPET_MAX_CHARS],
-            "score": dist,
+            "distance": dist,
             "metadata": dict(meta) if meta else {},
         }
 
@@ -185,8 +185,8 @@ def _format_context(context: dict[str, Any]) -> str:
     if top:
         lines.append(f"Top {len(top)} results:")
         for item in top:
-            score_str = f"{item['score']:.4f}" if item["score"] is not None else "N/A"
-            lines.append(f"  #{item['rank']} [score={score_str}] id={item['id']!r}")
+            dist_str = f"{item['distance']:.4f}" if item["distance"] is not None else "N/A"
+            lines.append(f"  #{item['rank']} [distance={dist_str}] id={item['id']!r}")
             if item["snippet"]:
                 snippet = item["snippet"].replace("\n", " ")
                 lines.append(f"      snippet: {snippet!r}")
@@ -196,8 +196,8 @@ def _format_context(context: dict[str, Any]) -> str:
     selected = context.get("selected_result")
     if selected:
         lines.append("")
-        score_str = f"{selected['score']:.4f}" if selected["score"] is not None else "N/A"
-        lines.append(f"Currently selected result: #{selected['rank']} id={selected['id']!r} [score={score_str}]")
+        dist_str = f"{selected['distance']:.4f}" if selected["distance"] is not None else "N/A"
+        lines.append(f"Currently selected result: #{selected['rank']} id={selected['id']!r} [distance={dist_str}]")
         if selected["snippet"]:
             lines.append(f"  snippet: {selected['snippet'].replace(chr(10), ' ')!r}")
         if selected["metadata"]:

@@ -90,7 +90,7 @@ class _SearchAIWorker(QThread):
 
 
 class AskAIDialog(QDialog):
-    """Modal dialog that lets users ask questions about their search results.
+    """Non-modal dialog that lets users ask questions about their search results.
 
     The dialog is pre-loaded with the current search context (query, selected
     results, optionally the selected result) and a prefilled prompt which the
@@ -149,8 +149,10 @@ class AskAIDialog(QDialog):
         # Refresh status whenever any LLM setting changes while the dialog is open
         try:
             app_state.settings_service.signals.setting_changed.connect(self._on_setting_changed)
-        except Exception:
+        except AttributeError:
             pass  # settings_service may not be wired in all test contexts
+        except Exception as exc:
+            log_error("Could not connect setting_changed signal: %s", exc, exc_info=True)
 
     # ------------------------------------------------------------------
     # UI setup
@@ -161,16 +163,23 @@ class AskAIDialog(QDialog):
         super().showEvent(event)
         try:
             self._app_state.llm_runtime_manager.refresh()
-        except Exception:
+        except AttributeError:
             pass
         self._refresh_status_label()
+
+    def closeEvent(self, event) -> None:
+        """Stop any running worker thread before the dialog is destroyed."""
+        if self._worker and self._worker.isRunning():
+            self._worker.quit()
+            self._worker.wait(2000)
+        super().closeEvent(event)
 
     def _on_setting_changed(self, key: str, _value: object) -> None:
         """Invalidate the cached LLM provider and update the status bar when an LLM setting changes."""
         if key.startswith("llm."):
             try:
                 self._app_state.llm_runtime_manager.refresh()
-            except Exception:
+            except AttributeError:
                 pass
             self._refresh_status_label()
 
@@ -345,7 +354,7 @@ class AskAIDialog(QDialog):
             dist = distances[i] if i < len(distances) else None
             score_str = f"{dist:.4f}" if dist is not None else "N/A"
             snippet = str(doc or "")[:60].replace("\n", " ")
-            rows.append({"idx": i, "id": str(item_id), "score": score_str, "snippet": snippet})
+            rows.append({"idx": i, "id": str(item_id), "distance": score_str, "snippet": snippet})
         return rows
 
     def _populate_results_list(self) -> None:
@@ -356,7 +365,7 @@ class AskAIDialog(QDialog):
         self._results_list.blockSignals(True)
         self._results_list.clear()
         for r in self._all_row_data:
-            text = f"#{r['idx'] + 1:>3}  score={r['score']}  {r['snippet']}"
+            text = f"#{r['idx'] + 1:>3}  distance={r['distance']}  {r['snippet']}"
             item = QListWidgetItem(text)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if r["idx"] in selected_set else Qt.CheckState.Unchecked)
@@ -539,10 +548,7 @@ class AskAIDialog(QDialog):
 
     def _get_provider(self) -> Any | None:
         try:
-            provider = self._app_state.llm_provider
-            if provider and provider.is_available():
-                return provider
-            return provider  # Return even if unavailable; provider will surface error
+            return self._app_state.llm_provider
         except Exception as exc:
             log_error("Could not get LLM provider: %s", exc)
             return None
@@ -571,13 +577,14 @@ class AskAIDialog(QDialog):
     def _append_error(self, msg: str) -> None:
         cursor = self._response_area.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml(f'<span style="color: #d9534f;">[Error: {msg}]</span><br><br>')
+        escaped_msg = html.escape(msg, quote=True)
+        cursor.insertHtml(f'<span style="color: #d9534f;">[Error: {escaped_msg}]</span><br><br>')
         self._response_area.setTextCursor(cursor)
         self._response_area.ensureCursorVisible()
         full_msg = f"Ask the AI error: {msg}"
         log_error(full_msg)
         self._status_label.setText("Error — hover for details")
-        self._status_label.setToolTip(msg)
+        self._status_label.setToolTip(html.escape(full_msg, quote=True))
         self._status_label.setStyleSheet("color: #d9534f; font-size: 11px;")
 
     def _render_context_preview(self) -> str:
@@ -588,12 +595,12 @@ class AskAIDialog(QDialog):
         if top:
             lines.append(f"Top {len(top)} result(s) attached:")
             for item in top[:3]:
-                score = f"{item['score']:.4f}" if item["score"] is not None else "N/A"
-                lines.append(f"  #{item['rank']} id={item['id']!r}  score={score}")
+                dist = f"{item['distance']:.4f}" if item["distance"] is not None else "N/A"
+                lines.append(f"  #{item['rank']} id={item['id']!r}  distance={dist}")
             if len(top) > 3:
                 lines.append(f"  … and {len(top) - 3} more")
         selected = ctx.get("selected_result")
         if selected:
-            score = f"{selected['score']:.4f}" if selected["score"] is not None else "N/A"
-            lines.append(f"Selected: #{selected['rank']} id={selected['id']!r}  score={score}")
+            dist = f"{selected['distance']:.4f}" if selected["distance"] is not None else "N/A"
+            lines.append(f"Selected: #{selected['rank']} id={selected['id']!r}  distance={dist}")
         return "\n".join(lines)

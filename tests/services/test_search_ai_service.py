@@ -68,7 +68,7 @@ def test_context_top_results_fields():
     item = ctx["top_results"][0]
     assert item["rank"] == 1
     assert item["id"] == "id1"
-    assert item["score"] == pytest.approx(0.1)
+    assert item["distance"] == pytest.approx(0.1)
     assert item["snippet"] == "doc one"
     assert item["metadata"] == {"tag": "a"}
 
@@ -89,7 +89,7 @@ def test_context_selected_result_correct():
     assert sel is not None
     assert sel["rank"] == 2
     assert sel["id"] == "id2"
-    assert sel["score"] == pytest.approx(0.2)
+    assert sel["distance"] == pytest.approx(0.2)
 
 
 def test_context_selected_row_out_of_bounds():
@@ -121,7 +121,7 @@ def test_context_snippet_truncated():
 
 
 def test_explain_prompt_with_selected_result():
-    selected = {"rank": 3, "id": "abc", "score": 0.7, "snippet": "", "metadata": {}}
+    selected = {"rank": 3, "id": "abc", "distance": 0.7, "snippet": "", "metadata": {}}
     prompt = build_explain_prompt(selected)
     assert "3" in prompt
     assert len(prompt) > 10
@@ -182,6 +182,7 @@ def test_format_context_includes_scores():
     ctx = build_search_context("q", _FLAT_RESULTS, top_n=2)
     text = _format_context(ctx)
     assert "0.1000" in text
+    assert "distance=" in text
 
 
 def test_format_context_includes_selected_when_present():
