@@ -149,7 +149,9 @@ def test_ask_ai_passes_prefilled_prompt(sv_with_results, qtbot, monkeypatch):
     received = {}
 
     class _FakeDialog:
-        def __init__(self, app_state, context, prefilled_prompt="", parent=None):
+        def __init__(
+            self, app_state, context, prefilled_prompt="", all_results=None, initial_row_indices=None, parent=None
+        ):
             received["prompt"] = prefilled_prompt
 
         def show(self):
@@ -232,7 +234,9 @@ def test_explain_result_prefilled_prompt_not_empty(sv_with_results, qtbot, monke
     received = {}
 
     class _FakeDialog:
-        def __init__(self, app_state, context, prefilled_prompt="", parent=None):
+        def __init__(
+            self, app_state, context, prefilled_prompt="", all_results=None, initial_row_indices=None, parent=None
+        ):
             received["prompt"] = prefilled_prompt
 
         def show(self):
@@ -315,3 +319,185 @@ def test_context_menu_has_explain_action(sv_with_results, qtbot, monkeypatch):
     sv._show_context_menu(QPoint(0, 0))
     # Accept partial match since icon prefix may vary
     assert any("Explain result" in a for a in menu_actions)
+
+
+# ---------------------------------------------------------------------------
+# LLM not configured → message + no dialog
+# ---------------------------------------------------------------------------
+
+
+def test_ask_ai_llm_not_configured_shows_message(sv_with_results, qtbot, monkeypatch):
+    """When LLM is not available, _ask_ai shows an info message and does NOT open a dialog."""
+    from unittest.mock import PropertyMock
+
+    from tests.utils.fake_llm_provider import FakeLLMProvider
+
+    fake_llm = FakeLLMProvider()
+    fake_llm._available = False  # mark unavailable
+
+    opened = []
+
+    class _FakeDialog:
+        def __init__(self, *a, **kw):
+            pass
+
+        def show(self):
+            opened.append(True)
+
+    shown = []
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+
+    with patch.object(
+        type(sv_with_results.app_state),
+        "llm_provider",
+        new_callable=PropertyMock,
+        return_value=fake_llm,
+    ):
+        # Stub QMessageBox so it returns "Cancel" (do not open settings)
+        import PySide6.QtWidgets as _qw
+
+        monkeypatch.setattr(
+            _qw.QMessageBox,
+            "exec",
+            lambda self: _qw.QMessageBox.StandardButton.Cancel,
+        )
+        monkeypatch.setattr(_qw.QMessageBox, "show", lambda self: None)
+        # Override _check_llm_configured to return False and record call
+        original_check = sv_with_results._check_llm_configured
+
+        def _fake_check():
+            shown.append(True)
+            return False
+
+        monkeypatch.setattr(sv_with_results, "_check_llm_configured", _fake_check)
+        sv_with_results._ask_ai()
+
+    assert shown, "_check_llm_configured was not called"
+    assert not opened, "Dialog should NOT open when LLM is not configured"
+
+
+def test_explain_result_llm_not_configured_does_not_open_dialog(sv_with_results, qtbot, monkeypatch):
+    """When LLM is not available, _explain_result does NOT open a dialog."""
+    opened = []
+
+    class _FakeDialog:
+        def __init__(self, *a, **kw):
+            pass
+
+        def show(self):
+            opened.append(True)
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+
+    def _fake_check():
+        return False
+
+    monkeypatch.setattr(sv_with_results, "_check_llm_configured", _fake_check)
+    sv_with_results._explain_result(0)
+    assert not opened
+
+
+# ---------------------------------------------------------------------------
+# _ask_ai passes all_results and clamped initial_row_indices to dialog
+# ---------------------------------------------------------------------------
+
+
+def test_ask_ai_passes_all_results_to_dialog(sv_with_results, qtbot, monkeypatch):
+    """all_results=FAKE_SEARCH_RESULTS must be forwarded to AskAIDialog constructor."""
+    received = {}
+
+    class _FakeDialog:
+        def __init__(
+            self, app_state, context, prefilled_prompt="", all_results=None, initial_row_indices=None, parent=None
+        ):
+            received["all_results"] = all_results
+
+        def show(self):
+            pass
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+    sv_with_results._ask_ai()
+    assert received.get("all_results") is FAKE_SEARCH_RESULTS
+
+
+def test_ask_ai_initial_indices_clamped_to_llm_context_max(sv_with_results, qtbot, monkeypatch):
+    """initial_row_indices passed to AskAIDialog must have ≤ LLM_CONTEXT_MAX items."""
+    from vector_inspector.services.search_ai_service import LLM_CONTEXT_MAX
+
+    received = {}
+
+    class _FakeDialog:
+        def __init__(
+            self, app_state, context, prefilled_prompt="", all_results=None, initial_row_indices=None, parent=None
+        ):
+            received["indices"] = initial_row_indices
+
+        def show(self):
+            pass
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+    sv_with_results._ask_ai()
+    indices = received.get("indices", [])
+    assert indices is not None
+    assert len(indices) <= LLM_CONTEXT_MAX
+
+
+# ---------------------------------------------------------------------------
+# _explain_result — 3-item window logic
+# ---------------------------------------------------------------------------
+
+
+def test_explain_result_uses_3_item_window(sv_with_results, qtbot, monkeypatch):
+    """row=1 in a 2-row result set → row_indices should be [0, 1]."""
+    received = {}
+
+    class _FakeDialog:
+        def __init__(
+            self, app_state, context, prefilled_prompt="", all_results=None, initial_row_indices=None, parent=None
+        ):
+            received["indices"] = initial_row_indices
+
+        def show(self):
+            pass
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+    sv_with_results._explain_result(1)
+    # FAKE_SEARCH_RESULTS has 2 rows; row=1 → window is {0, 1}
+    assert sorted(received.get("indices", [])) == [0, 1]
+
+
+def test_explain_result_first_row_window(sv_with_results, qtbot, monkeypatch):
+    """row=0 in 2-row results → window is [0, 1] (no -1)."""
+    received = {}
+
+    class _FakeDialog:
+        def __init__(
+            self, app_state, context, prefilled_prompt="", all_results=None, initial_row_indices=None, parent=None
+        ):
+            received["indices"] = initial_row_indices
+
+        def show(self):
+            pass
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+    sv_with_results._explain_result(0)
+    assert sorted(received.get("indices", [])) == [0, 1]
+
+
+def test_explain_result_last_row_window(sv_with_results, qtbot, monkeypatch):
+    """row=1 (last) in 2-row results → window is [0, 1] (no row 2)."""
+    received = {}
+
+    class _FakeDialog:
+        def __init__(
+            self, app_state, context, prefilled_prompt="", all_results=None, initial_row_indices=None, parent=None
+        ):
+            received["indices"] = initial_row_indices
+
+        def show(self):
+            pass
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+    sv_with_results._explain_result(1)
+    # max(0, 1-1)=0, row=1, min(1, 1+1)=1 → {0, 1}
+    assert sorted(received.get("indices", [])) == [0, 1]

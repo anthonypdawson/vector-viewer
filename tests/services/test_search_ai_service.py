@@ -3,11 +3,14 @@
 import pytest
 
 from vector_inspector.services.search_ai_service import (
+    LLM_CONTEXT_MAX,
+    LLM_CONTEXT_WARN,
     _format_context,
     _unwrap,
     build_explain_prompt,
     build_messages,
     build_search_context,
+    estimate_tokens,
 )
 
 # ---------------------------------------------------------------------------
@@ -192,3 +195,86 @@ def test_format_context_no_selected_when_absent():
     ctx = build_search_context("q", _FLAT_RESULTS, selected_row=None, top_n=2)
     text = _format_context(ctx)
     assert "selected" not in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# LLM_CONTEXT_MAX clamping and row_indices override
+# ---------------------------------------------------------------------------
+
+# Build a large fake result set (25 items)
+_LARGE_RESULTS = {
+    "ids": [f"id{i}" for i in range(25)],
+    "documents": [f"doc {i}" for i in range(25)],
+    "metadatas": [{"i": i} for i in range(25)],
+    "distances": [i * 0.01 for i in range(25)],
+}
+
+
+def test_context_clamped_to_llm_context_max():
+    """Without row_indices, top_n is clamped to LLM_CONTEXT_MAX even if caller passes top_n=100."""
+    ctx = build_search_context("q", _LARGE_RESULTS, top_n=100)
+    assert len(ctx["top_results"]) <= LLM_CONTEXT_MAX
+
+
+def test_context_row_indices_override():
+    """Explicit row_indices selects exactly those rows in the given order, rank starts at 1."""
+    ctx = build_search_context("q", _LARGE_RESULTS, row_indices=[2, 0])
+    assert len(ctx["top_results"]) == 2
+    assert ctx["top_results"][0]["id"] == "id2"
+    assert ctx["top_results"][0]["rank"] == 1
+    assert ctx["top_results"][1]["id"] == "id0"
+    assert ctx["top_results"][1]["rank"] == 2
+
+
+def test_context_row_indices_out_of_bounds_ignored():
+    """Out-of-bounds indices are silently dropped; valid ones are preserved."""
+    ctx = build_search_context("q", _LARGE_RESULTS, row_indices=[0, 999, 1])
+    ids = [r["id"] for r in ctx["top_results"]]
+    assert "id0" in ids
+    assert "id1" in ids
+    # 999 is out of range and must not appear
+    assert len(ctx["top_results"]) == 2
+
+
+def test_context_row_indices_empty_list():
+    """Passing an empty row_indices returns no top_results."""
+    ctx = build_search_context("q", _LARGE_RESULTS, row_indices=[])
+    assert ctx["top_results"] == []
+
+
+# ---------------------------------------------------------------------------
+# estimate_tokens
+# ---------------------------------------------------------------------------
+
+
+def test_estimate_tokens_returns_positive_int():
+    ctx = build_search_context("hello", _FLAT_RESULTS, top_n=2)
+    tokens = estimate_tokens(ctx)
+    assert isinstance(tokens, int)
+    assert tokens > 0
+
+
+def test_estimate_tokens_larger_context_gives_more_tokens():
+    small_ctx = build_search_context("q", _FLAT_RESULTS, top_n=1)
+    large_ctx = build_search_context("q", _FLAT_RESULTS, top_n=3)
+    assert estimate_tokens(large_ctx) >= estimate_tokens(small_ctx)
+
+
+def test_estimate_tokens_proportional():
+    """Two identical contexts should produce the same estimate."""
+    ctx1 = build_search_context("same query", _FLAT_RESULTS, top_n=2)
+    ctx2 = build_search_context("same query", _FLAT_RESULTS, top_n=2)
+    assert estimate_tokens(ctx1) == estimate_tokens(ctx2)
+
+
+# ---------------------------------------------------------------------------
+# Constants sanity checks
+# ---------------------------------------------------------------------------
+
+
+def test_llm_context_max_is_positive():
+    assert LLM_CONTEXT_MAX > 0
+
+
+def test_llm_context_warn_gt_max():
+    assert LLM_CONTEXT_WARN > LLM_CONTEXT_MAX
