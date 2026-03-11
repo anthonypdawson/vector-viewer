@@ -29,7 +29,11 @@ from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.logging import log_info
 from vector_inspector.services import SearchRunner, ThreadedTaskRunner
 from vector_inspector.services.filter_service import apply_client_side_filters
-from vector_inspector.services.search_ai_service import build_explain_prompt, build_search_context
+from vector_inspector.services.search_ai_service import (
+    LLM_CONTEXT_MAX,
+    build_explain_prompt,
+    build_search_context,
+)
 from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.state import AppState
 from vector_inspector.ui.components.ask_ai_dialog import AskAIDialog
@@ -822,32 +826,84 @@ class SearchView(QWidget):
         if not menu.isEmpty():
             menu.exec(self.results_table.viewport().mapToGlobal(position))
 
+    def _check_llm_configured(self) -> bool:
+        """Return True if an LLM provider is available; otherwise prompt to open Settings."""
+        try:
+            provider = self.app_state.llm_provider
+            if provider and provider.is_available():
+                return True
+        except Exception:
+            pass
+        msg = QMessageBox(self)
+        msg.setWindowTitle("LLM Not Configured")
+        msg.setText("No LLM provider is configured.\n\nOpen Settings to configure an LLM provider.")
+        msg.setIcon(QMessageBox.Icon.Warning)
+        settings_btn = msg.addButton("Open Settings", QMessageBox.ButtonRole.AcceptRole)
+        msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+        if msg.clickedButton() is settings_btn:
+            self._open_settings()
+        return False
+
+    def _open_settings(self) -> None:
+        """Open the settings dialog."""
+        from vector_inspector.ui.dialogs.settings_dialog import SettingsDialog
+
+        dlg = SettingsDialog(self.app_state.settings_service, self)
+        dlg.exec()
+
     def _ask_ai(self, prefilled_prompt: str = "", selected_row: int | None = None) -> None:
         """Open the Ask the AI dialog for the current search context."""
         if not self.search_results:
             QMessageBox.information(self, "Ask the AI", "No search results to analyse yet. Run a search first.")
             return
+        if not self._check_llm_configured():
+            return
+        ids = self._unwrap_result_list("ids")
+        n = len(ids)
+        # Default: top LLM_CONTEXT_MAX rows (or fewer if there are fewer results)
+        initial_row_indices = list(range(min(LLM_CONTEXT_MAX, n)))
         context = build_search_context(
             search_input=self.query_input.toPlainText().strip(),
             search_results=self.search_results,
             selected_row=selected_row,
-            top_n=self.n_results_spin.value(),
+            row_indices=initial_row_indices,
         )
-        dlg = AskAIDialog(self.app_state, context=context, prefilled_prompt=prefilled_prompt, parent=self)
+        dlg = AskAIDialog(
+            self.app_state,
+            context=context,
+            prefilled_prompt=prefilled_prompt,
+            all_results=self.search_results,
+            initial_row_indices=initial_row_indices,
+            parent=self,
+        )
         dlg.show()
 
     def _explain_result(self, row: int) -> None:
         """Open Ask the AI with a prefilled 'explain this result' prompt for the given row."""
         if not self.search_results:
             return
+        if not self._check_llm_configured():
+            return
+        ids = self._unwrap_result_list("ids")
+        n = len(ids)
+        # 3-item window: one before, the selected row, one after (clipped to bounds)
+        row_indices = sorted({max(0, row - 1), row, min(n - 1, row + 1)})
         context = build_search_context(
             search_input=self.query_input.toPlainText().strip(),
             search_results=self.search_results,
             selected_row=row,
-            top_n=self.n_results_spin.value(),
+            row_indices=row_indices,
         )
         prefilled = build_explain_prompt(context.get("selected_result"))
-        dlg = AskAIDialog(self.app_state, context=context, prefilled_prompt=prefilled, parent=self)
+        dlg = AskAIDialog(
+            self.app_state,
+            context=context,
+            prefilled_prompt=prefilled,
+            all_results=self.search_results,
+            initial_row_indices=row_indices,
+            parent=self,
+        )
         dlg.show()
 
     def _display_results(self, results: dict[str, Any]):

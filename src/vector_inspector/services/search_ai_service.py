@@ -16,11 +16,42 @@ _SYSTEM_PROMPT = (
     "and optionally a specific result the user has selected. "
     "Answer the user's question clearly and concisely. "
     "When explaining ranking or relevance, refer to the scores and content provided. "
+    "Important: the provided 'score' values are the ranking criterion (they may be distances where lower is "
+    "closer or similarity scores where higher is closer depending on the provider). Do NOT respond with a "
+    "tautological answer such as 'Because of the score'. Instead, use the snippets, metadata, and any "
+    "matching terms or features in the context to explain *why* the item is relevant to the query. "
+    "For example, point out specific keywords or phrases in the snippet that match the query, any metadata "
+    "fields that align with the query (source, tags, etc.), or concrete content overlap; explain how those "
+    "elements contribute to relevance. "
     "Do not invent data that is not present in the context."
 )
 
 _DEFAULT_TOP_N = 5
 _SNIPPET_MAX_CHARS = 300
+
+# Hard default for LLM context: send at most this many results unless
+# the user explicitly overrides the selection in the Ask AI dialog.
+LLM_CONTEXT_MAX = 10
+# Warn (but allow) when the user selects more than this many results.
+LLM_CONTEXT_WARN = 20
+
+
+def estimate_tokens(context: dict[str, Any]) -> int:
+    """Estimate the number of tokens in a formatted context payload.
+
+    Uses a simple heuristic of ``chars / 4`` applied to the formatted context
+    string plus the system prompt.  The estimate will be off by ±20 % in
+    practice but is good enough for a real-time UI indicator.
+
+    Args:
+        context: Output from :func:`build_search_context`.
+
+    Returns:
+        Estimated token count as an integer.
+    """
+    context_text = _format_context(context)
+    total_chars = len(_SYSTEM_PROMPT) + len(context_text)
+    return max(1, total_chars // 4)
 
 
 def build_search_context(
@@ -28,6 +59,7 @@ def build_search_context(
     search_results: dict[str, Any],
     selected_row: int | None = None,
     top_n: int = _DEFAULT_TOP_N,
+    row_indices: list[int] | None = None,
 ) -> dict[str, Any]:
     """Build a structured LLM search context payload from the current search state.
 
@@ -36,7 +68,11 @@ def build_search_context(
         search_results: Raw results dict from the search provider
                         (keys: ``ids``, ``documents``, ``metadatas``, ``distances``).
         selected_row: 0-based index of the currently selected result row, or None.
-        top_n: Maximum number of results to include in the payload.
+        top_n: Maximum number of results to include when ``row_indices`` is not
+               given.  Automatically clamped to :data:`LLM_CONTEXT_MAX`.
+        row_indices: If provided, include exactly these 0-based row indices
+                     instead of the first ``top_n`` rows.  Indices outside the
+                     result range are silently ignored.
 
     Returns:
         A dict with keys ``search_input``, ``top_results``, ``selected_result``.
@@ -46,15 +82,24 @@ def build_search_context(
     metadatas = _unwrap(search_results, "metadatas")
     distances = _unwrap(search_results, "distances")
 
+    if row_indices is not None:
+        # Use explicit indices, filtered to valid range
+        valid_indices = [i for i in row_indices if 0 <= i < len(ids)]
+    else:
+        # Clamp top_n to avoid accidentally sending huge prompts
+        effective_top_n = min(top_n, LLM_CONTEXT_MAX)
+        valid_indices = list(range(min(effective_top_n, len(ids))))
+
     top_results = []
-    for i, item_id in enumerate(ids[:top_n]):
+    for rank, i in enumerate(valid_indices, start=1):
+        item_id = ids[i]
         doc = documents[i] if i < len(documents) else ""
         meta = metadatas[i] if i < len(metadatas) else {}
         dist = distances[i] if i < len(distances) else None
         snippet = str(doc or "")[:_SNIPPET_MAX_CHARS]
         top_results.append(
             {
-                "rank": i + 1,
+                "rank": rank,
                 "id": str(item_id),
                 "snippet": snippet,
                 "score": dist,
