@@ -174,7 +174,8 @@ def test_context_preview_truncates_long_result_list(qtbot):
     ctx = {
         "search_input": "q",
         "top_results": [
-            {"rank": i + 1, "id": f"id{i}", "distance": 0.9 - i * 0.05, "snippet": "s", "metadata": {}} for i in range(6)
+            {"rank": i + 1, "id": f"id{i}", "distance": 0.9 - i * 0.05, "snippet": "s", "metadata": {}}
+            for i in range(6)
         ],
         "selected_result": None,
     }
