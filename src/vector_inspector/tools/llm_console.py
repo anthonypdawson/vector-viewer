@@ -246,9 +246,8 @@ class LLMConsoleWindow(QMainWindow):
         pname = p.get_provider_name() if p else "—"
         mname = p.get_model_name() if p else "—"
         available = p.is_available() if p else False
-        self._status.setText(
-            f"Provider: {pname}  \u2022  Model: {mname}  \u2022  {'\u2713 available' if available else '\u2717 not available'}"
-        )
+        avail_text = "✓ available" if available else "✗ not available"
+        self._status.setText(f"Provider: {pname}  •  Model: {mname}  •  {avail_text}")
         self._status.setStyleSheet("color: green; font-size: 11px;" if available else "color: red; font-size: 11px;")
 
     def _clear(self) -> None:
@@ -281,9 +280,8 @@ class LLMConsoleWindow(QMainWindow):
         pname = new_provider.get_provider_name()
         mname = new_provider.get_model_name()
         available = new_provider.is_available()
-        self._status.setText(
-            f"Provider: {pname}  \u2022  Model: {mname}  \u2022  {'\u2713 available' if available else '\u2717 not available'}"
-        )
+        avail_text = "✓ available" if available else "✗ not available"
+        self._status.setText(f"Provider: {pname}  •  Model: {mname}  •  {avail_text}")
         self._status.setStyleSheet("color: green; font-size: 11px;" if available else "color: red; font-size: 11px;")
 
         self._messages.clear()
