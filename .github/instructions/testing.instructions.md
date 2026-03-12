@@ -91,22 +91,22 @@ results across developer machines and CI.
   - Always run via `pdm run pytest` to ensure the correct environment.
   - Use `QT_QPA_PLATFORM=offscreen` in CI for headless runs.
 
-  ## Qt WebEngine cleanup for tests
+## Qt WebEngine cleanup for tests
 
-  Some widgets embed Qt WebEngine (`QWebEngineView` / `QWebEnginePage`). These require explicit, per-test cleanup to avoid WebEngineProfile teardown warnings such as "Release of profile requested but WebEnginePage still not deleted." To keep tests robust and fast, follow this pattern:
+Some widgets embed Qt WebEngine (`QWebEngineView` / `QWebEnginePage`). These require explicit, per-test cleanup to avoid WebEngineProfile teardown warnings such as "Release of profile requested but WebEnginePage still not deleted." To keep tests robust and fast, follow this pattern:
 
-  - Use the shared opt-in fixture `webengine_cleanup` from `tests/conftest.py` in any test that constructs a widget containing a WebEngine view.
-  - Immediately after constructing the widget, register it with `qtbot` so the cleanup fixture can track it:
+- Use the shared opt-in fixture `webengine_cleanup` from `tests/conftest.py` in any test that constructs a widget containing a WebEngine view.
+- Immediately after constructing the widget, register it with `qtbot` so the cleanup fixture can track it:
 
     def test_my_panel_with_webengine(qtbot, webengine_cleanup):
       panel = MyPanel(app_state, task_runner)
       qtbot.addWidget(panel)  # register widget for cleanup
       # ... exercise panel behavior ...
 
-  - Do not rely on module-level autouse hooks that patch constructors; prefer per-test opt-in. The `webengine_cleanup` fixture detaches any `web_view.page()` on teardown safely, so avoid manual double-deletion or calling `setPage(None)` yourself unless you have a specific reason.
-  - Register the widget with `qtbot` immediately after construction; otherwise the fixture may not see the widget and cleanup may be incomplete.
+- Do not rely on module-level autouse hooks that patch constructors; prefer per-test opt-in. The `webengine_cleanup` fixture detaches any `web_view.page()` on teardown safely, so avoid manual double-deletion or calling `setPage(None)` yourself unless you have a specific reason.
+- Register the widget with `qtbot` immediately after construction; otherwise the fixture may not see the widget and cleanup may be incomplete.
 
-  Why: This pattern avoids intermittent C++/Qt teardown errors and keeps test scope explicit and deterministic. It also prevents slow or brittle module-level teardown hacks that can interact poorly with `qtbot`'s lifecycle.
+Why: This pattern avoids intermittent C++/Qt teardown errors and keeps test scope explicit and deterministic. It also prevents slow or brittle module-level teardown hacks that can interact poorly with `qtbot`'s lifecycle.
 
 ## Required Tests for New Functionality
 
