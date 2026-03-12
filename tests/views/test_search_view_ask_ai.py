@@ -501,3 +501,122 @@ def test_explain_result_last_row_window(sv_with_results, qtbot, monkeypatch):
     sv_with_results._explain_result(1)
     # max(0, 1-1)=0, row=1, min(1, 1+1)=1 → {0, 1}
     assert sorted(received.get("indices", [])) == [0, 1]
+
+
+# ---------------------------------------------------------------------------
+# _ask_ai — truthy results dict with empty ids → shows "no results" message
+# ---------------------------------------------------------------------------
+
+
+def test_ask_ai_truthy_results_but_empty_ids_shows_message(sv, qtbot, monkeypatch):
+    """Providers can return {ids: [[]], ...} which is truthy but has no rows.
+
+    _ask_ai() must detect this and show the same 'run a search first' message.
+    """
+    sv.search_results = {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]], "embeddings": None}
+    shown = []
+    monkeypatch.setattr(
+        "vector_inspector.ui.views.search_view.QMessageBox.information",
+        lambda *a, **kw: shown.append(True),
+    )
+    sv._ask_ai()
+    assert shown
+
+
+def test_ask_ai_truthy_results_but_empty_ids_does_not_open_dialog(sv, qtbot, monkeypatch):
+    """No dialog must open when ids unwrap to an empty list."""
+    sv.search_results = {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]], "embeddings": None}
+    opened = []
+
+    class _FakeDialog:
+        def __init__(self, *a, **kw):
+            pass
+
+        def show(self):
+            opened.append(True)
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+    monkeypatch.setattr(
+        "vector_inspector.ui.views.search_view.QMessageBox.information",
+        lambda *a, **kw: None,
+    )
+    sv._ask_ai()
+    assert not opened
+
+
+# ---------------------------------------------------------------------------
+# _explain_result — truthy results dict with empty ids → no-op
+# ---------------------------------------------------------------------------
+
+
+def test_explain_result_truthy_results_but_empty_ids_is_noop(sv, qtbot, monkeypatch):
+    """_explain_result with truthy results but zero actual rows must be a silent no-op."""
+    sv.search_results = {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]], "embeddings": None}
+    opened = []
+
+    class _FakeDialog:
+        def __init__(self, *a, **kw):
+            pass
+
+        def show(self):
+            opened.append(True)
+
+    monkeypatch.setattr("vector_inspector.ui.views.search_view.AskAIDialog", _FakeDialog)
+    sv._explain_result(0)
+    assert not opened
+
+
+# ---------------------------------------------------------------------------
+# _check_llm_configured — unexpected exceptions are logged
+# ---------------------------------------------------------------------------
+
+
+def test_check_llm_configured_logs_unexpected_exception(sv, qtbot, monkeypatch):
+    """Unexpected exceptions accessing llm_provider must be logged via log_error."""
+    from unittest.mock import PropertyMock
+
+    logged = []
+    monkeypatch.setattr(
+        "vector_inspector.ui.views.search_view.log_error",
+        lambda *a, **kw: logged.append((a, kw)),
+    )
+
+    # Raise a non-AttributeError to trigger the log_error branch
+    with patch.object(
+        type(sv.app_state),
+        "llm_provider",
+        new_callable=PropertyMock,
+        side_effect=RuntimeError("unexpected"),
+    ):
+        import PySide6.QtWidgets as _qw
+
+        monkeypatch.setattr(_qw.QMessageBox, "exec", lambda self: None)
+        monkeypatch.setattr(_qw.QMessageBox, "clickedButton", lambda self: None)
+        sv._check_llm_configured()
+
+    assert logged, "log_error should have been called for an unexpected exception"
+
+
+def test_check_llm_configured_does_not_log_attribute_error(sv, qtbot, monkeypatch):
+    """AttributeError (e.g., test mocks without llm_provider) must NOT trigger log_error."""
+    from unittest.mock import PropertyMock
+
+    logged = []
+    monkeypatch.setattr(
+        "vector_inspector.ui.views.search_view.log_error",
+        lambda *a, **kw: logged.append((a, kw)),
+    )
+
+    with patch.object(
+        type(sv.app_state),
+        "llm_provider",
+        new_callable=PropertyMock,
+        side_effect=AttributeError("no attr"),
+    ):
+        import PySide6.QtWidgets as _qw
+
+        monkeypatch.setattr(_qw.QMessageBox, "exec", lambda self: None)
+        monkeypatch.setattr(_qw.QMessageBox, "clickedButton", lambda self: None)
+        sv._check_llm_configured()
+
+    assert not logged, "AttributeError must be silently swallowed, not logged"

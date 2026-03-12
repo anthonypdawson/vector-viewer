@@ -744,3 +744,89 @@ def test_append_error_escapes_html_in_tooltip(qtbot):
     dlg._append_error("<b>bold error</b>")
     tip = dlg._status_label.toolTip()
     assert "<b>" not in tip
+
+
+# ---------------------------------------------------------------------------
+# WA_DeleteOnClose — dialog is freed on close
+# ---------------------------------------------------------------------------
+
+
+def test_dialog_has_delete_on_close_attribute(qtbot):
+    """AskAIDialog must have Qt.WA_DeleteOnClose set so closed instances are freed."""
+    dlg = _make_dialog(qtbot)
+    assert dlg.testAttribute(Qt.WA_DeleteOnClose)
+
+
+# ---------------------------------------------------------------------------
+# initial_row_indices=None → auto-select first LLM_CONTEXT_MAX rows
+# ---------------------------------------------------------------------------
+
+
+def test_initial_row_indices_none_auto_selects_first_rows(qtbot):
+    """When initial_row_indices is omitted, the dialog auto-selects the first
+    LLM_CONTEXT_MAX rows from all_results so the dialog opens with a useful default.
+    """
+    from vector_inspector.services.search_ai_service import LLM_CONTEXT_MAX
+
+    dlg = AskAIDialog(
+        _make_app_state(FakeLLMProvider()),
+        context=CONTEXT,
+        all_results=_ALL_RESULTS,
+        initial_row_indices=None,
+    )
+    qtbot.addWidget(dlg)
+    expected_count = min(LLM_CONTEXT_MAX, len(_ALL_RESULTS["ids"]))
+    assert dlg._initial_row_indices == list(range(expected_count))
+    assert dlg._row_indices == list(range(expected_count))
+
+
+def test_initial_row_indices_none_without_all_results_is_empty(qtbot):
+    """When initial_row_indices is None and no all_results, _initial_row_indices is []."""
+    dlg = AskAIDialog(
+        _make_app_state(FakeLLMProvider()),
+        context=CONTEXT,
+        all_results=None,
+        initial_row_indices=None,
+    )
+    qtbot.addWidget(dlg)
+    assert dlg._initial_row_indices == []
+    assert dlg._row_indices == []
+
+
+def test_explicit_initial_row_indices_not_overridden(qtbot):
+    """When an explicit initial_row_indices is passed, the auto-default must NOT apply."""
+    dlg = AskAIDialog(
+        _make_app_state(FakeLLMProvider()),
+        context=CONTEXT,
+        all_results=_ALL_RESULTS,
+        initial_row_indices=[2, 4],
+    )
+    qtbot.addWidget(dlg)
+    assert dlg._initial_row_indices == [2, 4]
+
+
+def test_reset_selection_restores_auto_default(qtbot):
+    """Resetting selection when initial_row_indices was None returns to the auto-selected set."""
+    from PySide6.QtCore import Qt as _Qt
+
+    from vector_inspector.services.search_ai_service import LLM_CONTEXT_MAX
+
+    dlg = AskAIDialog(
+        _make_app_state(FakeLLMProvider()),
+        context=CONTEXT,
+        all_results=_ALL_RESULTS,
+        initial_row_indices=None,
+    )
+    qtbot.addWidget(dlg)
+    # Change selection then reset
+    dlg._range_from.setValue(1)
+    dlg._range_to.setValue(1)
+    dlg._apply_range()
+    dlg._reset_selection()
+    checked = []
+    for i in range(dlg._results_list.count()):
+        item = dlg._results_list.item(i)
+        if item and item.checkState() == _Qt.CheckState.Checked:
+            checked.append(item.data(_Qt.ItemDataRole.UserRole))
+    expected_count = min(LLM_CONTEXT_MAX, len(_ALL_RESULTS["ids"]))
+    assert sorted(checked) == list(range(expected_count))
