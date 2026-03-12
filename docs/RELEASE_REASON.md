@@ -1,10 +1,10 @@
-## Release Notes (0.6.0) — 2026-03-10
+## Release Notes (0.6.0) — 2026-03-12
 
 ### 🚀 Vector Inspector Becomes AI‑Augmented
 
 This release introduces **Ask the AI**, an interactive assistant that explains search results, analyzes ranking behavior, and summarizes clusters so you can see *why* items ranked the way they did. Vector Inspector now not only shows your data — it **interprets** it.
 
-_No breaking changes in this release. 0.6.0 is a drop‑in upgrade from 0.5.x._
+_Upgrade note: This is a non‑breaking, drop‑in upgrade from 0.5.x. After updating, configure your preferred LLM provider under Settings → Integrations → LLM to enable Ask the AI._
 
 ---
 
@@ -22,6 +22,16 @@ Vector Inspector now includes an AI‑powered assistant that provides natural‑
 - A collapsible **Context Preview** shows exactly what will be sent to the LLM.  
 - Added `services/search_ai_service.py` — a pure‑Python payload builder and prompt formatter (fully unit‑tested, no Qt dependencies).  
 - Added extensive unit tests covering payload building, nested result unwrapping, snippet truncation, prompt generation, and context formatting.  
+
+**Privacy & Data Handling**
+
+- Before sending, users can preview the exact context in the dialog's **Context Preview** — use this to redact or remove any sensitive fields. 
+- Providers are fully configurable. Local providers (e.g., llama‑cpp or other on‑device runtimes) are supported and recommended when data must remain on‑device.
+
+**Supported providers & configuration**
+
+- Supported provider types: Ollama, local `llama‑cpp` runtimes, and OpenAI‑compatible APIs (e.g., OpenAI, Azure OpenAI, or self‑hosted OpenAI‑compatible gateways). 
+- Configure providers in Settings → AI Providers, or via environment variables where supported by the provider integration. See `docs/LLM_INTEGRATION_AND_CONFIGURATION.md` for capabilities, authentication, and context‑budget recommendations.
 
 ---
 
