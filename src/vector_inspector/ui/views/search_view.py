@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from vector_inspector.core.connection_manager import ConnectionInstance
-from vector_inspector.core.logging import log_info
+from vector_inspector.core.logging import log_error, log_info
 from vector_inspector.services import SearchRunner, ThreadedTaskRunner
 from vector_inspector.services.filter_service import apply_client_side_filters
 from vector_inspector.services.search_ai_service import (
@@ -832,8 +832,10 @@ class SearchView(QWidget):
             provider = self.app_state.llm_provider
             if provider and provider.is_available():
                 return True
-        except Exception:
+        except AttributeError:
             pass
+        except Exception:
+            log_error("Unexpected error checking LLM provider availability", exc_info=True)
         msg = QMessageBox(self)
         msg.setWindowTitle("LLM Not Configured")
         msg.setText("No LLM provider is configured.\n\nOpen Settings to configure an LLM provider.")
@@ -861,6 +863,9 @@ class SearchView(QWidget):
             return
         ids = self._unwrap_result_list("ids")
         n = len(ids)
+        if n == 0:
+            QMessageBox.information(self, "Ask the AI", "No search results to analyse yet. Run a search first.")
+            return
         # Default: top LLM_CONTEXT_MAX rows (or fewer if there are fewer results)
         initial_row_indices = list(range(min(LLM_CONTEXT_MAX, n)))
         context = build_search_context(
@@ -887,6 +892,8 @@ class SearchView(QWidget):
             return
         ids = self._unwrap_result_list("ids")
         n = len(ids)
+        if n == 0:
+            return
         # 3-item window: one before, the selected row, one after (clipped to bounds)
         row_indices = sorted({max(0, row - 1), row, min(n - 1, row + 1)})
         context = build_search_context(

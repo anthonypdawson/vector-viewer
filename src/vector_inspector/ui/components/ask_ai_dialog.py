@@ -133,6 +133,7 @@ class AskAIDialog(QDialog):
         self.setWindowTitle("Ask the AI — Search Context")
         self.resize(760, 620)
         self.setModal(False)  # Non-modal so user can keep browsing results
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
 
         self._app_state = app_state
         self._context = context
@@ -141,11 +142,18 @@ class AskAIDialog(QDialog):
         # Result-selection state (only active when all_results is supplied)
         self._all_results = all_results
         self._search_input: str = context.get("search_input", "")
-        self._initial_row_indices: list[int] = list(initial_row_indices) if initial_row_indices is not None else []
-        self._row_indices: list[int] = list(self._initial_row_indices)
-
         # Pre-compute per-row display data from all_results for the list widget
         self._all_row_data: list[dict[str, Any]] = self._extract_all_row_data() if all_results else []
+
+        # Determine initial selection indices; default to first LLM_CONTEXT_MAX rows when omitted
+        if initial_row_indices is not None:
+            self._initial_row_indices: list[int] = list(initial_row_indices)
+        elif self._all_row_data:
+            default_count = min(LLM_CONTEXT_MAX, len(self._all_row_data))
+            self._initial_row_indices = list(range(default_count))
+        else:
+            self._initial_row_indices = []
+        self._row_indices: list[int] = list(self._initial_row_indices)
 
         self._setup_ui(prefilled_prompt)
 
