@@ -64,8 +64,8 @@ class _SearchAIWorker(QThread):
     done = Signal()
     error = Signal(str)
 
-    def __init__(self, provider: Any, messages: list[dict[str, str]]) -> None:
-        super().__init__()
+    def __init__(self, provider: Any, messages: list[dict[str, str]], parent=None) -> None:
+        super().__init__(parent)
         self._provider = provider
         self._messages = messages
 
@@ -75,13 +75,16 @@ class _SearchAIWorker(QThread):
             model = self._provider.get_model_name()
             if caps.supports_streaming:
                 for ev in self._provider.stream_messages(self._messages, model=model, request_id="ask-ai"):
+                    if self.isInterruptionRequested():
+                        break
                     if ev.type == "delta":
                         self.chunk.emit(ev.content)
                     elif ev.type == "done":
                         break
             else:
-                result = self._provider.generate_messages(self._messages, model=model)
-                self.chunk.emit(str(result))
+                if not self.isInterruptionRequested():
+                    result = self._provider.generate_messages(self._messages, model=model)
+                    self.chunk.emit(str(result))
         except Exception as exc:
             log_error("Ask the AI request failed: %s", exc, exc_info=True)
             self.error.emit(str(exc))
@@ -170,7 +173,15 @@ class AskAIDialog(QDialog):
     def closeEvent(self, event) -> None:
         """Stop any running worker thread before the dialog is destroyed."""
         if self._worker and self._worker.isRunning():
-            self._worker.quit()
+            try:
+                self._worker.requestInterruption()
+            except Exception:
+                pass
+            if self._worker.isRunning():
+                try:
+                    self._worker.quit()
+                except Exception:
+                    pass
             self._worker.wait(2000)
         super().closeEvent(event)
 
@@ -489,11 +500,22 @@ class AskAIDialog(QDialog):
         self._send_btn.setEnabled(False)
         self._busy_bar.setVisible(True)
 
-        self._worker = _SearchAIWorker(provider, messages)
+        # Parent the worker to the dialog so it will be cleaned up with it.
+        self._worker = _SearchAIWorker(provider, messages, parent=self)
         self._worker.chunk.connect(self._on_chunk)
         self._worker.done.connect(self._on_done)
         self._worker.error.connect(self._on_error)
+        # Ensure we clear our reference and delete the thread object when finished
+        self._worker.finished.connect(self._on_worker_finished)
         self._worker.start()
+
+    def _on_worker_finished(self) -> None:
+        # Called in the GUI thread when the QThread object has finished.
+        try:
+            if self._worker is not None:
+                self._worker.deleteLater()
+        finally:
+            self._worker = None
 
     def _on_chunk(self, text: str) -> None:
         cursor = self._response_area.textCursor()
