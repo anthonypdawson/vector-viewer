@@ -21,7 +21,7 @@ Vector Inspector now includes an AI‑powered assistant that provides natural‑
 - Responses stream in real time from the configured LLM provider (Ollama, llama‑cpp, or any OpenAI‑compatible API) using the existing `app_state.llm_provider`.  
 - A collapsible **Context Preview** shows exactly what will be sent to the LLM.  
 - Added `services/search_ai_service.py` — a pure‑Python payload builder and prompt formatter (fully unit‑tested, no Qt dependencies).  
-- Added 22 unit tests covering payload building, nested result unwrapping, snippet truncation, prompt generation, and context formatting.  
+- Added extensive unit tests covering payload building, nested result unwrapping, snippet truncation, prompt generation, and context formatting.  
 
 ---
 
