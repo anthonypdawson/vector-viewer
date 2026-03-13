@@ -14,6 +14,9 @@ _SYSTEM_PROMPT = (
     "The user has performed a similarity search. "
     "You are given the search query, the top results (with their IDs, snippets, distances, and metadata), "
     "and optionally a specific result the user has selected. "
+    "Each result is labeled with its absolute rank number (e.g. '#3' means it was the 3rd result "
+    "in the full result list). When the user refers to 'result 3' or 'result #3', they mean the item "
+    "labeled '#3' in the context below — not the 3rd item listed unless they specify that (item 3). "
     "Answer the user's question clearly and concisely. "
     "When explaining ranking or relevance, refer to the distances and content provided. "
     "Important: the provided 'distance' values represent how close each result is to the query in vector "
@@ -24,6 +27,7 @@ _SYSTEM_PROMPT = (
     "fields that align with the query (source, tags, etc.), or concrete content overlap; explain how those "
     "elements contribute to relevance. "
     "Do not invent data that is not present in the context."
+    "If you cannot find supporting text, say 'No evidence in provided context."
 )
 
 _DEFAULT_TOP_N = 5
@@ -91,7 +95,12 @@ def build_search_context(
         valid_indices = list(range(min(effective_top_n, len(ids))))
 
     top_results = []
-    for rank, i in enumerate(valid_indices, start=1):
+    # Use the absolute result rank (original index + 1) so numbering in the
+    # LLM context matches the UI/persistent result positions. When a windowed
+    # subset is provided via `row_indices`, the displayed ranks should still
+    # reflect their absolute placement in the full result list.
+    for i in valid_indices:
+        rank = i + 1
         item_id = ids[i]
         doc = documents[i] if i < len(documents) else ""
         meta = metadatas[i] if i < len(metadatas) else {}

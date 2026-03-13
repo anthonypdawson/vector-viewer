@@ -1,6 +1,7 @@
 """Search interface for similarity queries."""
 
 import json
+import os
 import time
 import uuid
 from typing import Any, Optional
@@ -35,7 +36,7 @@ from vector_inspector.services.search_ai_service import (
     build_search_context,
 )
 from vector_inspector.services.telemetry_service import TelemetryService
-from vector_inspector.state import AppState
+from vector_inspector.state import AppState, SearchContext
 from vector_inspector.ui.components.ask_ai_dialog import AskAIDialog
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
@@ -541,6 +542,55 @@ class SearchView(QWidget):
 
         self.search_results = results
         self._display_results(results)
+
+        # Update app state with search context
+        self.app_state.set_search_results(
+            results,
+            context=SearchContext(
+                query_text=self._search_query_text,
+                query_embedding=results.get("query_embedding"),
+                embedding_model=results.get("query_embedding_model"),
+                embedding_provider=(
+                    type(self.connection._connection).__name__.replace("Connection", "").lower()
+                    if hasattr(self.connection, "_connection")
+                    else None
+                ),
+            ),
+        )
+
+        # Developer helper: optionally log the search context (embeddings/model)
+        # when debugging integration of query embeddings. Controlled via env var
+        # `VI_DEV_LOG_SEARCH_CONTEXT` to avoid noisy logs in normal runs.
+        try:
+            if os.getenv("VI_DEV_LOG_SEARCH_CONTEXT"):
+                qemb = results.get("query_embedding")
+                qmodel = results.get("query_embedding_model")
+                provider = (
+                    type(self.connection._connection).__name__.replace("Connection", "").lower()
+                    if hasattr(self.connection, "_connection")
+                    else None
+                )
+                if qemb is None:
+                    log_info("SearchContext: query_embedding=None, model=%s, provider=%s", qmodel, provider)
+                else:
+                    # Show length and first few elements to avoid massive logs
+                    try:
+                        preview = (
+                            list(qemb[:5])
+                            if isinstance(qemb, (list, tuple))
+                            else (list(qemb)[:5] if hasattr(qemb, "tolist") else str(qemb))
+                        )
+                    except Exception:
+                        preview = str(qemb)
+                    log_info(
+                        "SearchContext: query_embedding_len=%s preview=%s, model=%s, provider=%s",
+                        (len(qemb) if hasattr(qemb, "__len__") else "?"),
+                        preview,
+                        qmodel,
+                        provider,
+                    )
+        except Exception:
+            pass
 
         # Save to cache
         if self.current_database and self.current_collection:
