@@ -178,8 +178,10 @@ def test_set_search_results_emits_signal(app_state, qtbot):
     emitted = []
     app_state.search_results_updated.connect(lambda r: emitted.append(r))
 
+    from vector_inspector.state import SearchContext
+
     results = {"ids": ["x"]}
-    app_state.set_search_results(results, query="hello")
+    app_state.set_search_results(results, context=SearchContext(query_text="hello"))
 
     assert emitted == [results]
     assert app_state.search_results is results
@@ -187,15 +189,19 @@ def test_set_search_results_emits_signal(app_state, qtbot):
 
 
 def test_set_search_results_no_query_arg(app_state, qtbot):
-    """set_search_results with query=None doesn't clear previous query."""
-    app_state.set_search_results({"ids": ["a"]}, query="first")
-    app_state.set_search_results({"ids": ["b"]})  # no query arg
+    """set_search_results without context doesn't clear previous context."""
+    from vector_inspector.state import SearchContext
+
+    app_state.set_search_results({"ids": ["a"]}, context=SearchContext(query_text="first"))
+    app_state.set_search_results({"ids": ["b"]})  # no context arg
 
     assert app_state.search_query == "first"  # unchanged
 
 
 def test_clear_search_results_emits_signal(app_state, qtbot):
-    app_state.set_search_results({"ids": ["x"]}, query="q")
+    from vector_inspector.state import SearchContext
+
+    app_state.set_search_results({"ids": ["x"]}, context=SearchContext(query_text="q"))
 
     emitted = []
     app_state.search_results_updated.connect(lambda r: emitted.append(r))

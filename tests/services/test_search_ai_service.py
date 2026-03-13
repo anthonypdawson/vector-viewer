@@ -222,9 +222,10 @@ def test_context_row_indices_override():
     ctx = build_search_context("q", _LARGE_RESULTS, row_indices=[2, 0])
     assert len(ctx["top_results"]) == 2
     assert ctx["top_results"][0]["id"] == "id2"
-    assert ctx["top_results"][0]["rank"] == 1
+    # Ranks reflect absolute positions in the full result list (index+1)
+    assert ctx["top_results"][0]["rank"] == 3
     assert ctx["top_results"][1]["id"] == "id0"
-    assert ctx["top_results"][1]["rank"] == 2
+    assert ctx["top_results"][1]["rank"] == 1
 
 
 def test_context_row_indices_out_of_bounds_ignored():

@@ -60,6 +60,7 @@ results across developer machines and CI.
 | `app_state_with_fake_provider` | `AppState` | `AppState` with `fake_provider` already set as `provider`. Use for full-stack view tests. |
 | `task_runner` | `ThreadedTaskRunner` | Fresh `ThreadedTaskRunner` instance. Pass alongside `app_state` when constructing views. |
 | `fake_settings` | `FakeSettings` | Minimal settings stub; suppresses the splash dialog and exposes `get`/`set_use_accent_enabled`. Use for settings-dependent component tests. |
+| `webengine_cleanup` | `fixture` | Opt-in fixture for tests that construct widgets containing `QWebEngineView`/`QWebEnginePage`. It safely detaches pages on teardown to avoid WebEngineProfile teardown warnings; register widgets with `qtbot` immediately after construction when using this fixture. |
 
 **Fixture ownership:** If you create a new fixture that is broadly useful (more than one test file would benefit from it), or you discover a fixture defined in a test file that logically belongs in `conftest.py`, move it there. Keep `conftest.py` as the single source of truth for shared test infrastructure.
 

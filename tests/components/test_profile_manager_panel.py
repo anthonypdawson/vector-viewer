@@ -418,7 +418,7 @@ def test_threads_run_and_emit_sync(qtbot, monkeypatch):
             pass
 
     mod.PgVectorConnection = FakePg
-    sys.modules["vector_inspector.core.connections.pgvector_connection"] = mod
+    monkeypatch.setitem(sys.modules, "vector_inspector.core.connections.pgvector_connection", mod)
 
     df = panel_mod.DatabaseFetchThread("h", 5432, "u", "p")
     emitted = Emitter()
@@ -483,7 +483,7 @@ def test_test_connection_flow_creates_threads_and_handles_pinecone_and_weaviate(
                 return []
 
         setattr(m, cls, Conn)
-        sys.modules[modname] = m
+        monkeypatch.setitem(sys.modules, modname, m)
 
     # Monkeypatch TestConnectionThread to a fake that calls callbacks immediately
     class FakeThread:
