@@ -1,7 +1,8 @@
 # Provider/Model Comparison Mode
-Version: Draft
-Owner: Anthony Dawson
-Status: Proposed for 0.7.x
+Feature: Diff Mode for Providers and Models
+Version: Draft  
+Owner: Anthony Dawson  
+Status: Proposed for 0.7.x  
 
 ## Overview
 Provider/Model Comparison Mode introduces a unified workflow for comparing the behavior of two vector search configurations. Users can compare:
@@ -189,6 +190,37 @@ While benchmarking and session persistence are out of scope for the initial rele
 - Hooks for future metrics (latency, token usage, etc.)
 
 This ensures the feature can evolve into a full evaluation suite over time.
+
+## Implementation Challenges & Considerations
+
+### UI Complexity
+- **Pagination/Virtualization:** Implementing efficient virtualized tables in Qt (PySide6) can be non-trivial, especially with custom cell rendering for highlights and diffs. You may need to extend `QTableView`/`QAbstractTableModel` and handle custom painting.
+- **Collapse/Filter Controls:** Adding toggles and filters is straightforward, but keeping the UI responsive with large datasets requires careful state management and possibly background diff computation.
+
+### Provider/Model Abstraction
+- **Normalization:** Providers may have subtle differences in how they represent IDs, scores, or metadata. Building robust adapters will require comprehensive test cases and handling provider-specific quirks.
+- **Missing Fields:** Graceful degradation is important, but you’ll need clear UI cues for “missing” or “not available” fields to avoid user confusion.
+- **Adapter Pattern:** Maintaining adapters as providers evolve will require ongoing diligence and version tracking.
+
+### Performance
+- **Caching:** Embedding and result caching is effective, but cache invalidation (when settings or models change) must be handled carefully to avoid stale data.
+- **Batching/Background Loading:** Threading in PySide6 is safe if you use `QThread` and signals/slots, but you must avoid UI updates from background threads.
+- **Deferred Diffing:** Users may expect instant feedback; communicate when expensive operations are deferred or in progress.
+
+### Explainability (Ask the AI)
+- **Template-Driven Explanations:** Easy to start, but as you move to deeper analysis, you’ll need to design a clear interface between the comparison engine and the LLM (e.g., what context is sent, how much data, privacy concerns).
+- **LLM Cost/Latency:** If using cloud LLMs, consider rate limits, cost, and user feedback for slow responses.
+
+### Testing
+- **Golden-File Tests:** These are great for regression, but maintaining them as providers/models change can be labor-intensive.
+- **Integration Tests:** Mocking provider responses for all edge cases is important, especially for error handling and missing data.
+
+### Non-Goals Extensibility
+- **Hooks for Future Metrics:** Design your data models and APIs to be forward-compatible (e.g., allow for new fields without breaking consumers).
+- **Session Persistence:** If you plan to add this later, keep session state management modular.
+
+**Summary:**  
+No fundamental blockers, but the main risks are around UI performance with large datasets, provider heterogeneity, and keeping the system maintainable as new providers/models are added. Strong test coverage, modular design, and clear user feedback for slow/expensive operations will be key to success.
 
 ## Success Metrics
 - Adoption rate of Comparison Mode
