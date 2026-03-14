@@ -193,7 +193,7 @@ def test_data_load_thread_emits_error_on_exception():
 
 
 @pytest.fixture
-def viz_view(qtbot, app_state_with_fake_provider, task_runner):
+def viz_view(qtbot, webengine_cleanup, app_state_with_fake_provider, task_runner):
     """A VisualizationView with a fake provider."""
     view = VisualizationView(app_state_with_fake_provider, task_runner)
     qtbot.addWidget(view)

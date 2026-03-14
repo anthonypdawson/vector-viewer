@@ -1,31 +1,54 @@
-## Release Notes (0.6.0) — 2026-03-02
+## Release Notes (0.6.0) — 2026-03-12
 
-### LLM Provider Layer
-- Add pluggable `LLMProvider` abstraction (`core/llm_providers/`) with three implementations: `LlamaCppProvider` (in-process, zero-setup default), `OllamaProvider` (used opportunistically when Ollama is running locally), and `OpenAICompatibleProvider` (cloud or local OpenAI-compatible APIs).
-- Add `LLMProviderFactory` with auto-detection: user-configured → Ollama (probed at `localhost:11434`) → llama-cpp fallback.
-- Add `LLMProviderInstance` runtime wrapper on `AppState` (`app_state.llm_provider`) for lazy initialisation and `refresh()` after settings changes.
-- Default llama-cpp model: Phi-3-mini-4k-instruct Q4_K_M (~2.4 GB); `download_default_model()` helper downloads on first use with progress callback support.
-- New optional dependency group `llm` (`llama-cpp-python>=0.3.0`); install with `pdm add "vector-inspector[llm]"`.
+### 🚀 Vector Inspector Becomes AI‑Augmented
 
-- Developer: add hidden CLI flag `--llm-console` to open an interactive LLM test window alongside the main app for manual provider testing and quick reloads.
+This release introduces **Ask the AI**, an interactive assistant that explains search results, analyzes ranking behavior, and summarizes clusters so you can see *why* items ranked the way they did. Vector Inspector now not only shows your data — it **interprets** it.
 
-### Settings
-- Add LLM provider settings keys to `SettingsService` (`llm.provider`, `llm.model_path`, `llm.cache_dir`, `llm.ollama_url`, `llm.ollama_model`, `llm.openai_url`, `llm.openai_api_key`, `llm.openai_model`, `llm.context_length`, `llm.temperature`) with typed getters/setters.
-- Add **LLM Provider** status group to the Settings dialog (free tier): shows configured provider, live availability check button, and a disabled "Configure LLM…" stub that Vector Studio enables.
-- Vector Studio: add full **LLM Configuration** settings panel (provider dropdown, model browser, download button, Ollama/OpenAI-compatible fields, context length, temperature) injected via `settings_panel_hook`.
-  
-	Note: For ease of local verification and testing, this PR temporarily includes the full LLM configuration panel directly in Vector Inspector (see `src/vector_inspector/extensions/llm_settings_panel.py`). The long-term plan is for Vector Studio to inject the full configuration UI via `settings_panel_hook` while the free tier in Vector Inspector exposes only the small status group and a disabled "Configure LLM…" stub. This placement is intentional for developer testing and will be migrated to the Vector Studio extension in a follow-up change.
-
-### Testing
-- Add 22 unit tests in `tests/core/llm_providers/` covering factory provider selection, auto-detection order and fallback, provider availability mocking, `generate()` response parsing, and `LLMProviderInstance` refresh behaviour.
-- Add comprehensive LLM provider contract tests: streaming paths, error/exception handling, `get_model_name`, `is_available` HTTP probe, llama-cpp cache helpers (`get_llm_cache_dir`, `list_cached_models`, `download_default_model`), `get_capabilities`, and `get_health` for all three providers. Core LLM provider coverage raised from 78% to 95%.
-- Add `tests/ui/test_llm_settings_panel.py` (item 15): widget structure checks, provider switching, API key `maximumWidth`/full-value-storage assertion, and thread unit tests (`_HealthCheckThread`, `_ModelListThread`) called synchronously without a Qt event loop.
-- Add 17 `SettingsService` getter/setter unit tests covering all LLM settings keys.
-- Fix `datetime.UTC` (Python 3.11+ only) → `datetime.timezone.utc` in `base_provider.py`, `ollama_provider.py`, `openai_compatible_provider.py`, `runtime_manager.py`, and `llm_settings_panel.py`.
-
-### Bug Fixes
-- Fix WebEngine shutdown warnings: ensure QWebEnginePage/QWebEngineView and QWebChannel are explicitly disposed before application shutdown to avoid "Release of profile requested but WebEnginePage still not deleted" warnings in CI and on user machines. Files updated: `src/vector_inspector/ui/views/visualization/plot_panel.py`, `src/vector_inspector/ui/views/visualization/histogram_panel.py`, `src/vector_inspector/ui/views/visualization_view.py`, `src/vector_inspector/ui/main_window.py`.
-
-- Fix histogram scan bug: when scanning other connections for collections with the same embedding dimensionality, avoid excluding collections from other connections that happen to share the same collection name as the primary collection. The background scanner now only excludes the primary collection on the same connection. File updated: `src/vector_inspector/ui/views/visualization/histogram_panel.py`.
+_Upgrade note: This is a non‑breaking, drop‑in upgrade from 0.5.x. After updating, configure your preferred LLM provider under Settings → Integrations → LLM to enable Ask the AI._
 
 ---
+
+## 🧠 Ask the AI — Search Results
+
+Vector Inspector now includes an AI‑powered assistant that provides natural‑language insight into semantic search behavior directly from your search results.
+
+- Added **Ask the AI** button to the Search Results toolbar and **Explain result** to the right‑click context menu.  
+- Opening Ask the AI launches a non‑modal streaming dialog (`ui/components/ask_ai_dialog.py`) pre‑filled with:
+  - the search query  
+  - top‑N results (id, snippet, score, metadata)  
+  - the selected result  
+- **Explain result** auto‑generates a focused explanation prompt (editable before sending) for the selected result.  
+- Responses stream in real time from the configured LLM provider (Ollama, llama‑cpp, or any OpenAI‑compatible API) using the existing `app_state.llm_provider`.  
+- A collapsible **Context Preview** shows exactly what will be sent to the LLM.  
+- Added `services/search_ai_service.py` — a pure‑Python payload builder and prompt formatter (fully unit‑tested, no Qt dependencies).  
+- Added extensive unit tests covering payload building, nested result unwrapping, snippet truncation, prompt generation, and context formatting.  
+
+**Privacy & Data Handling**
+
+- Before sending, users can preview the exact context in the dialog's **Context Preview** — use this to redact or remove any sensitive fields. 
+- Providers are fully configurable. Local providers (e.g., llama‑cpp or other on‑device runtimes) are supported and recommended when data must remain on‑device.
+
+**Supported providers & configuration**
+
+- Supported provider types: Ollama, local `llama‑cpp` runtimes, and OpenAI‑compatible APIs (e.g., OpenAI, Azure OpenAI, or self‑hosted OpenAI‑compatible gateways). 
+- Configure providers in Settings → AI Providers, or via environment variables where supported by the provider integration. See `docs/LLM_INTEGRATION_AND_CONFIGURATION.md` for capabilities, authentication, and context‑budget recommendations.
+
+---
+
+## 🎛️ Ask the AI — Context Clamping & Result Selection
+
+To keep prompts efficient and avoid runaway context windows, Ask the AI includes smarter defaults and user‑controlled selection tools.
+
+- **Context clamped** to the top 10 results (`LLM_CONTEXT_MAX = 10`) to avoid accidental overflows.  
+- New **Result Selection** panel:
+  - checkable list of all results  
+  - range selectors (From/To + Apply Range)  
+  - **Reset to Default** restores the initial top‑N  
+- **Real‑time token estimate** (`~X tokens — Y results selected`) updates as the selection changes.  
+- **Over‑limit warning** when more than 20 results are selected (`LLM_CONTEXT_WARN = 20`).  
+- **Configure LLM…** button appears when no provider is configured.  
+- LLM availability checks added to `_ask_ai()` and `_explain_result()` with direct Settings shortcuts.  
+- **Explain result** now uses a **3‑item window** (selected row ± 1) for more focused prompts that still preserve local ranking context.  
+- Added `estimate_tokens(context)` utility (chars / 4 heuristic).  
+- Added `row_indices` override to `build_search_context`.  
+- Service tests expanded to 31; view tests expanded to 13.  

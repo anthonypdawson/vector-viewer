@@ -32,9 +32,7 @@ class DimensionAwareEmbeddingFunction(EmbeddingFunction):
         from vector_inspector.core.embedding_utils import get_embedding_model_for_dimension
 
         log_info("[ChromaDB] Loading embedding model for %dd vectors...", self.expected_dimension)
-        self.model, self.model_name, self.model_type = get_embedding_model_for_dimension(
-            self.expected_dimension
-        )
+        self.model, self.model_name, self.model_type = get_embedding_model_for_dimension(self.expected_dimension)
         log_info(
             "[ChromaDB] Using %s model '%s' for %dd embeddings",
             self.model_type,
@@ -58,9 +56,7 @@ class DimensionAwareEmbeddingFunction(EmbeddingFunction):
 class ChromaDBConnection(VectorDBConnection):
     """Manages connection to ChromaDB and provides query interface."""
 
-    def __init__(
-        self, path: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None
-    ):
+    def __init__(self, path: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None):
         """
         Initialize ChromaDB connection.
 
@@ -178,9 +174,7 @@ class ChromaDBConnection(VectorDBConnection):
 
         return None
 
-    def get_collection(
-        self, name: str, embedding_function: Optional[EmbeddingFunction] = None
-    ) -> Optional[Collection]:
+    def get_collection(self, name: str, embedding_function: Optional[EmbeddingFunction] = None) -> Optional[Collection]:
         """Get a collection (without overriding existing embedding function).
 
         Args:
@@ -223,9 +217,7 @@ class ChromaDBConnection(VectorDBConnection):
             vector_dimension = "Unknown"
 
             if sample and sample["metadatas"]:
-                metadata_fields = (
-                    list(sample["metadatas"][0].keys()) if sample["metadatas"][0] else []
-                )
+                metadata_fields = list(sample["metadatas"][0].keys()) if sample["metadatas"][0] else []
 
             # Determine vector dimensions from embeddings
             embeddings = sample.get("embeddings") if sample else None
@@ -303,16 +295,23 @@ class ChromaDBConnection(VectorDBConnection):
             return None
 
         # If query_texts provided, we need to manually embed them with dimension-aware model
+        _query_embedding = None
+        _query_embedding_model = None
+        _embedding_function_used = None
         if query_texts and not query_embeddings:
             embedding_function = self._get_embedding_function_for_collection(collection_name)
             if embedding_function:
                 log_info("[ChromaDB] Manually embedding query texts with dimension-aware model")
                 query_embeddings = embedding_function(query_texts)
+                _embedding_function_used = embedding_function
                 query_texts = None  # Use embeddings instead of texts
             else:
-                log_info(
-                    "[ChromaDB] Warning: Could not determine embedding function, using collection's default"
-                )
+                log_info("[ChromaDB] Warning: Could not determine embedding function, using collection's default")
+
+        if query_embeddings:
+            _query_embedding = query_embeddings[0]
+        if _embedding_function_used is not None:
+            _query_embedding_model = _embedding_function_used.model_name
 
         try:
             results = collection.query(
@@ -323,7 +322,10 @@ class ChromaDBConnection(VectorDBConnection):
                 where_document=where_document,  # type: ignore
                 include=["metadatas", "documents", "distances", "embeddings"],
             )
-            return cast(dict[str, Any], results)
+            result_dict = cast(dict[str, Any], results)
+            result_dict["query_embedding"] = _query_embedding
+            result_dict["query_embedding_model"] = _query_embedding_model
+            return result_dict
         except Exception as e:
             import traceback
 
@@ -548,9 +550,7 @@ class ChromaDBConnection(VectorDBConnection):
         col = self.get_collection(name)
         if not col:
             raise RuntimeError("Collection not available")
-        return cast(
-            dict[str, Any], col.get(ids=ids, include=["metadatas", "documents", "embeddings"])
-        )
+        return cast(dict[str, Any], col.get(ids=ids, include=["metadatas", "documents", "embeddings"]))
 
     def count_collection(self, name: str) -> int:
         """Count items in a collection."""

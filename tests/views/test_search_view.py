@@ -295,6 +295,108 @@ def test_on_search_finished_with_client_filters(sv, qtbot):
     sv._on_search_finished(results)
 
 
+def test_on_search_finished_populates_search_context(sv, qtbot):
+    """_on_search_finished stores a SearchContext on app_state with query text."""
+    import time
+
+    sv._search_start_time = time.time()
+    sv._search_correlation_id = "ctx-id"
+    sv._search_server_filter = None
+    sv._search_client_filters = []
+    sv._search_query_text = "my search"
+    sv._search_n_results = 10
+
+    results = {
+        "ids": [["id1"]],
+        "documents": [["doc1"]],
+        "metadatas": [[{"k": "v"}]],
+        "distances": [[0.2]],
+    }
+    sv._on_search_finished(results)
+
+    assert sv.app_state.search_context is not None
+    assert sv.app_state.search_context.query_text == "my search"
+    assert sv.app_state.search_query == "my search"
+
+
+def test_on_search_finished_populates_query_embedding_from_results(sv, qtbot):
+    """_on_search_finished reads query_embedding from the results dict."""
+    import time
+
+    sv._search_start_time = time.time()
+    sv._search_correlation_id = "emb-id"
+    sv._search_server_filter = None
+    sv._search_client_filters = []
+    sv._search_query_text = "embed me"
+    sv._search_n_results = 5
+
+    emb = [0.1, 0.2, 0.3]
+    results = {
+        "ids": [["id1"]],
+        "documents": [["doc1"]],
+        "metadatas": [[{}]],
+        "distances": [[0.1]],
+        "query_embedding": emb,
+    }
+    sv._on_search_finished(results)
+
+    ctx = sv.app_state.search_context
+    assert ctx is not None
+    assert ctx.query_embedding == emb
+
+
+def test_on_search_finished_populates_embedding_model_from_results(sv, qtbot):
+    """_on_search_finished reads query_embedding_model from the results dict."""
+    import time
+
+    sv._search_start_time = time.time()
+    sv._search_correlation_id = "mdl-id"
+    sv._search_server_filter = None
+    sv._search_client_filters = []
+    sv._search_query_text = "model query"
+    sv._search_n_results = 5
+
+    results = {
+        "ids": [["id1"]],
+        "documents": [["doc1"]],
+        "metadatas": [[{}]],
+        "distances": [[0.1]],
+        "query_embedding": [0.5, 0.6],
+        "query_embedding_model": "all-MiniLM-L6-v2",
+    }
+    sv._on_search_finished(results)
+
+    ctx = sv.app_state.search_context
+    assert ctx is not None
+    assert ctx.embedding_model == "all-MiniLM-L6-v2"
+
+
+def test_on_search_finished_query_embedding_none_when_absent(sv, qtbot):
+    """query_embedding defaults to None when not present in results."""
+    import time
+
+    sv._search_start_time = time.time()
+    sv._search_correlation_id = "no-emb"
+    sv._search_server_filter = None
+    sv._search_client_filters = []
+    sv._search_query_text = "no embedding here"
+    sv._search_n_results = 5
+
+    results = {
+        "ids": [["id1"]],
+        "documents": [["doc1"]],
+        "metadatas": [[{}]],
+        "distances": [[0.1]],
+        # no query_embedding key
+    }
+    sv._on_search_finished(results)
+
+    ctx = sv.app_state.search_context
+    assert ctx is not None
+    assert ctx.query_embedding is None
+    assert ctx.embedding_model is None
+
+
 # ---------------------------------------------------------------------------
 # _on_search_error
 # ---------------------------------------------------------------------------

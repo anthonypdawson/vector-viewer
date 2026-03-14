@@ -510,6 +510,7 @@ class PgVectorConnection(VectorDBConnection):
             return None
 
         # If caller provided query texts (not embeddings), compute embeddings using configured model
+        _query_embedding_model = None
         if (not query_embeddings) and query_texts:
             try:
                 from vector_inspector.core.embedding_utils import encode_text
@@ -524,6 +525,7 @@ class PgVectorConnection(VectorDBConnection):
                     computed = [encode_text(t, loaded_model, model_type) for t in query_texts]
 
                 query_embeddings = computed
+                _query_embedding_model = model_name
             except Exception as e:
                 log_error("Failed to compute query embeddings: %s", e)
                 return None
@@ -622,6 +624,8 @@ class PgVectorConnection(VectorDBConnection):
                 "metadatas": per_metas,
                 "embeddings": per_embeds,
                 "distances": per_dists,
+                "query_embedding": query_embeddings[0] if query_embeddings else None,
+                "query_embedding_model": _query_embedding_model,
             }
         except Exception as e:
             log_error("Query failed: %s", e)

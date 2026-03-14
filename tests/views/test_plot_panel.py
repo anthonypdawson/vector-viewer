@@ -6,7 +6,7 @@ from vector_inspector.ui.views.visualization.plot_panel import PlotEventBridge, 
 
 
 @pytest.fixture
-def plot_panel(qtbot):
+def plot_panel(qtbot, webengine_cleanup):
     panel = PlotPanel()
     qtbot.addWidget(panel)
     yield panel

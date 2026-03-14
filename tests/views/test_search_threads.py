@@ -28,6 +28,7 @@ def test_search_thread_emits_finished_on_success(qtbot):
     with qtbot.waitSignal(thread.finished, timeout=5000) as blocker:
         thread.start()
     results = blocker.args[0]
+    thread.wait()
     assert "ids" in results
 
 
@@ -88,6 +89,7 @@ def test_search_thread_passes_server_filter(qtbot):
     )
     with qtbot.waitSignal(thread.finished, timeout=5000):
         thread.start()
+    thread.wait()
     assert calls[0] == {"field": {"$eq": "val"}}
 
 

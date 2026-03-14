@@ -191,9 +191,7 @@ class QdrantConnection(VectorDBConnection):
             collection_info = self._client.get_collection(name)
 
             # Get a sample point to determine metadata fields
-            sample = self._client.scroll(
-                collection_name=name, limit=1, with_payload=True, with_vectors=False
-            )
+            sample = self._client.scroll(collection_name=name, limit=1, with_payload=True, with_vectors=False)
 
             metadata_fields = []
             if sample[0] and len(sample[0]) > 0:
@@ -340,6 +338,8 @@ class QdrantConnection(VectorDBConnection):
                 "documents": [],
                 "metadatas": [],
                 "embeddings": [],
+                "query_embedding": None,
+                "query_embedding_model": None,
             }
 
             # Use query_texts if provided (Qdrant handles embedding)
@@ -354,18 +354,19 @@ class QdrantConnection(VectorDBConnection):
                 if isinstance(query, str):
                     # Generate embeddings for text query using inherited method
                     try:
-                        model, model_name, model_type = self.load_embedding_model_for_collection(
-                            collection_name
-                        )
+                        model, model_name, model_type = self.load_embedding_model_for_collection(collection_name)
 
                         from vector_inspector.core.embedding_utils import encode_text
 
                         query_vector = encode_text(query, model, model_type)
+                        all_results["query_embedding"] = query_vector
+                        all_results["query_embedding_model"] = model_name
                     except Exception as e:
                         log_error("Failed to embed query text: %s", e)
                         continue
                 else:
                     query_vector = query
+                    all_results["query_embedding"] = query_vector
 
                 # Use modern query_points API
                 try:
@@ -504,7 +505,7 @@ class QdrantConnection(VectorDBConnection):
 
         Returns:
             True if successful, False otherwise
-            
+
         Note:
             Qdrant requires UUIDs for point IDs. If a provided ID is not a valid UUID,
             it will be converted to a deterministic UUID using uuid5, and the original
@@ -692,9 +693,7 @@ class QdrantConnection(VectorDBConnection):
                 # Delete by filter
                 qdrant_filter = self._build_qdrant_filter(where)
                 if qdrant_filter:
-                    self._client.delete(
-                        collection_name=collection_name, points_selector=qdrant_filter
-                    )
+                    self._client.delete(collection_name=collection_name, points_selector=qdrant_filter)
             return True
         except Exception as e:
             log_error("Failed to delete items: %s", e)
@@ -794,9 +793,7 @@ class QdrantConnection(VectorDBConnection):
                 distance,
             )
 
-            if not self.create_collection(
-                metadata.get("collection_name"), int(vector_size), distance
-            ):
+            if not self.create_collection(metadata.get("collection_name"), int(vector_size), distance):
                 log_error("Failed to create collection %s", metadata.get("collection_name"))
                 return False
 

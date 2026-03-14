@@ -13,6 +13,7 @@ from vector_inspector.core.cache_manager import CacheManager
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.model_registry import EmbeddingModelRegistry
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.state.search_context import SearchContext
 
 
 class AppState(QObject):
@@ -83,7 +84,7 @@ class AppState(QObject):
 
         # Search state
         self._search_results: Optional[dict[str, Any]] = None
-        self._search_query: Optional[str] = None
+        self._search_context: Optional[SearchContext] = None
 
         # Filter state (split between client and server-side)
         self._client_filters: list[dict[str, Any]] = []
@@ -261,21 +262,26 @@ class AppState(QObject):
 
     @property
     def search_query(self) -> Optional[str]:
-        """Get current search query."""
-        return self._search_query
+        """Get current search query text."""
+        return self._search_context.query_text if self._search_context else None
 
-    def set_search_results(self, results: dict[str, Any], query: Optional[str] = None) -> None:
+    @property
+    def search_context(self) -> Optional[SearchContext]:
+        """Get current search context."""
+        return self._search_context
+
+    def set_search_results(self, results: dict[str, Any], context: Optional[SearchContext] = None) -> None:
         """Set search results."""
         self._search_results = results
-        if query is not None:
-            self._search_query = query
+        if context is not None:
+            self._search_context = context
         self.search_results_updated.emit(results)
 
     def clear_search_results(self) -> None:
         """Clear search results."""
         if self._search_results is not None:
             self._search_results = None
-            self._search_query = None
+            self._search_context = None
             self.search_results_updated.emit({})
 
     # Filter properties
@@ -442,7 +448,7 @@ class AppState(QObject):
         self._cluster_labels = None
         self._cluster_algorithm = None
         self._search_results = None
-        self._search_query = None
+        self._search_context = None
         self._client_filters = []
         self._server_filter = None
         self._current_page = 1

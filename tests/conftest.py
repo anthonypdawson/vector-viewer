@@ -4,6 +4,7 @@ import os
 # Ensure headless Qt platform as early as possible to avoid GUI initialization
 # before tests or imported modules can touch Qt.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 # Do NOT force-disable telemetry here — tests explicitly verify telemetry
 # behaviour and will set `VI_NO_TELEMETRY` themselves where needed.
 
@@ -131,3 +132,77 @@ def fake_settings():
             self._use_accent = bool(enabled)
 
     return FakeSettings()
+
+
+@pytest.fixture
+def webengine_cleanup(qtbot):
+    """Opt-in fixture to track widgets added via `qtbot.addWidget` and detach
+    their `QWebEngineView` pages on teardown to avoid Qt WebEngineProfile
+    warnings. Use in tests that create `QWebEngineView` widgets (e.g.
+    `PlotPanel`, `HistogramPanel`) by accepting the `webengine_cleanup` fixture.
+
+    Example:
+        def test_something(qtbot, webengine_cleanup):
+            panel = PlotPanel()
+            qtbot.addWidget(panel)
+
+    Widgets that are not added via ``qtbot.addWidget`` can be tracked manually
+    by appending them to the ``webengine_cleanup`` list.
+    """
+    created = []
+    orig_add = qtbot.addWidget
+
+    def _add_widget(widget):
+        created.append(widget)
+        return orig_add(widget)
+
+    qtbot.addWidget = _add_widget
+    try:
+        yield created
+    finally:
+        # Teardown: detach WebEngine pages from tracked widgets. Do not close or
+        # delete the widget itself; pytest-qt will handle widget closing.
+        for w in created:
+            try:
+                if hasattr(w, "web_view"):
+                    try:
+                        p = None
+                        try:
+                            p = w.web_view.page()
+                        except Exception:
+                            p = None
+
+                        if p is not None:
+                            try:
+                                p.setWebChannel(None)
+                            except Exception:
+                                pass
+                            try:
+                                p.setParent(None)
+                            except Exception:
+                                pass
+                            try:
+                                p.deleteLater()
+                            except Exception:
+                                pass
+
+                        try:
+                            w.web_view.setPage(None)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+    # Encourage Python to collect Qt wrappers and give Qt a moment to tear down
+    try:
+        import gc
+
+        gc.collect()
+    except Exception:
+        pass
+    try:
+        qtbot.wait(50)
+    except Exception:
+        pass

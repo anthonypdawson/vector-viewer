@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:7ddb262f40d91c0a1bd74baff0bf4281e1038b19f086364e2ae4a9c98639c350"
+content_hash = "sha256:db2b80fd0ecdd3854d2c2c4e2c3daabe73c76a25847057c2a5c0cd0aa1152ef1"
 
 [[metadata.targets]]
 requires_python = ">=3.11,<3.14"
@@ -3421,6 +3421,23 @@ files = [
 ]
 
 [[package]]
+name = "pytest-env"
+version = "1.5.0"
+requires_python = ">=3.10"
+summary = "pytest plugin that allows you to add environment variables."
+groups = ["dev"]
+marker = "python_version >= \"3.11\" and python_version < \"3.14\""
+dependencies = [
+    "pytest>=9.0.2",
+    "python-dotenv>=1.2.1",
+    "tomli>=2.4; python_version < \"3.11\"",
+]
+files = [
+    {file = "pytest_env-1.5.0-py3-none-any.whl", hash = "sha256:89a15686ac837c9cd009a8a2d52bd55865e2f23c82094247915dae4540c87161"},
+    {file = "pytest_env-1.5.0.tar.gz", hash = "sha256:db8994b9ce170f135a37acc09ac753a6fc697d15e691b576ed8d8ca261c40246"},
+]
+
+[[package]]
 name = "pytest-qt"
 version = "4.5.0"
 requires_python = ">=3.9"
@@ -3504,7 +3521,7 @@ name = "python-dotenv"
 version = "1.2.1"
 requires_python = ">=3.9"
 summary = "Read key-value pairs from a .env file and set them as environment variables"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version >= \"3.11\" and python_version < \"3.14\""
 files = [
     {file = "python_dotenv-1.2.1-py3-none-any.whl", hash = "sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61"},

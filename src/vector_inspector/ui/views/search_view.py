@@ -1,6 +1,7 @@
 """Search interface for similarity queries."""
 
 import json
+import os
 import time
 import uuid
 from typing import Any, Optional
@@ -26,11 +27,17 @@ from PySide6.QtWidgets import (
 )
 
 from vector_inspector.core.connection_manager import ConnectionInstance
-from vector_inspector.core.logging import log_info
+from vector_inspector.core.logging import log_error, log_info
 from vector_inspector.services import SearchRunner, ThreadedTaskRunner
 from vector_inspector.services.filter_service import apply_client_side_filters
+from vector_inspector.services.search_ai_service import (
+    LLM_CONTEXT_MAX,
+    build_explain_prompt,
+    build_search_context,
+)
 from vector_inspector.services.telemetry_service import TelemetryService
-from vector_inspector.state import AppState
+from vector_inspector.state import AppState, SearchContext
+from vector_inspector.ui.components.ask_ai_dialog import AskAIDialog
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
@@ -197,6 +204,11 @@ class SearchView(QWidget):
         self.refresh_button.setToolTip("Reset search input and results")
         self.refresh_button.clicked.connect(self._refresh_search)
         controls_layout.addWidget(self.refresh_button)
+
+        self.ask_ai_button = QPushButton("Ask the AI")
+        self.ask_ai_button.setToolTip("Ask an AI question about the current search results")
+        self.ask_ai_button.clicked.connect(self._ask_ai)
+        controls_layout.addWidget(self.ask_ai_button)
 
         controls_layout.addWidget(self.search_button)
 
@@ -531,6 +543,55 @@ class SearchView(QWidget):
         self.search_results = results
         self._display_results(results)
 
+        # Update app state with search context
+        self.app_state.set_search_results(
+            results,
+            context=SearchContext(
+                query_text=self._search_query_text,
+                query_embedding=results.get("query_embedding"),
+                embedding_model=results.get("query_embedding_model"),
+                embedding_provider=(
+                    type(self.connection._connection).__name__.replace("Connection", "").lower()
+                    if hasattr(self.connection, "_connection")
+                    else None
+                ),
+            ),
+        )
+
+        # Developer helper: optionally log the search context (embeddings/model)
+        # when debugging integration of query embeddings. Controlled via env var
+        # `VI_DEV_LOG_SEARCH_CONTEXT` to avoid noisy logs in normal runs.
+        try:
+            if os.getenv("VI_DEV_LOG_SEARCH_CONTEXT"):
+                qemb = results.get("query_embedding")
+                qmodel = results.get("query_embedding_model")
+                provider = (
+                    type(self.connection._connection).__name__.replace("Connection", "").lower()
+                    if hasattr(self.connection, "_connection")
+                    else None
+                )
+                if qemb is None:
+                    log_info("SearchContext: query_embedding=None, model=%s, provider=%s", qmodel, provider)
+                else:
+                    # Show length and first few elements to avoid massive logs
+                    try:
+                        preview = (
+                            list(qemb[:5])
+                            if isinstance(qemb, (list, tuple))
+                            else (list(qemb)[:5] if hasattr(qemb, "tolist") else str(qemb))
+                        )
+                    except Exception:
+                        preview = str(qemb)
+                    log_info(
+                        "SearchContext: query_embedding_len=%s preview=%s, model=%s, provider=%s",
+                        (len(qemb) if hasattr(qemb, "__len__") else "?"),
+                        preview,
+                        qmodel,
+                        provider,
+                    )
+        except Exception:
+            pass
+
         # Save to cache
         if self.current_database and self.current_collection:
             self.cache_manager.update(
@@ -777,6 +838,10 @@ class SearchView(QWidget):
         view_action = menu.addAction("👁️ View Details")
         view_action.triggered.connect(lambda: self._on_row_double_clicked(self.results_table.model().index(row, 0)))
 
+        # Add "Explain result" AI shortcut
+        explain_action = menu.addAction("🔍 Explain result")
+        explain_action.triggered.connect(lambda: self._explain_result(row))
+
         # Add "Copy vector to JSON" action
         selected_rows = [index.row() for index in self.results_table.selectionModel().selectedRows()]
         if not selected_rows:
@@ -810,6 +875,93 @@ class SearchView(QWidget):
         # Only show menu if it has items
         if not menu.isEmpty():
             menu.exec(self.results_table.viewport().mapToGlobal(position))
+
+    def _check_llm_configured(self) -> bool:
+        """Return True if an LLM provider is available; otherwise prompt to open Settings."""
+        try:
+            provider = self.app_state.llm_provider
+            if provider and provider.is_available():
+                return True
+        except AttributeError:
+            pass
+        except Exception:
+            log_error("Unexpected error checking LLM provider availability", exc_info=True)
+        msg = QMessageBox(self)
+        msg.setWindowTitle("LLM Not Configured")
+        msg.setText("No LLM provider is configured.\n\nOpen Settings to configure an LLM provider.")
+        msg.setIcon(QMessageBox.Icon.Warning)
+        settings_btn = msg.addButton("Open Settings", QMessageBox.ButtonRole.AcceptRole)
+        msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+        if msg.clickedButton() is settings_btn:
+            self._open_settings()
+        return False
+
+    def _open_settings(self) -> None:
+        """Open the settings dialog."""
+        from vector_inspector.ui.dialogs.settings_dialog import SettingsDialog
+
+        dlg = SettingsDialog(self.app_state.settings_service, self)
+        dlg.exec()
+
+    def _ask_ai(self, prefilled_prompt: str = "", selected_row: int | None = None) -> None:
+        """Open the Ask the AI dialog for the current search context."""
+        if not self.search_results:
+            QMessageBox.information(self, "Ask the AI", "No search results to analyse yet. Run a search first.")
+            return
+        if not self._check_llm_configured():
+            return
+        ids = self._unwrap_result_list("ids")
+        n = len(ids)
+        if n == 0:
+            QMessageBox.information(self, "Ask the AI", "No search results to analyse yet. Run a search first.")
+            return
+        # Default: top LLM_CONTEXT_MAX rows (or fewer if there are fewer results)
+        initial_row_indices = list(range(min(LLM_CONTEXT_MAX, n)))
+        context = build_search_context(
+            search_input=self.query_input.toPlainText().strip(),
+            search_results=self.search_results,
+            selected_row=selected_row,
+            row_indices=initial_row_indices,
+        )
+        dlg = AskAIDialog(
+            self.app_state,
+            context=context,
+            prefilled_prompt=prefilled_prompt,
+            all_results=self.search_results,
+            initial_row_indices=initial_row_indices,
+            parent=self,
+        )
+        dlg.show()
+
+    def _explain_result(self, row: int) -> None:
+        """Open Ask the AI with a prefilled 'explain this result' prompt for the given row."""
+        if not self.search_results:
+            return
+        if not self._check_llm_configured():
+            return
+        ids = self._unwrap_result_list("ids")
+        n = len(ids)
+        if n == 0:
+            return
+        # 3-item window: one before, the selected row, one after (clipped to bounds)
+        row_indices = sorted({max(0, row - 1), row, min(n - 1, row + 1)})
+        context = build_search_context(
+            search_input=self.query_input.toPlainText().strip(),
+            search_results=self.search_results,
+            selected_row=row,
+            row_indices=row_indices,
+        )
+        prefilled = build_explain_prompt(context.get("selected_result"))
+        dlg = AskAIDialog(
+            self.app_state,
+            context=context,
+            prefilled_prompt=prefilled,
+            all_results=self.search_results,
+            initial_row_indices=row_indices,
+            parent=self,
+        )
+        dlg.show()
 
     def _display_results(self, results: dict[str, Any]):
         """Display search results in table."""

@@ -12,7 +12,7 @@ from vector_inspector.state import AppState
 
 
 @pytest.fixture
-def plot_panel(qtbot):
+def plot_panel(qtbot, webengine_cleanup):
     """Create a PlotPanel instance using qtbot for proper Qt widget handling."""
     from vector_inspector.ui.views.visualization.plot_panel import PlotPanel
 
@@ -182,7 +182,7 @@ def test_selection_container_hidden_3d_plot():
     assert is_2d is False
 
 
-def test_visualization_view_forwards_signal(qtbot, task_runner):
+def test_visualization_view_forwards_signal(qtbot, task_runner, webengine_cleanup):
     """Test that VisualizationView forwards view_in_data_browser signal."""
     from vector_inspector.ui.views.visualization_view import VisualizationView
 
@@ -202,10 +202,4 @@ def test_visualization_view_forwards_signal(qtbot, task_runner):
     # Verify forwarding (only ID should be forwarded)
     assert blocker.args == ["test-id-123"]
 
-    # Explicit cleanup to prevent "Release of profile" warning
-    if hasattr(view, "plot_panel") and view.plot_panel and view.plot_panel.web_view:
-        if view.plot_panel.web_view.page():
-            view.plot_panel.web_view.setPage(None)
-        view.plot_panel.web_view.close()
-    view.deleteLater()
-    qtbot.wait(50)  # Give Qt time to process deletion
+    # Cleanup is handled by pytest-qt and the `webengine_cleanup` fixture

@@ -30,9 +30,7 @@ from vector_inspector.core.logging import log_error
 class PineconeConnection(VectorDBConnection):
     """Manages connection to Pinecone and provides query interface."""
 
-    def __init__(
-        self, api_key: str, environment: Optional[str] = None, index_host: Optional[str] = None
-    ):
+    def __init__(self, api_key: str, environment: Optional[str] = None, index_host: Optional[str] = None):
         """
         Initialize Pinecone connection.
 
@@ -150,14 +148,10 @@ class PineconeConnection(VectorDBConnection):
                         for namespace, ns_stats in namespaces_info.items():
                             vector_count = ns_stats.get("vector_count", 0)
                             if vector_count > 0:
-                                collections.append(
-                                    self._format_collection_name(index_name, namespace)
-                                )
+                                collections.append(self._format_collection_name(index_name, namespace))
 
                         # If no namespaces have vectors, still show the index
-                        if not collections or not any(
-                            c.startswith(f"{index_name}") for c in collections
-                        ):
+                        if not collections or not any(c.startswith(f"{index_name}") for c in collections):
                             collections.append(index_name)
 
                 except Exception as e:
@@ -232,9 +226,7 @@ class PineconeConnection(VectorDBConnection):
             log_error("Failed to check hosted model for index %s: %s", index_name, e)
             return None
 
-    def _embed_with_inference_api(
-        self, model: str, texts: list[str], input_type: str = "query"
-    ) -> list[list[float]]:
+    def _embed_with_inference_api(self, model: str, texts: list[str], input_type: str = "query") -> list[list[float]]:
         """
         Use Pinecone's inference API to embed texts.
 
@@ -253,9 +245,7 @@ class PineconeConnection(VectorDBConnection):
             raise Exception("Pinecone inference API not available on this client")
 
         try:
-            result = self._client.inference.embed(
-                model=model, inputs=texts, parameters={"input_type": input_type}
-            )
+            result = self._client.inference.embed(model=model, inputs=texts, parameters={"input_type": input_type})
 
             # Extract embeddings from result
             embeddings = []
@@ -357,15 +347,11 @@ class PineconeConnection(VectorDBConnection):
                 "metadata_fields": metadata_fields,
                 "vector_dimension": dimension,
                 "distance_metric": str(metric).upper() if metric else "UNKNOWN",
-                "host": str(index_description.host)
-                if hasattr(index_description, "host")
-                else "N/A",
+                "host": str(index_description.host) if hasattr(index_description, "host") else "N/A",
                 "status": index_description.status.get("state", "unknown")
                 if hasattr(index_description.status, "get")
                 else str(index_description.status),  # type: ignore
-                "spec": str(index_description.spec)
-                if hasattr(index_description, "spec")
-                else "N/A",
+                "spec": str(index_description.spec) if hasattr(index_description, "spec") else "N/A",
             }
 
             # Add hosted model info if detected
@@ -443,11 +429,7 @@ class PineconeConnection(VectorDBConnection):
             start_time = time.time()
             while time.time() - start_time < max_wait:
                 desc = self._client.describe_index(index_name)
-                status = (
-                    desc.status.get("state", "unknown")
-                    if hasattr(desc.status, "get")
-                    else str(desc.status)
-                )  # type: ignore
+                status = desc.status.get("state", "unknown") if hasattr(desc.status, "get") else str(desc.status)  # type: ignore
                 if status.lower() == "ready":
                     return True
                 time.sleep(2)
@@ -737,9 +719,7 @@ class PineconeConnection(VectorDBConnection):
         # If hosted model and text queries, use direct text search
         if hosted_model and query_texts and query_embeddings is None:
             log_error("Using Pinecone hosted model '%s' for text-based search", hosted_model)
-            return self._query_with_hosted_model(
-                index_name, namespace, query_texts, n_results, where
-            )
+            return self._query_with_hosted_model(index_name, namespace, query_texts, n_results, where)
 
         # Otherwise, use vector-based query
         # If query_embeddings not provided, embed the query texts
@@ -831,6 +811,8 @@ class PineconeConnection(VectorDBConnection):
                 "documents": all_documents,
                 "metadatas": all_metadatas,
                 "embeddings": all_embeddings,
+                "query_embedding": query_embeddings[0] if query_embeddings else None,
+                "query_embedding_model": None,
             }
         except Exception as e:
             import traceback
@@ -924,9 +906,7 @@ class PineconeConnection(VectorDBConnection):
                         ids.append(hit_id)
 
                     # Extract score (search uses '_score' not 'score')
-                    score = (
-                        hit.get("_score") if isinstance(hit, dict) else getattr(hit, "_score", None)
-                    )
+                    score = hit.get("_score") if isinstance(hit, dict) else getattr(hit, "_score", None)
                     if score is not None:
                         # Convert similarity to distance for cosine metric
                         distances.append(1.0 - score)
@@ -934,11 +914,7 @@ class PineconeConnection(VectorDBConnection):
                         distances.append(None)
 
                     # Extract fields (search uses 'fields' not 'metadata')
-                    fields = (
-                        hit.get("fields", {})
-                        if isinstance(hit, dict)
-                        else getattr(hit, "fields", {})
-                    )
+                    fields = hit.get("fields", {}) if isinstance(hit, dict) else getattr(hit, "fields", {})
                     if isinstance(fields, dict):
                         metadata = dict(fields)
                         doc = metadata.pop("document", "")
@@ -1151,9 +1127,7 @@ class PineconeConnection(VectorDBConnection):
                 # Update document
                 if documents and i < len(documents):
                     # If embedding not supplied, compute for this updated document
-                    if (
-                        embeddings is None or i >= len(embeddings) or embeddings[i] is None
-                    ) and documents[i]:
+                    if (embeddings is None or i >= len(embeddings) or embeddings[i] is None) and documents[i]:
                         try:
                             computed = self.compute_embeddings_for_documents(
                                 collection_name,

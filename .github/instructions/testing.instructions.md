@@ -26,6 +26,8 @@ results across developer machines and CI.
     `pdm run pytest -q --cov=vector_inspector --cov-report term-missing`
 
 **Coverage target:** Aim for 80% on new code. This is a guideline, not an absolute requirement — if a code path is only reachable through excessive mocking or is genuinely impractical to test (e.g., OS-specific crash handlers), skip it and leave a comment explaining why. Do not over-engineer test fixtures or add fragile tests just to hit the number.
+ - For non-UI code, prefer pure unit tests with mocks/fakes to keep them fast and deterministic. Aim for 100% coverage on critical logic (e.g., provider interactions, data transformations) and at least 80% on new code paths. Target a per-file average of 90% for business-logic modules (services, core).
+ - For UI code, use `pytest-qt` to test signal emissions, widget state changes, and user interactions. Focus on testing the glue logic and critical paths; it's acceptable to have lower coverage on complex UI layouts or third-party widget behavior. Use fixtures to set up common UI states and interactions. Prefer 80%+ coverage on new UI components and interactions, but prioritize meaningful tests over arbitrary numbers.
 
 ## Organization
 
@@ -58,6 +60,7 @@ results across developer machines and CI.
 | `app_state_with_fake_provider` | `AppState` | `AppState` with `fake_provider` already set as `provider`. Use for full-stack view tests. |
 | `task_runner` | `ThreadedTaskRunner` | Fresh `ThreadedTaskRunner` instance. Pass alongside `app_state` when constructing views. |
 | `fake_settings` | `FakeSettings` | Minimal settings stub; suppresses the splash dialog and exposes `get`/`set_use_accent_enabled`. Use for settings-dependent component tests. |
+| `webengine_cleanup` | `fixture` | Opt-in fixture for tests that construct widgets containing `QWebEngineView`/`QWebEnginePage`. It safely detaches pages on teardown to avoid WebEngineProfile teardown warnings; register widgets with `qtbot` immediately after construction when using this fixture. |
 
 **Fixture ownership:** If you create a new fixture that is broadly useful (more than one test file would benefit from it), or you discover a fixture defined in a test file that logically belongs in `conftest.py`, move it there. Keep `conftest.py` as the single source of truth for shared test infrastructure.
 
@@ -88,6 +91,23 @@ results across developer machines and CI.
 - Running tests:
   - Always run via `pdm run pytest` to ensure the correct environment.
   - Use `QT_QPA_PLATFORM=offscreen` in CI for headless runs.
+
+## Qt WebEngine cleanup for tests
+
+Some widgets embed Qt WebEngine (`QWebEngineView` / `QWebEnginePage`). These require explicit, per-test cleanup to avoid WebEngineProfile teardown warnings such as "Release of profile requested but WebEnginePage still not deleted." To keep tests robust and fast, follow this pattern:
+
+- Use the shared opt-in fixture `webengine_cleanup` from `tests/conftest.py` in any test that constructs a widget containing a WebEngine view.
+- Immediately after constructing the widget, register it with `qtbot` so the cleanup fixture can track it:
+
+    def test_my_panel_with_webengine(qtbot, webengine_cleanup):
+      panel = MyPanel(app_state, task_runner)
+      qtbot.addWidget(panel)  # register widget for cleanup
+      # ... exercise panel behavior ...
+
+- Do not rely on module-level autouse hooks that patch constructors; prefer per-test opt-in. The `webengine_cleanup` fixture detaches any `web_view.page()` on teardown safely, so avoid manual double-deletion or calling `setPage(None)` yourself unless you have a specific reason.
+- Register the widget with `qtbot` immediately after construction; otherwise the fixture may not see the widget and cleanup may be incomplete.
+
+Why: This pattern avoids intermittent C++/Qt teardown errors and keeps test scope explicit and deterministic. It also prevents slow or brittle module-level teardown hacks that can interact poorly with `qtbot`'s lifecycle.
 
 ## Required Tests for New Functionality
 

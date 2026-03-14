@@ -448,6 +448,8 @@ class LanceDBConnection(VectorDBConnection):
                     "documents": documents,
                     "metadatas": metadatas,
                     "embeddings": vectors,
+                    "query_embedding": emb,
+                    "query_embedding_model": None,
                 }
             return None
         except Exception as e:

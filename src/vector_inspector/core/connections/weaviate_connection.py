@@ -693,6 +693,8 @@ class WeaviateConnection(VectorDBConnection):
                 "documents": [],
                 "metadatas": [],
                 "embeddings": [],
+                "query_embedding": query_embeddings[0] if query_embeddings else None,
+                "query_embedding_model": None,
             }
 
             for query_vector in query_embeddings:

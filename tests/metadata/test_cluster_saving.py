@@ -49,7 +49,9 @@ def sample_cluster_data():
     }
 
 
-def test_save_cluster_labels_to_metadata_success(qapp, task_runner, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_to_metadata_success(
+    qapp, task_runner, mock_connection, sample_cluster_data, qtbot, webengine_cleanup
+):
     """Test successfully saving cluster labels to metadata."""
     import numpy as np
 
@@ -58,6 +60,7 @@ def test_save_cluster_labels_to_metadata_success(qapp, task_runner, mock_connect
     app_state = AppState()
     app_state.provider = mock_connection
     view = VisualizationView(app_state, task_runner)
+    qtbot.addWidget(view)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])
@@ -86,7 +89,9 @@ def test_save_cluster_labels_to_metadata_success(qapp, task_runner, mock_connect
     assert "existing" in metadatas[0]  # Preserves existing metadata
 
 
-def test_save_cluster_labels_preserves_existing_metadata(qapp, task_runner, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_preserves_existing_metadata(
+    qapp, task_runner, mock_connection, sample_cluster_data, qtbot, webengine_cleanup
+):
     """Test that saving cluster labels preserves existing metadata fields."""
     import numpy as np
 
@@ -95,6 +100,7 @@ def test_save_cluster_labels_preserves_existing_metadata(qapp, task_runner, mock
     app_state = AppState()
     app_state.provider = mock_connection
     view = VisualizationView(app_state, task_runner)
+    qtbot.addWidget(view)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])
@@ -110,7 +116,9 @@ def test_save_cluster_labels_preserves_existing_metadata(qapp, task_runner, mock
     assert metadatas[3]["existing"] == "data4"
 
 
-def test_save_cluster_labels_adds_updated_at(qapp, task_runner, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_adds_updated_at(
+    qapp, task_runner, mock_connection, sample_cluster_data, qtbot, webengine_cleanup
+):
     """Test that saving cluster labels adds updated_at timestamp."""
     import numpy as np
 
@@ -119,6 +127,7 @@ def test_save_cluster_labels_adds_updated_at(qapp, task_runner, mock_connection,
     app_state = AppState()
     app_state.provider = mock_connection
     view = VisualizationView(app_state, task_runner)
+    qtbot.addWidget(view)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])
@@ -136,7 +145,7 @@ def test_save_cluster_labels_adds_updated_at(qapp, task_runner, mock_connection,
         assert before <= metadata["updated_at"] <= after
 
 
-def test_save_cluster_labels_no_connection(qapp, task_runner):
+def test_save_cluster_labels_no_connection(qapp, task_runner, qtbot, webengine_cleanup):
     """Test error handling when no connection is available."""
     import numpy as np
 
@@ -145,6 +154,7 @@ def test_save_cluster_labels_no_connection(qapp, task_runner):
     app_state = AppState()
     app_state.provider = None
     view = VisualizationView(app_state, task_runner)
+    qtbot.addWidget(view)
     view.current_collection = "test_coll"
     view.current_data = {"ids": ["id1", "id2"], "metadatas": [{}, {}]}
     view.cluster_labels = np.array([0, 1])
@@ -154,7 +164,7 @@ def test_save_cluster_labels_no_connection(qapp, task_runner):
     # No exception means success
 
 
-def test_save_cluster_labels_no_collection(qapp, task_runner, mock_connection):
+def test_save_cluster_labels_no_collection(qapp, task_runner, mock_connection, qtbot, webengine_cleanup):
     """Test error handling when no collection is selected."""
     import numpy as np
 
@@ -163,6 +173,7 @@ def test_save_cluster_labels_no_collection(qapp, task_runner, mock_connection):
     app_state = AppState()
     app_state.provider = mock_connection
     view = VisualizationView(app_state, task_runner)
+    qtbot.addWidget(view)
     view.current_collection = None
     view.current_data = {"ids": ["id1", "id2"], "metadatas": [{}, {}]}
     view.cluster_labels = np.array([0, 1])
@@ -174,7 +185,7 @@ def test_save_cluster_labels_no_collection(qapp, task_runner, mock_connection):
     mock_connection.update_items.assert_not_called()
 
 
-def test_save_cluster_labels_no_cluster_data(qapp, task_runner, mock_connection):
+def test_save_cluster_labels_no_cluster_data(qapp, task_runner, mock_connection, qtbot, webengine_cleanup):
     """Test handling when no cluster labels are available."""
     import numpy as np
 
@@ -183,6 +194,7 @@ def test_save_cluster_labels_no_cluster_data(qapp, task_runner, mock_connection)
     app_state = AppState()
     app_state.provider = mock_connection
     view = VisualizationView(app_state, task_runner)
+    qtbot.addWidget(view)
     view.current_collection = "test_coll"
     view.current_data = {
         "ids": ["id1"],
@@ -198,7 +210,9 @@ def test_save_cluster_labels_no_cluster_data(qapp, task_runner, mock_connection)
     mock_connection.update_items.assert_not_called()
 
 
-def test_save_cluster_labels_update_fails(qapp, task_runner, mock_connection, sample_cluster_data):
+def test_save_cluster_labels_update_fails(
+    qapp, task_runner, mock_connection, sample_cluster_data, qtbot, webengine_cleanup
+):
     """Test error handling when update_items fails."""
     import numpy as np
 
@@ -210,6 +224,7 @@ def test_save_cluster_labels_update_fails(qapp, task_runner, mock_connection, sa
     app_state = AppState()
     app_state.provider = mock_connection
     view = VisualizationView(app_state, task_runner)
+    qtbot.addWidget(view)
     view.current_collection = "test_coll"
     view.current_data = sample_cluster_data
     view.cluster_labels = np.array(sample_cluster_data["cluster_labels"])

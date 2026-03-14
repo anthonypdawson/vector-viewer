@@ -128,6 +128,8 @@ class VectorDBConnection(ABC):
                 - documents: List of document texts
                 - metadatas: List of metadata dicts
                 - embeddings: List of embedding vectors (optional)
+                - query_embedding: Query vector used for the search (optional, None if unavailable)
+                - query_embedding_model: Name of the model used to embed the query (optional)
         """
         pass
 

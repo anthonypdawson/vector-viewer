@@ -13,6 +13,10 @@ if QApplication.instance() is None:
     _qapp = QApplication([])
 
 
+# Per-test opt-in: use `webengine_cleanup` from tests/conftest.py and call
+# `qtbot.addWidget(panel)` after constructing any `HistogramPanel` instance.
+
+
 class DummyConnection:
     def __init__(self, name: str):
         self.name = name
@@ -22,11 +26,12 @@ def make_data(embeddings):
     return {"embeddings": embeddings, "documents": [], "metadatas": []}
 
 
-def test_histogram_includes_connection_names(monkeypatch):
+def test_histogram_includes_connection_names(monkeypatch, qtbot, webengine_cleanup):
     # Primary connection provided
     conn = DummyConnection("LocalConn")
 
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.set_connection(conn)
 
     # Primary collection data
@@ -50,8 +55,9 @@ def test_histogram_includes_connection_names(monkeypatch):
     assert "OtherConn / other_collection" in html
 
 
-def test_extract_values_norm_and_dimension():
+def test_extract_values_norm_and_dimension(qtbot, webengine_cleanup):
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     data = make_data([[3.0, 4.0], [0.0, 2.0]])
 
     # Norm metric
@@ -66,8 +72,9 @@ def test_extract_values_norm_and_dimension():
     assert vals2 == [4.0, 2.0]
 
 
-def test_on_clear_resets_state():
+def test_on_clear_resets_state(qtbot, webengine_cleanup):
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.set_data(make_data([[1.0, 0.0]]), collection_name="col")
     panel._compare_data = make_data([[0.5, 0.5]])
     panel._compare_options["X"] = ("other", DummyConnection("Other"))
@@ -203,9 +210,10 @@ def test_dim_scan_thread_dim_mismatch_skips():
     assert results == [[]]  # nothing compatible
 
 
-def test_on_compare_toggled_false_resets():
+def test_on_compare_toggled_false_resets(qtbot, webengine_cleanup):
     """Toggling Compare off resets comparison."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._compare_data = make_data([[0.1, 0.2]])
     panel.set_data(make_data([[1.0, 0.0]]), collection_name="col")
 
@@ -214,9 +222,10 @@ def test_on_compare_toggled_false_resets():
     assert panel._compare_data is None
 
 
-def test_on_compare_toggled_true_no_primary_dim():
+def test_on_compare_toggled_true_no_primary_dim(qtbot, webengine_cleanup):
     """Compare toggled on with no primary dim shows warning and reverts checkbox."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._primary_dim = 0  # not yet set
 
     panel._on_compare_toggled(2)  # True/checked
@@ -225,9 +234,10 @@ def test_on_compare_toggled_true_no_primary_dim():
     assert panel.compare_status_label.text() != ""
 
 
-def test_on_compare_toggled_no_connections():
+def test_on_compare_toggled_no_connections(qtbot, webengine_cleanup):
     """Compare toggled on with no connections shows 'no connections' message."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._primary_dim = 2
     panel._connection = None
     panel._connection_manager = None
@@ -238,7 +248,7 @@ def test_on_compare_toggled_no_connections():
     assert not panel.compare_checkbox.isChecked()
 
 
-def test_on_compare_toggled_with_connection_starts_scan():
+def test_on_compare_toggled_with_connection_starts_scan(qtbot, webengine_cleanup):
     """Compare toggled on with a connection starts the dim scan thread."""
 
     class ConnDim:
@@ -251,6 +261,7 @@ def test_on_compare_toggled_with_connection_starts_scan():
             return {"embeddings": [[1.0, 0.0]]}
 
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._primary_dim = 2
     panel._primary_collection = "primary"
     panel._connection = ConnDim()
@@ -276,7 +287,7 @@ def test_on_dim_scan_finished_empty():
     assert "No other" in panel.compare_status_label.text()
 
 
-def test_on_dim_scan_finished_with_results():
+def test_on_dim_scan_finished_with_results(qtbot, webengine_cleanup):
     """Compatible collections populate the combo box."""
 
     class FakeConn:
@@ -284,6 +295,7 @@ def test_on_dim_scan_finished_with_results():
 
     compatible = [("X / col", "col", FakeConn())]
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._on_dim_scan_finished(compatible)
 
     assert panel.compare_combo.count() == 1
@@ -291,18 +303,20 @@ def test_on_dim_scan_finished_with_results():
     assert panel.compare_load_button.isEnabled()
 
 
-def test_on_load_comparison_no_label():
+def test_on_load_comparison_no_label(qtbot, webengine_cleanup):
     """_on_load_comparison does nothing when no label selected."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.compare_combo.clear()  # empty, so currentText() == ""
 
     # Should not raise
     panel._on_load_comparison()
 
 
-def test_on_load_comparison_invalid_option():
+def test_on_load_comparison_invalid_option(qtbot, webengine_cleanup):
     """_on_load_comparison shows error for unknown label."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.compare_combo.addItem("ghost_label")
     panel.compare_combo.setCurrentIndex(0)
     # _compare_options is empty, so "ghost_label" is not in it
@@ -312,9 +326,10 @@ def test_on_load_comparison_invalid_option():
     assert "Invalid" in panel.compare_status_label.text()
 
 
-def test_on_compare_loaded():
+def test_on_compare_loaded(qtbot, webengine_cleanup):
     """_on_compare_loaded stores data and updates status."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.compare_combo.addItem("Other / col")
     panel.compare_combo.setCurrentIndex(0)
     panel.set_data(make_data([[1.0, 0.0]]), collection_name="primary")
@@ -326,9 +341,10 @@ def test_on_compare_loaded():
     assert "Loaded" in panel.compare_status_label.text()
 
 
-def test_on_compare_error():
+def test_on_compare_error(qtbot, webengine_cleanup):
     """_on_compare_error clears compare data and shows error message."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._compare_data = make_data([[0.1]])
 
     panel._on_compare_error("connection lost")
@@ -337,9 +353,10 @@ def test_on_compare_error():
     assert "Load failed" in panel.compare_status_label.text()
 
 
-def test_extract_values_empty_embeddings_sets_status():
+def test_extract_values_empty_embeddings_sets_status(qtbot, webengine_cleanup):
     """_extract_values with no valid embeddings returns None and sets status."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     data_no_emb = {"embeddings": [], "documents": [], "metadatas": []}
 
     result = panel._extract_values(data_no_emb)
@@ -348,9 +365,10 @@ def test_extract_values_empty_embeddings_sets_status():
     assert "No valid" in panel.status_label.text()
 
 
-def test_extract_values_dim_out_of_range():
+def test_extract_values_dim_out_of_range(qtbot, webengine_cleanup):
     """_extract_values with out-of-range dimension sets status."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.metric_combo.setCurrentIndex(1)  # Dimension
     panel.dim_spin.setValue(99)  # way out of range for 2-d vectors
 
@@ -482,9 +500,10 @@ def test_compare_load_thread_exception():
     assert errors and "timeout" in errors[0]
 
 
-def test_set_data_same_dim_does_not_reset_comparison():
+def test_set_data_same_dim_does_not_reset_comparison(qtbot, webengine_cleanup):
     """When dim doesn't change, comparison state is preserved."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._primary_dim = 2  # Pre-set same dim
     panel._compare_data = make_data([[0.3, 0.7]])
 
@@ -495,9 +514,10 @@ def test_set_data_same_dim_does_not_reset_comparison():
     assert panel._compare_data is not None
 
 
-def test_set_data_different_dim_resets_comparison():
+def test_set_data_different_dim_resets_comparison(qtbot, webengine_cleanup):
     """When dim changes, comparison is reset."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._primary_dim = 3  # Previously was 3-dim
     panel._compare_data = make_data([[0.3, 0.7]])
 
@@ -507,9 +527,10 @@ def test_set_data_different_dim_resets_comparison():
     assert panel._compare_data is None
 
 
-def test_generate_histogram_no_data_sets_status():
+def test_generate_histogram_no_data_sets_status(qtbot, webengine_cleanup):
     """generate_histogram with no current data shows status message."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._current_data = None
 
     panel.generate_histogram()
@@ -517,9 +538,10 @@ def test_generate_histogram_no_data_sets_status():
     assert "No data" in panel.status_label.text()
 
 
-def test_generate_histogram_primary_values_none_returns_silently():
+def test_generate_histogram_primary_values_none_returns_silently(qtbot, webengine_cleanup):
     """When _extract_values returns None, generate_histogram returns without crashing."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.metric_combo.setCurrentIndex(1)  # Dimension
     panel.dim_spin.setValue(99)  # Out of range
     panel.set_data(make_data([[1.0, 0.0]]), collection_name="col")
@@ -527,9 +549,10 @@ def test_generate_histogram_primary_values_none_returns_silently():
     assert "out of range" in panel.status_label.text() or "No data" not in panel.status_label.text()
 
 
-def test_extract_values_for_comparison_out_of_range():
+def test_extract_values_for_comparison_out_of_range(qtbot, webengine_cleanup):
     """_extract_values for_comparison=True shows 'for comparison collection.' message."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.metric_combo.setCurrentIndex(1)  # Dimension
     panel.dim_spin.setValue(99)
 
@@ -539,17 +562,19 @@ def test_extract_values_for_comparison_out_of_range():
     assert "comparison collection" in panel.status_label.text()
 
 
-def test_extract_values_for_comparison_no_embeddings():
+def test_extract_values_for_comparison_no_embeddings(qtbot, webengine_cleanup):
     """for_comparison=True with no valid embeddings includes 'comparison collection.' in message."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     result = panel._extract_values({"embeddings": []}, for_comparison=True)
     assert result is None
     assert "comparison collection" in panel.status_label.text()
 
 
-def test_render_uses_connection_name_in_primary_label():
+def test_render_uses_connection_name_in_primary_label(qtbot, webengine_cleanup):
     """_render prepends connection name when self._connection has a name attribute."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.set_connection(DummyConnection("MyConn"))
     panel._primary_collection = "pri_col"
 
@@ -560,9 +585,10 @@ def test_render_uses_connection_name_in_primary_label():
     assert "MyConn / pri_col" in html
 
 
-def test_set_connection_manager():
+def test_set_connection_manager(qtbot, webengine_cleanup):
     """set_connection_manager stores the manager."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     mgr = object()  # any sentinel
 
     panel.set_connection_manager(mgr)
@@ -570,7 +596,7 @@ def test_set_connection_manager():
     assert panel._connection_manager is mgr
 
 
-def test_on_compare_toggled_with_connection_manager():
+def test_on_compare_toggled_with_connection_manager(qtbot, webengine_cleanup):
     """When connection_manager is set, its get_all_connections is used for scan."""
 
     class FakeManager:
@@ -578,6 +604,7 @@ def test_on_compare_toggled_with_connection_manager():
             return [DummyConnection("Mgr")]
 
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel._primary_dim = 2
     panel._primary_collection = "primary"
     panel.set_connection_manager(FakeManager())
@@ -590,15 +617,16 @@ def test_on_compare_toggled_with_connection_manager():
         panel._dim_scan_thread.wait()
 
 
-def test_on_compare_toggled_off_with_current_data():
+def test_on_compare_toggled_off_with_current_data(qtbot, webengine_cleanup):
     """Toggling compare off when data is loaded regenerates the histogram."""
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     panel.set_data(make_data([[1.0, 0.0]]), collection_name="col")
     # Now toggle off — should regenerate histogram without error
     panel._on_compare_toggled(0)
 
 
-def test_on_load_comparison_starts_thread():
+def test_on_load_comparison_starts_thread(qtbot, webengine_cleanup):
     """_on_load_comparison sets button disabled and starts loading thread."""
 
     class FakeConn:
@@ -606,6 +634,7 @@ def test_on_load_comparison_starts_thread():
             return {"embeddings": [[1.0, 0.0]]}
 
     panel = HistogramPanel()
+    qtbot.addWidget(panel)
     label = "FakeConn / col"
     panel._compare_options[label] = ("col", FakeConn())
     panel.compare_combo.addItem(label)
