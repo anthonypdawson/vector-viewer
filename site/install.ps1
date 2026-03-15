@@ -1,20 +1,46 @@
 Write-Host "Installing Vector Inspector..."
 
-# Ensure Python exists
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Host "Python is required but not installed."
+$pyCmd = Get-Command python -ErrorAction SilentlyContinue
+if (-not $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }
+if (-not $pyCmd) { $pyCmd = Get-Command py -ErrorAction SilentlyContinue }
+if (-not $pyCmd) {
+    Write-Error "Python is required but not installed."
+    exit 1
+}
+$python = $pyCmd.Path
+
+try {
+    & $python -m pip install --upgrade pip
+    & $python -m pip install --upgrade vector-inspector
+}
+catch {
+    Write-Error "Failed to install package: $_"
     exit 1
 }
 
-python -m pip install --upgrade pip
-python -m pip install --upgrade vector-inspector
-
 Write-Host "Creating desktop shortcut..."
+$cmd = Get-Command vector-inspector -ErrorAction SilentlyContinue
+$exe = if ($cmd) { $cmd.Path } else { $null }
 
-$WScriptShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WScriptShell.CreateShortcut("$env:USERPROFILE\Desktop\Vector Inspector.lnk")
-$Shortcut.TargetPath = "vector-inspector"
-$Shortcut.Save()
+$desktop = [Environment]::GetFolderPath("Desktop")
+if (-not $exe) {
+    Write-Host "Could not locate vector-inspector executable. Skipping shortcut creation."
+}
+else {
+    $WScriptShell = New-Object -ComObject WScript.Shell
+    $lnkPath = Join-Path $desktop "Vector Inspector.lnk"
+    $Shortcut = $WScriptShell.CreateShortcut($lnkPath)
+    $Shortcut.TargetPath = $exe
+    $Shortcut.WorkingDirectory = Split-Path $exe
+    $Shortcut.IconLocation = $exe
+    $Shortcut.Save()
+    Write-Host "Shortcut created at $lnkPath."
+}
 
 Write-Host "Launching Vector Inspector..."
-Start-Process vector-inspector
+if ($exe) {
+    Start-Process -FilePath $exe
+}
+else {
+    Start-Process -FilePath "vector-inspector" -ErrorAction SilentlyContinue
+}
