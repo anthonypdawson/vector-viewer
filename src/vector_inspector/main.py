@@ -5,7 +5,6 @@ can record launch attempts even when the GUI dependencies fail to load.
 """
 
 import os
-import platform
 import sys
 import time
 import uuid
@@ -100,7 +99,14 @@ def main():
 
         try:
             TelemetryService.queue_event_static(
-                {"event_name": "session.start", "metadata": {"os": platform.platform()}}
+                {
+                    "event_name": "session.start",
+                    "metadata": {
+                        "session_id": _session_id,
+                        "os": telemetry.get_cached_os(),
+                        "app_version": app_version,
+                    },
+                }
             )
             telemetry.send_batch()
         except Exception:
@@ -110,7 +116,15 @@ def main():
             try:
                 duration_ms = int((time.time() - _session_start) * 1000)
                 TelemetryService.queue_event_static(
-                    {"event_name": "session.end", "metadata": {"os": platform.platform(), "duration_ms": duration_ms}}
+                    {
+                        "event_name": "session.end",
+                        "metadata": {
+                            "session_id": _session_id,
+                            "os": telemetry.get_cached_os(),
+                            "duration_ms": duration_ms,
+                            "exit_reason": "normal",
+                        },
+                    }
                 )
                 telemetry.send_batch()
             except Exception:

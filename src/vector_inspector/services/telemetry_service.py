@@ -62,6 +62,24 @@ class TelemetryService:
         self.app_version = app_version or get_version()
         self.client_type = client_type
         self.session_id: str | None = self.settings.get("telemetry.session_id")
+        # Cache OS and runtime context to avoid repeated platform calls
+        try:
+            self._cached_os = platform.platform()
+        except Exception:
+            self._cached_os = ""
+        # Cached provider / collection (set by UI when they change)
+        self._cached_provider: str | None = None
+        self._cached_collection: str | None = None
+        # Cache hwid to avoid repeated settings access; persisted if missing
+        try:
+            hwid = self.settings.get("telemetry.hwid")
+            if not hwid:
+                hwid = str(uuid.uuid4())
+                self.settings.set("telemetry.hwid", hwid)
+            self._cached_hwid: str = hwid
+        except Exception:
+            # Best-effort fallback
+            self._cached_hwid = str(uuid.uuid4())
         # Disable telemetry if running under pytest or unittest
         if "pytest" in sys.modules or "unittest" in sys.modules:
             self.settings.set("telemetry.enabled", False)
@@ -122,11 +140,27 @@ class TelemetryService:
         return bool(self.settings.get("telemetry.enabled", True))
 
     def get_hwid(self) -> str:
-        hwid = self.settings.get("telemetry.hwid")
-        if not hwid:
-            hwid = str(uuid.uuid4())
-            self.settings.set("telemetry.hwid", hwid)
-        return hwid
+        # Return cached hwid set during initialization to avoid I/O.
+        # Fallback to a generated UUID if the cached value is not present.
+        return getattr(self, "_cached_hwid", str(uuid.uuid4()))
+
+    def get_cached_os(self) -> str:
+        """Return cached OS string."""
+        return getattr(self, "_cached_os", "")
+
+    def set_provider(self, provider_name: str | None) -> None:
+        """Cache the active database provider name for telemetry."""
+        try:
+            self._cached_provider = provider_name
+        except Exception:
+            pass
+
+    def set_collection(self, collection_name: str | None) -> None:
+        """Cache the active collection name for telemetry."""
+        try:
+            self._cached_collection = collection_name
+        except Exception:
+            pass
 
     def set_session_id(self, session_id: str) -> None:
         """Set the active session id and persist it to settings."""
@@ -160,6 +194,17 @@ class TelemetryService:
         try:
             if self.session_id and "session_id" not in metadata:
                 metadata["session_id"] = self.session_id
+        except Exception:
+            pass
+        # Inject cached context when not provided explicitly
+        try:
+            if self._cached_provider and "db_provider" not in metadata:
+                metadata["db_provider"] = self._cached_provider
+        except Exception:
+            pass
+        try:
+            if self._cached_collection and "collection_name" not in metadata:
+                metadata["collection_name"] = self._cached_collection
         except Exception:
             pass
 
@@ -204,7 +249,7 @@ class TelemetryService:
             "app_version": app_version,
             "client_type": client_type,
             "metadata": {
-                "os": platform.system() + "-" + platform.release(),
+                "os": self.get_cached_os(),
                 "hardware": hardware,
             },
         }

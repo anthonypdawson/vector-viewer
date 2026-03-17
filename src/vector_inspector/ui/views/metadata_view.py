@@ -1,5 +1,6 @@
 """Metadata browsing and data view."""
 
+import hashlib
 from datetime import UTC
 from typing import Any, Optional
 
@@ -22,6 +23,7 @@ from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.logging import log_info
 from vector_inspector.services import CollectionLoader, MetadataLoader, ThreadedTaskRunner
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.state import AppState
 from vector_inspector.ui.components.filter_builder import FilterBuilder
 from vector_inspector.ui.components.inline_details_pane import InlineDetailsPane
@@ -406,6 +408,21 @@ class MetadataView(QWidget):
             self.next_button,
             self.filter_builder,
         )
+        # Telemetry: table view opened (collection data loaded)
+        try:
+            TelemetryService.send_event(
+                "ui.table_view_opened",
+                {
+                    "metadata": {
+                        "collection_name": self.ctx.current_collection or "",
+                        "row_count": self.table.rowCount(),
+                        "column_count": self.table.columnCount(),
+                        "triggered_by": "other",
+                    }
+                },
+            )
+        except Exception:
+            pass
 
     def _on_load_error(self, error_msg: str) -> None:
         """Handle error from background thread."""
@@ -760,6 +777,23 @@ class MetadataView(QWidget):
             else None,
         }
         self.details_pane.update_item(item_data)
+        # Telemetry: table row selected in metadata view
+        try:
+            row_id = str(item_data.get("id", ""))
+            row_id_hash = hashlib.sha256(row_id.encode()).hexdigest()[:12]
+            triggered_by = "click" if QApplication.mouseButtons() else "keyboard"
+            TelemetryService.send_event(
+                "ui.table_row_selected",
+                {
+                    "metadata": {
+                        "collection_name": self.ctx.current_collection,
+                        "row_id_hash": row_id_hash,
+                        "triggered_by": triggered_by,
+                    }
+                },
+            )
+        except Exception:
+            pass
 
     def _show_context_menu(self, position: Any) -> None:
         """Show context menu for table rows."""

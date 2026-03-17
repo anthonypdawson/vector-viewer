@@ -355,6 +355,13 @@ class SearchView(QWidget):
         self.search_results = None
         if hasattr(self, "details_pane"):
             self.details_pane.update_item(None)
+        try:
+            TelemetryService.send_event(
+                "ui.refresh_triggered",
+                {"metadata": {"collection_name": self.current_collection, "refresh_target": "search_results"}},
+            )
+        except Exception:
+            pass
 
     def set_collection(self, collection_name: str, database_name: str = ""):
         """Set the current collection to search."""
@@ -434,6 +441,23 @@ class SearchView(QWidget):
         if not query_text:
             self.results_status.setText("Please enter search text")
             return
+            # Telemetry: user executed a search
+            try:
+                TelemetryService.send_event(
+                    "ui.search_executed",
+                    {
+                        "metadata": {
+                            "collection_name": self.current_collection,
+                            "query_length": len(query_text),
+                            "filters_used": self.filter_builder.get_filter_summary()
+                            if hasattr(self.filter_builder, "get_filter_summary")
+                            else "",
+                            "correlation_id": self._search_correlation_id,
+                        }
+                    },
+                )
+            except Exception:
+                pass
 
         n_results = self.n_results_spin.value()
 
@@ -453,6 +477,24 @@ class SearchView(QWidget):
         self._search_server_filter = server_filter
         self._search_n_results = n_results
         self._search_query_text = query_text
+
+        # UI telemetry: user initiated a search (distinct from backend query.executed)
+        try:
+            TelemetryService.send_event(
+                "ui.search_executed",
+                {
+                    "metadata": {
+                        "collection_name": self.current_collection,
+                        "query_length": len(query_text),
+                        "filters_used": self.filter_builder.get_filter_summary()
+                        if hasattr(self.filter_builder, "get_filter_summary")
+                        else "",
+                        "correlation_id": self._search_correlation_id,
+                    }
+                },
+            )
+        except Exception:
+            pass
 
         # Cancel any existing search thread
         if self.search_thread and self.search_thread.isRunning():
@@ -702,6 +744,25 @@ class SearchView(QWidget):
         }
 
         self.details_pane.update_item(item_data)
+        # Telemetry: user selected a row in search results
+        try:
+            import hashlib
+
+            row_id = str(item_data.get("id", ""))
+            row_id_hash = hashlib.sha256(row_id.encode()).hexdigest()[:12]
+            triggered_by = "click" if QApplication.mouseButtons() else "keyboard"
+            TelemetryService.send_event(
+                "ui.table_row_selected",
+                {
+                    "metadata": {
+                        "collection_name": self.current_collection,
+                        "row_id_hash": row_id_hash,
+                        "triggered_by": triggered_by,
+                    }
+                },
+            )
+        except Exception:
+            pass
 
     def _open_full_details_from_pane(self):
         """Open full details dialog for currently selected row."""

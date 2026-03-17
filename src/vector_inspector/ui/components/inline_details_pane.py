@@ -1,5 +1,6 @@
 """Inline details pane for displaying selected row information."""
 
+import hashlib
 import json
 from datetime import datetime
 from typing import Any, Optional
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.services.telemetry_service import TelemetryService
 
 
 class CollapsibleSection(QWidget):
@@ -285,6 +287,23 @@ class InlineDetailsPane(QWidget):
                 self.setVisible(False)
             return
 
+        # Telemetry: embedding/preview opened (inline details pane)
+        try:
+            row_id = str(item_data.get("id", ""))
+            row_id_hash = hashlib.sha256(row_id.encode()).hexdigest()[:12]
+            TelemetryService.send_event(
+                "ui.embedding_preview_opened",
+                {
+                    "metadata": {
+                        "collection_name": getattr(self.parent(), "current_collection", ""),
+                        "row_id_hash": row_id_hash,
+                        "preview_type": "inline",
+                    }
+                },
+            )
+        except Exception:
+            pass
+
         # Show pane when we have data
         if not self.isVisible():
             self.setVisible(True)
@@ -361,14 +380,10 @@ class InlineDetailsPane(QWidget):
         # Vector
         if embedding is not None:
             try:
-                vector_list = (
-                    embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
-                )
+                vector_list = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
                 self.vector_text.setText(str(vector_list))
                 # Update section title with dimension
-                self.vector_section.toggle_button.setText(
-                    f"▶ Embedding Vector ({len(vector_list)}-dim)"
-                )
+                self.vector_section.toggle_button.setText(f"▶ Embedding Vector ({len(vector_list)}-dim)")
             except Exception:
                 self.vector_text.setText("(Unable to display vector)")
         else:
@@ -397,9 +412,7 @@ class InlineDetailsPane(QWidget):
         embedding = self._current_item.get("embedding")
         if embedding is not None:
             try:
-                vector_list = (
-                    embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
-                )
+                vector_list = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
                 vector_str = ", ".join(str(v) for v in vector_list)
                 QApplication.clipboard().setText(vector_str)
             except Exception:
@@ -413,9 +426,7 @@ class InlineDetailsPane(QWidget):
         embedding = self._current_item.get("embedding")
         if embedding is not None:
             try:
-                vector_list = (
-                    embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
-                )
+                vector_list = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
                 json_str = json.dumps(
                     {
                         "id": self._current_item.get("id"),
@@ -443,9 +454,5 @@ class InlineDetailsPane(QWidget):
         """Save pane state to settings."""
         key_prefix = f"inline_details_{self.view_mode}"
 
-        self.settings_service.set(
-            f"{key_prefix}_metadata_collapsed", self.metadata_section.is_collapsed()
-        )
-        self.settings_service.set(
-            f"{key_prefix}_vector_collapsed", self.vector_section.is_collapsed()
-        )
+        self.settings_service.set(f"{key_prefix}_metadata_collapsed", self.metadata_section.is_collapsed())
+        self.settings_service.set(f"{key_prefix}_vector_collapsed", self.vector_section.is_collapsed())
