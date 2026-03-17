@@ -461,6 +461,8 @@ class MainWindow(InspectorShell):
                     pass
         except Exception:
             pass
+        finally:
+            self._last_main_tab_index = index
         if index == InspectorTabs.VISUALIZATION_TAB and self.visualization_view is None:
             # Lazy load visualization view
             from vector_inspector.ui.views.visualization_view import VisualizationView
@@ -858,6 +860,12 @@ class MainWindow(InspectorShell):
                         self.settings_service.set_window_geometry(bytes(geom))
                     except Exception:
                         pass
+        except Exception:
+            pass
+
+        # Flush any remaining telemetry events synchronously before the process exits
+        try:
+            TelemetryService.get_instance().flush_on_shutdown()
         except Exception:
             pass
 

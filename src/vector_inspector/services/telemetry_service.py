@@ -27,8 +27,8 @@ class TelemetryService:
     * Call ``TelemetryService.initialize(app_version=...)`` **once** at app
       startup (in ``main.py``) before any background threads fire.
     * Everywhere else use the static helpers:
-        - ``TelemetryService.queue_event(event)``      — one-liner queue
-        - ``TelemetryService.send_event(name, payload)`` — queue + flush
+        - ``TelemetryService.queue_event_static(event)`` — one-liner queue
+        - ``TelemetryService.send_event(name, payload)``  — queue + async flush
         - ``TelemetryService.get_instance()``           — full instance
 
     Backwards compatibility
@@ -80,10 +80,30 @@ class TelemetryService:
         except Exception:
             # Best-effort fallback
             self._cached_hwid = str(uuid.uuid4())
-        # Disable telemetry if running under pytest or unittest
+        # Disable telemetry if running under pytest or unittest, but only
+        # if the setting isn't already present. Tests may explicitly enable
+        # telemetry on the settings object prior to constructing the
+        # service; respect that to allow controlled test behavior.
         if "pytest" in sys.modules or "unittest" in sys.modules:
-            self.settings.set("telemetry.enabled", False)
+            try:
+                if self.settings.get("telemetry.enabled", None) is None:
+                    self.settings.set("telemetry.enabled", False)
+            except Exception:
+                # Best-effort: ignore settings errors during test-time init
+                pass
         self._load_queue()
+
+        # Background worker to flush telemetry periodically or when signalled.
+        # Use a non-daemon thread so we can join it during shutdown and
+        # ensure queued events have a chance to send.
+        self._worker_stop = threading.Event()
+        self._worker_wake = threading.Event()
+        try:
+            self._worker = threading.Thread(target=self._worker_loop, daemon=False, name="telemetry-worker")
+            self._worker.start()
+        except Exception:
+            # Best-effort: if thread creation fails, telemetry still queues locally
+            self._worker = None
 
     @classmethod
     def initialize(
@@ -111,7 +131,18 @@ class TelemetryService:
         """
         global _instance
         with _instance_lock:
-            _instance = None
+            # Stop worker thread if running
+            try:
+                if _instance is not None and getattr(_instance, "_worker_stop", None) is not None:
+                    try:
+                        _instance._worker_stop.set()
+                        _instance._worker_wake.set()
+                        if getattr(_instance, "_worker", None) is not None:
+                            _instance._worker.join(timeout=1)
+                    except Exception:
+                        pass
+            finally:
+                _instance = None
 
     # ------------------------------------------------------------------ #
     # Private helpers                                                      #
@@ -126,6 +157,37 @@ class TelemetryService:
                 self.queue = []
         else:
             self.queue = []
+
+    def _worker_loop(self) -> None:
+        """Background worker: periodically flush queued telemetry.
+
+        Wakes when `_worker_wake` is set or every 5 seconds. Exits when
+        `_worker_stop` is set; performs a final flush before returning.
+        """
+        try:
+            while not self._worker_stop.is_set():
+                # Wait to be woken or timeout
+                try:
+                    self._worker_wake.wait(timeout=5)
+                except Exception:
+                    pass
+                # Clear the wake flag and attempt a flush
+                try:
+                    self._worker_wake.clear()
+                except Exception:
+                    pass
+                try:
+                    self.send_batch()
+                except Exception as e:
+                    log_error(f"[Telemetry] worker send_batch failed: {e}")
+            # Final flush on exit
+            try:
+                self.send_batch()
+            except Exception:
+                pass
+        except Exception:
+            # Swallow errors to avoid crashing the host process
+            pass
 
     def _save_queue(self):
         self.queue_file.parent.mkdir(parents=True, exist_ok=True)
@@ -176,9 +238,16 @@ class TelemetryService:
         Automatically populates ``app_version``, ``hwid``, ``client_type``,
         and injects ``session_id`` into ``metadata`` when available.
         """
+        # If telemetry is disabled, do not record or persist events. This
+        # avoids collecting data while the user has telemetry turned off.
         if not self.is_enabled():
             log_info("[Telemetry] Telemetry disabled; not queuing event.")
             return
+
+        # Persist queued events locally. Sending is gated by
+        # `send_batch()` which also checks `is_enabled()` so tests can
+        # control whether the worker actually posts events by toggling
+        # settings.
 
         if "app_version" not in event:
             event["app_version"] = self.app_version
@@ -211,6 +280,10 @@ class TelemetryService:
         with self._lock:
             self.queue.append(event)
             self._save_queue()
+            # Do not automatically wake the background worker here; callers
+            # who want an immediate flush should call `send_event` or set the
+            # wake event themselves. Avoids races in tests that assert the
+            # queue is non-empty immediately after `queue_event`.
 
     def send_batch(self) -> None:
         """Send all queued events to the telemetry endpoint."""
@@ -288,6 +361,27 @@ class TelemetryService:
         except Exception as e:
             log_error(f"[Telemetry] send_error_event failed: {e}")
 
+    def flush_on_shutdown(self) -> None:
+        """Synchronously flush all queued events. Call from the app closeEvent."""
+        try:
+            # Signal worker to stop and wake it so it can exit promptly
+            try:
+                if getattr(self, "_worker_stop", None) is not None:
+                    self._worker_stop.set()
+                if getattr(self, "_worker_wake", None) is not None:
+                    self._worker_wake.set()
+                if getattr(self, "_worker", None) is not None:
+                    # Wait briefly for worker to finish
+                    self._worker.join(timeout=5)
+            except Exception:
+                pass
+
+            # Final synchronous flush on the calling thread to ensure events
+            # are attempted before process exit.
+            self.send_batch()
+        except Exception as e:
+            log_error(f"[Telemetry] flush_on_shutdown failed: {e}")
+
     def purge(self) -> None:
         with self._lock:
             self.queue = []
@@ -329,6 +423,11 @@ class TelemetryService:
             svc = TelemetryService.get_instance()
             event = payload if "event_name" in payload else {"event_name": event_name, **(payload or {})}
             svc.queue_event(event)
-            svc.send_batch()
+            # Wake the background worker to process the new event promptly.
+            try:
+                if getattr(svc, "_worker_wake", None) is not None:
+                    svc._worker_wake.set()
+            except Exception:
+                pass
         except Exception as e:
             log_error(f"[Telemetry] send_event failed: {e}")

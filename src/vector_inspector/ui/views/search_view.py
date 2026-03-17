@@ -441,23 +441,6 @@ class SearchView(QWidget):
         if not query_text:
             self.results_status.setText("Please enter search text")
             return
-            # Telemetry: user executed a search
-            try:
-                TelemetryService.send_event(
-                    "ui.search_executed",
-                    {
-                        "metadata": {
-                            "collection_name": self.current_collection,
-                            "query_length": len(query_text),
-                            "filters_used": self.filter_builder.get_filter_summary()
-                            if hasattr(self.filter_builder, "get_filter_summary")
-                            else "",
-                            "correlation_id": self._search_correlation_id,
-                        }
-                    },
-                )
-            except Exception:
-                pass
 
         n_results = self.n_results_spin.value()
 

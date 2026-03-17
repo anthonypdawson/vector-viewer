@@ -36,31 +36,11 @@ def pytest_configure(config):
             # Best-effort: tests should not fail if settings backend isn't available
             logging.debug("Failed to set telemetry.enabled in SettingsService")
 
-        # Reset the singleton so each test session starts clean.
+        # Reset the singleton so each test session starts clean. Tests that
+        # need to assert telemetry behavior will explicitly enable it and
+        # monkeypatch network calls. Do not replace TelemetryService methods
+        # here so the service can be exercised by unit tests.
         TelemetryService.reset_for_tests()
-
-        # Patch instance methods to no-ops to guarantee no network activity.
-        def _noop_queue_event(self, event):
-            return None
-
-        def _noop_send_batch(self):
-            return None
-
-        def _noop_send_launch_ping(self, *args, **kwargs):
-            return None
-
-        def _noop_send_error_event(self, *args, **kwargs):
-            return None
-
-        TelemetryService.queue_event = _noop_queue_event
-        TelemetryService.send_batch = _noop_send_batch
-        TelemetryService.send_launch_ping = _noop_send_launch_ping
-        TelemetryService.send_error_event = _noop_send_error_event
-
-        # Also no-op the static one-liner helpers so call sites that use
-        # TelemetryService.queue_event_static / send_event are safe in tests.
-        TelemetryService.queue_event_static = staticmethod(lambda event: None)
-        TelemetryService.send_event = staticmethod(lambda name, payload: None)
     except Exception as _err:
         # Fail-safe: do not prevent pytest from running if telemetry internals change
         logging.debug(f"Could not patch telemetry for tests: {_err}")

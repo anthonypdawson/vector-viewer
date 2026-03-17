@@ -99,20 +99,26 @@ def populate_table(
     table.setVerticalHeaderLabels(vertical_labels)
 
     # Populate rows
-    for row, (id_val, doc, meta) in enumerate(zip(ids, documents, metadatas, strict=True)):
+    # Iterate by index to tolerate missing documents/metadatas while ids is primary.
+    for row, id_val in enumerate(ids):
         # ID column
         table.setItem(row, 0, QTableWidgetItem(str(id_val)))
 
         # Document column
+        doc = documents[row] if row < len(documents) else ""
         doc_text = str(doc) if doc else ""
         if len(doc_text) > 100:
             doc_text = doc_text[:100] + "..."
         table.setItem(row, 1, QTableWidgetItem(doc_text))
 
         # Metadata columns
+        meta = metadatas[row] if row < len(metadatas) else {}
         if meta:
             for col_idx, key in enumerate(metadata_keys, start=2):
-                value = meta.get(key, "")
+                try:
+                    value = meta.get(key, "")
+                except Exception:
+                    value = ""
                 table.setItem(row, col_idx, QTableWidgetItem(str(value)))
 
     table.resizeColumnsToContents()
