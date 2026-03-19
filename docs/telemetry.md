@@ -398,6 +398,44 @@ These fields appear across many events:
 - `services/telemetry_service.py` — core service
 - `utils/exception_handler.py` — global exception hooks
 - `ui/*` — UI event emitters
+
+---
+
+# 11. Clarifications & Implementation Notes
+
+These clarifications address common operational questions and recommended small updates to the `TelemetryService` implementation so behavior is predictable, testable, and privacy-safe.
+
+## session.end and crashes
+
+- Emitting `session.end` during a hard crash is not guaranteed. Signal handlers (`SIGTERM`, `SIGINT`) and `atexit` handlers can cover graceful shutdowns, but OS-level crashes (segfaults, abrupt process termination) will not reliably run Python cleanup handlers.
+- Recommended pattern: on process startup, check for a small on-disk "crash marker" file written early in shutdown paths (or by a registered `faulthandler`/native hook). If present, emit a `session.end` event with `exit_reason: "crash"` and any available minimal diagnostics. Avoid relying on synchronous network POST at crash time; instead write a durable marker or local queue entry and reprocess on next startup.
+
+## `UncaughtException` vs `QtError`
+
+- These two event types can represent the same underlying incident. `QtError` originates from Qt's message/exception hooks; `UncaughtException` is emitted from Python's uncaught-exception path. Both can be triggered by the same root cause.
+- Implementation advice: when instrumenting both, compute a deterministic `error_hash` (fingerprint) and attach it to both events so the backend can deduplicate and group related reports. Treat `error_hash` as the canonical grouping key.
+
+## Sampling policy for `query.executed` / `embedding.request`
+
+- Do not use irreversible emit-time random sampling unless you accept that the sampled set cannot be changed without a deploy. Alternatives:
+	- Server-side sampling: send all events and let the backend sample/aggregate. This preserves the ability to change sampling without client updates.
+	- Deterministic (hash-based) sampling: compute a stable hash on a non-PII key (e.g., `sha256(session_id + query_normalized)`) and sample based on that. This makes the sampled subset reproducible and adjustable client-side by changing the sampling seed/version metadata.
+	- Short local retention: if you must sample at emit time, keep raw events locally for a short TTL (e.g., 24–72 hours) so you can reprocess (re-upload) at a different rate for incident investigations.
+
+Include `sampling_rate`, `sampling_seed`, and `sampling_version` in the event metadata so downstream tooling knows how the sample was produced.
+
+## `error_hash` vs `traceback` (privacy)
+
+- The canonical grouping key should be `error_hash` — a normalized fingerprint computed from the `exception_type`, `exception_message` (normalized/redacted), and a compact representation of the top stack frame (module, function, lineno). Example algorithm: normalize message, form string `"{exc_type}|{top_frame_module}:{lineno}|{normalized_message}"`, then `sha256(...).hexdigest()[:16]`.
+- Do not send raw full stack traces by default. Instead include a `sanitized_traceback` field when necessary for debugging that has redacted PII and respects user privacy settings. The `UncaughtException` event should include `error_hash`, `exception_type`, `sanitized_traceback` (optional), and `correlation_id`.
+
+## Recommended `TelemetryService` updates (small, incremental)
+
+- Add a startup check for a crash marker and emit `session.end` on next run when found.
+- Make sampling configurable with options for `server`, `deterministic`, or `client_random` modes; always include `sampling_*` metadata with events.
+- Add `error_hash` generation utilities and prefer `error_hash` as the grouping key in events; keep `sanitized_traceback` optional and gated by privacy settings.
+- Keep the worker queue durable but ensure tests can opt out or use an in-memory temp queue (already present in tests); do not rely on synchronous network sends during shutdown.
+
 - `core/*` — backend operations
 
 ---
