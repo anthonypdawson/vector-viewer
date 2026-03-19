@@ -83,3 +83,5 @@ more reliable LLM behavior, fully session-aware telemetry, and a smoother, more 
 0.6.1 strengthens Vector Inspector’s identity as a **diagnostic, session-aware intelligence console**.  
 Telemetry is now reconstructable end-to-end, Ask‑AI behaves consistently across providers,  
 and the UI surfaces more context with less friction.
+
+---
