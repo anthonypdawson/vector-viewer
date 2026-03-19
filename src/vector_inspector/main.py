@@ -97,6 +97,21 @@ def main():
         _session_start = time.time()
         telemetry.set_session_id(_session_id)
 
+        # Check whether the previous session crashed (leftover marker) before
+        # writing the new marker for this session.
+        try:
+            telemetry.check_and_emit_crash_event()
+        except Exception:
+            pass
+
+        # Write a crash marker for the current session.  Cleared by
+        # flush_on_shutdown() on a clean exit; if the process dies without
+        # calling that, the next startup will emit session.end(crash).
+        try:
+            telemetry.write_crash_marker(session_id=_session_id)
+        except Exception:
+            pass
+
         try:
             TelemetryService.queue_event_static(
                 {

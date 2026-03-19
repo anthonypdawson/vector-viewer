@@ -1,6 +1,8 @@
+import hashlib
 import json
 import os
 import platform
+import re
 import sys
 import tempfile
 import threading
@@ -15,6 +17,44 @@ from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.utils.hardware_info import get_hardware_info
 
 TELEMETRY_ENDPOINT = "https://api.divinedevops.com/api/v1/telemetry"
+
+
+def make_error_hash(exc_type: str, message: str, top_frame: str | None = None) -> str:
+    """Compute a stable 16-hex-char fingerprint for an exception.
+
+    Used to deduplicate ``UncaughtException`` / ``QtError`` events without
+    transmitting raw data. The hash is deterministic for the same exception
+    type, normalized message, and top stack frame.
+    """
+    normalized = re.sub(r"0x[0-9a-fA-F]+", "#hex", message)
+    normalized = re.sub(r"\b\d+\b", "#n", normalized)
+    normalized = re.sub(r"['\"].*?['\"]", "#str", normalized)
+    normalized = normalized.strip()
+    key = f"{exc_type}|{top_frame or ''}|{normalized}"
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def should_sample(event_name: str, rate: float, seed: str | None = None) -> bool:
+    """Return True if this event should be sent, using deterministic SHA-256 sampling.
+
+    Decisions are stable for the same ``(seed, event_name, rate)`` triple, so
+    the sampled subset is reproducible without requiring a deploy to change the
+    effective rate — just ship a new ``sampling_version`` tag and the backend
+    can re-apply any rate at aggregation time.
+
+    Args:
+        event_name: The telemetry event name (e.g. ``"query.executed"``).
+        rate: Desired sampling rate in ``[0.0, 1.0]``.
+        seed: A stable non-PII identifier; defaults to an empty string.
+    """
+    if rate >= 1.0:
+        return True
+    if rate <= 0.0:
+        return False
+    key = f"{seed or ''}:{event_name}"
+    digest = hashlib.sha256(key.encode()).hexdigest()[:8]
+    return int(digest, 16) / 0xFFFFFFFF < rate
+
 
 # Module-level singleton and its initialisation lock
 _instance: "TelemetryService | None" = None
@@ -80,6 +120,13 @@ class TelemetryService:
             self.queue_file = Path.home() / ".vector-inspector" / "telemetry_queue.json"
         self.app_version = app_version or get_version()
         self.client_type = client_type
+        # In test mode, force sentinel values so any events that somehow
+        # escape to the backend are immediately identifiable and filterable.
+        # The conftest autouse fixture blocks actual HTTP, but this is a
+        # second-line defence.
+        if self._running_under_test and not self._allow_telemetry_in_tests:
+            self.app_version = "0.0-test"
+            self.client_type = "unit-tests"
         self.session_id: str | None = self.settings.get("telemetry.session_id")
         # Cache OS and runtime context to avoid repeated platform calls
         try:
@@ -368,9 +415,21 @@ class TelemetryService:
             if not self.is_enabled():
                 log_info("[Telemetry] Telemetry is not enabled; skipping error event.")
                 return
-            metadata = {"message": message, "traceback": tb}
+            exc_type = (extra or {}).get("exception_type", "UnknownError")
+            # Extract last source frame from traceback for a tighter fingerprint
+            top_frame: str | None = None
+            if tb:
+                frame_lines = [ln.strip() for ln in tb.splitlines() if ln.strip().startswith("File ")]
+                if frame_lines:
+                    fm = re.search(r'"([^"]+)", line (\d+)', frame_lines[-1])
+                    if fm:
+                        top_frame = f"{Path(fm.group(1)).stem}:{fm.group(2)}"
+            error_hash_val = make_error_hash(exc_type, message, top_frame)
+            metadata: dict = {"message": message, "traceback": tb, "error_hash": error_hash_val}
             if extra and isinstance(extra, dict):
                 metadata.update(extra)
+            # Always keep our computed error_hash canonical
+            metadata["error_hash"] = error_hash_val
             event = {
                 "hwid": self.get_hwid(),
                 "event_name": event_name,
@@ -387,6 +446,10 @@ class TelemetryService:
     def flush_on_shutdown(self) -> None:
         """Synchronously flush all queued events. Call from the app closeEvent."""
         try:
+            # On a clean shutdown, remove the crash marker so the next startup
+            # does not misidentify a normal exit as a crash.
+            self.clear_crash_marker()
+
             # Signal worker to stop and wake it so it can exit promptly
             try:
                 if getattr(self, "_worker_stop", None) is not None:
@@ -415,8 +478,106 @@ class TelemetryService:
             return list(self.queue)
 
     # ------------------------------------------------------------------ #
-    # Static one-liner API (preferred at call sites)                      #
+    # Crash marker                                                         #
     # ------------------------------------------------------------------ #
+
+    def _crash_marker_path(self) -> Path:
+        """Return path to the crash marker file (co-located with the queue file)."""
+        return self.queue_file.parent / "crash_marker.json"
+
+    def write_crash_marker(self, session_id: str | None = None) -> None:
+        """Write a crash marker for the current session.
+
+        Called at app startup *after* the session ID is established.  If the
+        process exits without calling ``clear_crash_marker()`` (clean shutdown),
+        the next startup will detect the leftover marker and emit a
+        ``session.end`` event with ``exit_reason: "crash"``.
+        """
+        import datetime
+
+        try:
+            marker_path = self._crash_marker_path()
+            marker_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "session_id": session_id or self.session_id,
+                "app_version": self.app_version,
+                "ts": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+            with open(marker_path, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            log_error(f"[Telemetry] Failed to write crash marker: {e}")
+
+    def clear_crash_marker(self) -> None:
+        """Delete the crash marker — call on clean shutdown."""
+        try:
+            marker_path = self._crash_marker_path()
+            if marker_path.exists():
+                marker_path.unlink()
+        except Exception as e:
+            log_error(f"[Telemetry] Failed to clear crash marker: {e}")
+
+    def check_and_emit_crash_event(self) -> bool:
+        """Check for a leftover crash marker and emit ``session.end`` if found.
+
+        Returns ``True`` if a crash was detected and the event was queued.
+        Call this early at app startup *before* writing the new session marker.
+        """
+        try:
+            marker_path = self._crash_marker_path()
+            if not marker_path.exists():
+                return False
+            try:
+                with open(marker_path, encoding="utf-8") as f:
+                    marker = json.load(f)
+            except Exception:
+                marker = {}
+
+            self.queue_event(
+                {
+                    "event_name": "session.end",
+                    "metadata": {
+                        "session_id": marker.get("session_id"),
+                        "exit_reason": "crash",
+                        "app_version": marker.get("app_version", self.app_version),
+                    },
+                }
+            )
+            self.send_batch()
+            self.clear_crash_marker()
+            return True
+        except Exception as e:
+            log_error(f"[Telemetry] check_and_emit_crash_event failed: {e}")
+            return False
+
+    # ------------------------------------------------------------------ #
+    # Sampled events                                                       #
+    # ------------------------------------------------------------------ #
+
+    def queue_sampled_event(
+        self,
+        event: dict,
+        rate: float,
+        sampling_version: str = "1",
+        seed: str | None = None,
+    ) -> bool:
+        """Queue *event* only if it passes deterministic sampling at *rate*.
+
+        Automatically injects ``sampling_rate``, ``sampling_seed``, and
+        ``sampling_version`` metadata so the backend can reconstruct the
+        population statistics.
+
+        Returns ``True`` if the event was queued, ``False`` if dropped.
+        """
+        _seed = seed or self.session_id or self._cached_hwid
+        sampled = should_sample(event.get("event_name", ""), rate, seed=_seed)
+        metadata = event.setdefault("metadata", {})
+        metadata["sampling_rate"] = rate
+        metadata["sampling_seed_type"] = "session" if _seed == self.session_id else "hwid"
+        metadata["sampling_version"] = sampling_version
+        if sampled:
+            self.queue_event(event)
+        return sampled
 
     @staticmethod
     def queue_event_static(event: dict) -> None:
