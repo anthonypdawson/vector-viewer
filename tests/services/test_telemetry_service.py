@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 from vector_inspector.services.telemetry_service import TelemetryService
 
 
@@ -42,16 +40,19 @@ def test_worker_lifecycle_and_queue_processing(monkeypatch):
     svc.queue_event({"event_name": "unittest.event", "metadata": {}})
     assert svc.get_queue()  # queued
 
-    # Wake worker and wait for it to process
-    if getattr(svc, "_worker_wake", None) is not None:
-        svc._worker_wake.set()
+    # Assert internal signal exists before using it — if this fails the
+    # TelemetryService API has changed and the test must be updated.
+    assert hasattr(svc, "_worker_wake"), "_worker_wake missing; TelemetryService API changed"
+    assert hasattr(svc, "_batch_processed"), "_batch_processed missing; TelemetryService API changed"
 
-    # Wait until queue empties or timeout
-    deadline = time.time() + 3
-    while svc.get_queue() and time.time() < deadline:
-        time.sleep(0.05)
+    # Reset the batch signal, wake the worker, then wait deterministically.
+    # Timeout of 0.5 s is generous for a localhost no-op; failure here
+    # indicates CI timing or worker thread issues, not logic bugs.
+    svc._batch_processed.clear()
+    svc._worker_wake.set()
+    assert svc._batch_processed.wait(timeout=0.5), "Worker did not complete a batch within 0.5 s"
 
-    assert not svc.get_queue()
+    assert not svc.get_queue(), "Queue should be empty after worker batch"
     assert posts, "Expected at least one HTTP POST call"
 
 
@@ -117,8 +118,12 @@ def test_queue_event_injects_app_version_and_client_type():
     TelemetryService.reset_for_tests()
     settings = DummySettings()
     settings.settings["telemetry.enabled"] = True
-    # In test mode the service forces sentinel values regardless of what is
-    # passed so any leaked event is identifiable on the backend.
+    # TelemetryService forces sentinel values when running under pytest
+    # (detected via sys.modules) regardless of what is passed to the
+    # constructor.  This is an intentional second-line defence: any event
+    # that somehow escapes the conftest HTTP guard is immediately
+    # identifiable on the backend.  See TelemetryService.__init__ for the
+    # exact condition (_running_under_test and not _allow_telemetry_in_tests).
     svc = TelemetryService(settings_service=settings)
     svc.queue_event({"event_name": "ping"})
     events = svc.get_queue()
@@ -162,6 +167,10 @@ def test_queue_event_injects_cached_provider_and_collection():
 
 
 def test_send_batch_non_200_keeps_event_in_queue(monkeypatch):
+    # NOTE: send_batch retries indefinitely with no backoff or max-retry cap
+    # (MVP behaviour). A future improvement should add a TTL or max-attempts
+    # cap to avoid event queue growth during extended outages.  See
+    # test_send_batch_retries_on_next_call for the successful-retry contract.
     TelemetryService.reset_for_tests()
 
     class DummyResp:
@@ -337,6 +346,8 @@ def test_send_event_static_wakes_worker():
     settings = DummySettings()
     settings.settings["telemetry.enabled"] = True
     svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+
+    assert hasattr(svc, "_worker_wake"), "_worker_wake missing; TelemetryService API changed"
 
     woken = []
     orig_set = svc._worker_wake.set
@@ -636,4 +647,156 @@ def test_send_error_event_hash_stable_for_same_exception(monkeypatch):
     assert len(hashes) == 2
     # Numbers normalized, so hashes must match
     assert hashes[0] == hashes[1]
+    TelemetryService.reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# Retry semantics
+# ---------------------------------------------------------------------------
+
+
+def test_send_batch_retries_on_next_call(monkeypatch):
+    """A failed send_batch leaves the event in the queue; the following call
+    with a 200 response sends and removes it.
+
+    Current behaviour: no backoff or max-retry cap (MVP).  If the server is
+    persistently unreachable the queue can grow unboundedly — a future
+    improvement should add a TTL / attempt counter to bound growth.
+    """
+    TelemetryService.reset_for_tests()
+    call_count = [0]
+
+    def alternating_response(_url, **_kw):
+        call_count[0] += 1
+        if call_count[0] == 1:
+
+            class Fail:
+                status_code = 500
+                text = "temporary error"
+
+            return Fail()
+
+        class OK:
+            status_code = 200
+            text = "ok"
+
+        return OK()
+
+    monkeypatch.setattr(
+        "vector_inspector.services.telemetry_service.requests.post",
+        alternating_response,
+    )
+
+    settings = DummySettings()
+    settings.settings["telemetry.enabled"] = True
+    svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+    svc.queue_event({"event_name": "retry_event"})
+
+    svc.send_batch()  # first attempt → 500, event stays
+    assert len(svc.get_queue()) == 1, "Event should remain after failed send"
+
+    svc.send_batch()  # second attempt → 200, event removed
+    assert len(svc.get_queue()) == 0, "Event should be gone after successful retry"
+    TelemetryService.reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# Singleton enforcement
+# ---------------------------------------------------------------------------
+
+
+def test_singleton_enforced():
+    """Constructing TelemetryService a second time without resetting must
+    return the identical instance; later constructor arguments are ignored."""
+    TelemetryService.reset_for_tests()
+    settings = DummySettings()
+    svc1 = TelemetryService(settings_service=settings, app_version="0.0-test")
+    # Second construction with different args must return the same object
+    svc2 = TelemetryService(settings_service=settings, app_version="0.0-test")
+    assert svc1 is svc2, "TelemetryService must be a singleton; got two distinct instances"
+    TelemetryService.reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# set_provider / set_collection cleared on close
+# ---------------------------------------------------------------------------
+
+
+def test_set_provider_and_collection_cleared_on_close():
+    """Calling set_provider(None) and set_collection(None) — as the app does
+    when a connection is closed — must prevent stale context from appearing
+    in subsequent queued events."""
+    TelemetryService.reset_for_tests()
+    settings = DummySettings()
+    settings.settings["telemetry.enabled"] = True
+    svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+    svc.set_provider("chromadb")
+    svc.set_collection("my_coll")
+
+    # Simulate close_connection clearing the cached context
+    svc.set_provider(None)
+    svc.set_collection(None)
+
+    svc.queue_event({"event_name": "post_close_event"})
+    meta = svc.get_queue()[0]["metadata"]
+    assert "db_provider" not in meta, "db_provider should be absent after set_provider(None)"
+    assert "collection_name" not in meta, "collection_name should be absent after set_collection(None)"
+    TelemetryService.reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# flush_on_shutdown mid-flight race
+# ---------------------------------------------------------------------------
+
+
+def test_flush_on_shutdown_sends_events_queued_during_worker_join(monkeypatch):
+    """flush_on_shutdown's final synchronous send_batch must forward any event
+    queued while the background worker thread is being joined (mid-flight race).
+
+    Scenario: another thread queues an event between the worker receiving its
+    stop signal and flush_on_shutdown calling its own send_batch.  Because
+    flush_on_shutdown always performs a synchronous send_batch *after* joining
+    the worker, those late-arriving events must not be silently dropped.
+    """
+    TelemetryService.reset_for_tests()
+    posts = []
+
+    class OK:
+        status_code = 200
+        text = "ok"
+
+    monkeypatch.setattr(
+        "vector_inspector.services.telemetry_service.requests.post",
+        lambda _url, **kw: (posts.append(kw.get("json")), OK())[1],
+    )
+
+    settings = DummySettings()
+    settings.settings["telemetry.enabled"] = True
+    svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+
+    if svc._worker is None:
+        # If the worker didn't start (env-specific), the race cannot occur;
+        # flush_on_shutdown already uses a synchronous send_batch as its only
+        # path, so the invariant trivially holds.
+        TelemetryService.reset_for_tests()
+        return
+
+    # Intercept worker.join to inject a "late" event during the join phase.
+    # This mimics a concurrent thread queuing an event while shutdown is
+    # waiting for the worker to exit.
+    real_join = svc._worker.join
+
+    def join_and_queue(timeout=None):
+        # Queue the event from the "other thread" during the join window.
+        svc.queue_event({"event_name": "mid.flight.event"})
+        real_join(timeout=timeout)
+
+    svc._worker.join = join_and_queue
+
+    svc.flush_on_shutdown()
+
+    sent_names = [p.get("event_name") for p in posts if p]
+    assert "mid.flight.event" in sent_names, (
+        "Event queued during worker join was not sent by flush_on_shutdown's final send_batch"
+    )
     TelemetryService.reset_for_tests()

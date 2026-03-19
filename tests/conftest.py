@@ -40,6 +40,14 @@ def pytest_configure(config):
         # need to assert telemetry behavior will explicitly enable it and
         # monkeypatch network calls. Do not replace TelemetryService methods
         # here so the service can be exercised by unit tests.
+        #
+        # Layering note: this session-scoped call sets a clean baseline once
+        # at collection time.  Function-scoped autouse fixtures
+        # (_block_telemetry_http and _reset_telemetry_singleton) then guard
+        # each individual test.  _block_telemetry_http patches requests.post
+        # at function scope (overrideable by individual tests), while
+        # _reset_telemetry_singleton resets the singleton and purges the
+        # queue file before *and* after every test for full isolation.
         TelemetryService.reset_for_tests()
     except Exception as _err:
         # Fail-safe: do not prevent pytest from running if telemetry internals change
