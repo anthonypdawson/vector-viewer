@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:d9258748815c9a6a8915179662814a6e0a635130d812343af4ac91c014c3a11f"
+content_hash = "sha256:6a0e9489c8db7d7b47480e964069585fcf459d401cec28c5c2b19744c048e2d7"
 
 [[metadata.targets]]
 requires_python = ">=3.11,<3.14"
@@ -1141,17 +1141,6 @@ groups = ["default"]
 marker = "python_version >= \"3.11\" and python_version < \"3.14\""
 files = [
     {file = "GPUtil-1.4.0.tar.gz", hash = "sha256:099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9"},
-]
-
-[[package]]
-name = "gputil-fix"
-version = "1.4.1.2"
-summary = "Utility to get the GPU status from NVIDA GPUs using nvidia-smi"
-groups = ["default"]
-marker = "python_version >= \"3.11\" and python_version < \"3.14\""
-files = [
-    {file = "GPUtil_fix-1.4.1.2-py3-none-any.whl", hash = "sha256:ab0ff31b9312c4f161d8e97705f08d7f36eb6fc00f150232ac8145256d80d2be"},
-    {file = "gputil_fix-1.4.1.2.tar.gz", hash = "sha256:6346639eb5d9c3ddf45213af6fbf7af0dbbd5310a6c24974419c1fc5b19c9774"},
 ]
 
 [[package]]
