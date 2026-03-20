@@ -152,7 +152,17 @@ def _make_model_combo(saved_model: str) -> tuple[QComboBox, QPushButton]:
 
 
 def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> None:
-    """Hook handler: adds the LLM Provider configuration group to the settings dialog."""
+    """Hook handler: adds the LLM Provider configuration group to the settings dialog.
+
+    When the dialog exposes ``get_tab_layout`` (tabbed layout), the group is
+    injected into the dedicated ``'LLM'`` tab.  Otherwise it falls back to
+    ``parent_layout`` for backward compatibility.
+    """
+    # Route into the LLM tab when the dialog supports it.
+    target_layout = parent_layout
+    if _dialog is not None and hasattr(_dialog, "get_tab_layout"):
+        target_layout = _dialog.get_tab_layout("LLM")
+
     group = QGroupBox("LLM Provider")
     group.setObjectName("llm_status_group")
     form = QFormLayout()
@@ -283,7 +293,7 @@ def _add_llm_status_section(parent_layout, settings_service, _dialog=None) -> No
     form.addRow(test_row)
 
     group.setLayout(form)
-    parent_layout.addWidget(group)
+    target_layout.addWidget(group)
 
     # --- Auto-save wiring ---
     provider_combo.currentTextChanged.connect(
