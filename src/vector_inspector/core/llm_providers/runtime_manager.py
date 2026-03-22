@@ -276,8 +276,16 @@ class LLMRuntimeManager:
                 )
 
         env_model = os.environ.get("VI_LLM_MODEL")
+        # If an explicit provider selection is present, prefer the matching
+        # model setting so the chosen provider gets the intended model.
         if not env_model and self._settings:
-            env_model = self._settings.get("llm.ollama_model") or self._settings.get("llm.openai_model")
+            if selected_provider_id == OLLAMA:
+                env_model = self._settings.get("llm.ollama_model") or self._settings.get("llm.openai_model")
+            elif selected_provider_id == OPENAI_COMPATIBLE:
+                env_model = self._settings.get("llm.openai_model") or self._settings.get("llm.ollama_model")
+            else:
+                # Auto/unspecified: prefer ollama model then openai model (legacy behaviour)
+                env_model = self._settings.get("llm.ollama_model") or self._settings.get("llm.openai_model")
         if env_model:
             reasons.append(
                 {

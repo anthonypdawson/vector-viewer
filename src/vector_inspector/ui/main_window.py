@@ -17,6 +17,7 @@ from vector_inspector.core.logging import log_error
 from vector_inspector.services.profile_service import ProfileService
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.services.task_runner import ThreadedTaskRunner
+from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.state import AppState
 from vector_inspector.ui.components.connection_manager_panel import ConnectionManagerPanel
 from vector_inspector.ui.components.profile_manager_panel import ProfileManagerPanel
@@ -69,6 +70,11 @@ class MainWindow(InspectorShell):
         self.setGeometry(100, 100, 1600, 900)
 
         self._setup_ui()
+        # Track last active main tab index for telemetry
+        try:
+            self._last_main_tab_index = self.tab_widget.currentIndex()
+        except Exception:
+            self._last_main_tab_index = None
         self._setup_menu_bar()
         self._setup_toolbar()
         self._setup_statusbar()
@@ -318,6 +324,10 @@ class MainWindow(InspectorShell):
 
     def _show_preferences_dialog(self):
         try:
+            try:
+                TelemetryService.send_event("ui.settings_opened", {"metadata": {"section": "other"}})
+            except Exception:
+                pass
             from vector_inspector.ui.dialogs.settings_dialog import SettingsDialog
 
             dlg = SettingsDialog(self.settings_service, self)
@@ -380,20 +390,9 @@ class MainWindow(InspectorShell):
         # Track that user clicked on update available
         try:
             from vector_inspector.services.telemetry_service import TelemetryService
-            from vector_inspector.utils.version import get_app_version
 
-            telemetry = TelemetryService(self.settings_service)
-            if telemetry.is_enabled():
-                latest_version = self._latest_release.get("tag_name", "unknown")
-                event_data = {
-                    "hwid": telemetry.get_hwid(),
-                    "event_name": "update_clicked",
-                    "app_version": get_app_version(),
-                    "client_type": "vector-inspector",
-                    "metadata": {"latest_version": latest_version},
-                }
-                telemetry.queue_event(event_data)
-                telemetry.send_batch()
+            latest_version = self._latest_release.get("tag_name", "unknown")
+            TelemetryService.send_event("update_clicked", {"metadata": {"latest_version": latest_version}})
         except Exception as e:
             # Don't let telemetry errors break the update flow
             log_error(f"Telemetry error: {e}")
@@ -432,6 +431,38 @@ class MainWindow(InspectorShell):
 
     def _on_tab_changed(self, index: int):
         """Handle tab change - lazy load visualization tab."""
+        # Emit telemetry for tab switches
+        try:
+            prev_index = getattr(self, "_last_main_tab_index", None)
+            # Map index to simple names
+            tab_names = {
+                InspectorTabs.INFO_TAB: "info",
+                InspectorTabs.DATA_TAB: "data",
+                InspectorTabs.SEARCH_TAB: "search",
+                InspectorTabs.VISUALIZATION_TAB: "visualization",
+            }
+            if index == InspectorTabs.SEARCH_TAB:
+                try:
+                    TelemetryService.send_event(
+                        "ui.search_tab_opened",
+                        {
+                            "metadata": {
+                                "collection_name": self.app_state.collection or "",
+                                "previous_tab": tab_names.get(prev_index, "unknown"),
+                                "has_existing_query": bool(
+                                    getattr(self, "search_view", None)
+                                    and getattr(self.search_view, "query_input", None)
+                                    and self.search_view.query_input.toPlainText().strip()
+                                ),
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        finally:
+            self._last_main_tab_index = index
         if index == InspectorTabs.VISUALIZATION_TAB and self.visualization_view is None:
             # Lazy load visualization view
             from vector_inspector.ui.views.visualization_view import VisualizationView
@@ -448,6 +479,23 @@ class MainWindow(InspectorShell):
             self.add_main_tab(self.visualization_view, "Visualization", InspectorTabs.VISUALIZATION_TAB)
             self.set_main_tab_active(InspectorTabs.VISUALIZATION_TAB)
 
+            # Telemetry: visualization opened
+            try:
+                TelemetryService.send_event(
+                    "ui.visualization_opened",
+                    {
+                        "metadata": {
+                            "collection_name": self.app_state.collection or "",
+                            "embedding_dim": None,
+                            "projection_method": getattr(self.visualization_view.dr_panel, "method_combo", None)
+                            and getattr(self.visualization_view.dr_panel.method_combo, "currentText", lambda: "")(),
+                            "point_count": 0,
+                        }
+                    },
+                )
+            except Exception:
+                pass
+
             # Set collection if one is already selected (for initial state)
             # Future collection changes will be handled by app_state.collection_changed signal
             if self.app_state.collection:
@@ -460,6 +508,13 @@ class MainWindow(InspectorShell):
             if instance:
                 # Update breadcrumb
                 self.breadcrumb_label.setText(instance.get_breadcrumb())
+                # Cache provider name for telemetry
+                try:
+                    TelemetryService.get_instance().set_provider(
+                        getattr(instance, "id", None) or getattr(instance, "name", None)
+                    )
+                except Exception:
+                    pass
 
                 # Update all views with new connection
                 self._update_views_with_connection(instance)
@@ -508,6 +563,13 @@ class MainWindow(InspectorShell):
         # The connection manager already handled setting active collection
         # Just update the views (operations are threaded internally)
         self._update_views_for_collection(collection_name)
+        try:
+            TelemetryService.send_event(
+                "ui.collection_selected",
+                {"metadata": {"collection_name": collection_name, "source": "sidebar"}},
+            )
+        except Exception:
+            pass
 
     def _update_views_with_connection(self, connection: Optional[ConnectionInstance]):
         """Update all views with a new connection."""
@@ -550,6 +612,12 @@ class MainWindow(InspectorShell):
             self.app_state.collection = collection_name
             self.app_state.database = database_name
 
+            # Cache collection for telemetry
+            try:
+                TelemetryService.get_instance().set_collection(collection_name)
+            except Exception:
+                pass
+
             # Update views (legacy pattern - for views not yet refactored)
             self.info_panel.set_collection(collection_name, database_name)
             if hasattr(self.metadata_view, "set_collection"):
@@ -588,6 +656,14 @@ class MainWindow(InspectorShell):
             collections = active.list_collections()
             self.connection_manager.update_collections(active.id, collections)
             self.statusBar().showMessage(f"Refreshed collections ({len(collections)} found)", 3000)
+
+            try:
+                TelemetryService.send_event(
+                    "ui.refresh_triggered",
+                    {"metadata": {"collection_name": "", "refresh_target": "collections"}},
+                )
+            except Exception:
+                pass
 
             # Also refresh info panel
             self.info_panel.refresh_database_info()
@@ -673,6 +749,13 @@ class MainWindow(InspectorShell):
             active = self.connection_manager.get_active_connection()
             database_name = active.id if active else ""
             self.search_view.set_collection(collection_name, database_name)
+            try:
+                TelemetryService.send_event(
+                    "ui.collection_selected",
+                    {"metadata": {"collection_name": collection_name, "source": "search_result"}},
+                )
+            except Exception:
+                pass
 
         # Display the results
         self.search_view.search_results = results
@@ -777,6 +860,12 @@ class MainWindow(InspectorShell):
                         self.settings_service.set_window_geometry(bytes(geom))
                     except Exception:
                         pass
+        except Exception:
+            pass
+
+        # Flush any remaining telemetry events synchronously before the process exits
+        try:
+            TelemetryService.get_instance().flush_on_shutdown()
         except Exception:
             pass
 

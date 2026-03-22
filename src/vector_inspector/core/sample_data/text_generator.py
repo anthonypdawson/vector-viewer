@@ -11,6 +11,7 @@ class SampleDataType(Enum):
     TEXT = "text"
     MARKDOWN = "markdown"
     JSON = "json"
+    SUBTITLES = "subtitles"
 
 
 # Sample text corpora for generating realistic-looking data
@@ -152,7 +153,116 @@ def generate_sample_data(
         return _generate_markdown_samples(count, randomize=randomize)
     if data_type == SampleDataType.JSON:
         return _generate_json_samples(count, randomize=randomize)
+    if data_type == SampleDataType.SUBTITLES:
+        # For subtitles we expect a source file path in the `randomize`-position if caller
+        # supplies it as a string. To keep backwards compatibility the function signature
+        # remains stable; callers can instead call `generate_subtitles_from_file` directly.
+        raise ValueError("Use `generate_subtitles_from_file(filepath, count, randomize=True)` to load subtitles")
     raise ValueError(f"Unknown data type: {data_type}")
+
+
+def generate_subtitles_from_file(filepath: str, count: int = 0, randomize: bool = True) -> list[dict[str, Any]]:
+    """Generate sample items from a subtitles file (SRT-like format).
+
+    Args:
+        filepath: Path to the subtitles (.srt) file.
+        count: Maximum number of items to return. 0 means all cues.
+        randomize: If True, randomly sample `count` items; otherwise deterministic order.
+
+    Returns:
+        List of sample dicts with `text` and `metadata`.
+    """
+    cues = _parse_srt(filepath)
+    if not cues:
+        return []
+
+    total = len(cues)
+    indices = list(range(total))
+    if count and count < total:
+        if randomize:
+            indices = random.sample(indices, k=count)
+        else:
+            indices = indices[:count]
+
+    samples: list[dict[str, Any]] = []
+    for i, idx in enumerate(indices):
+        cue = cues[idx]
+        samples.append(
+            {
+                "text": cue["text"],
+                "metadata": {
+                    "source": filepath,
+                    "type": "subtitles",
+                    "index": i,
+                    "cue_index": idx,
+                    "start": cue.get("start"),
+                    "end": cue.get("end"),
+                },
+            }
+        )
+
+    return samples
+
+
+def _parse_srt(filepath: str) -> list[dict[str, str]]:
+    """Basic SRT parser: returns list of cues with `text`, `start`, `end`.
+
+    This is intentionally small and permissive — it's suitable for loading test
+    subtitles files. It does not implement full SRT spec (no HTML parsing).
+    """
+    try:
+        with open(filepath, encoding="utf-8") as fh:
+            content = fh.read()
+    except FileNotFoundError:
+        return []
+
+    # Split blocks by empty lines (handles Windows/Unix line endings)
+    blocks = [b.strip() for b in content.splitlines()]
+    # Re-join into cue blocks separated by blank lines
+    cues_raw: list[str] = []
+    current: list[str] = []
+    for line in blocks:
+        if line == "":
+            if current:
+                cues_raw.append("\n".join(current))
+                current = []
+        else:
+            current.append(line)
+    if current:
+        cues_raw.append("\n".join(current))
+
+    cues: list[dict[str, str]] = []
+    for block in cues_raw:
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if not lines:
+            continue
+
+        # Find time line (contains -->)
+        time_line = None
+        for ln in lines:
+            if "-->" in ln:
+                time_line = ln
+                break
+
+        if not time_line:
+            # Could be malformed; treat whole block as text
+            text = " ".join(lines[1:]) if len(lines) > 1 else lines[0]
+            cues.append({"text": text, "start": "", "end": ""})
+            continue
+
+        # text lines follow the time line
+        try:
+            t_idx = lines.index(time_line)
+        except ValueError:
+            t_idx = 0
+        text_lines = lines[t_idx + 1 :]
+        text = " ".join(text_lines)
+        parts = time_line.split("-->")
+        start = parts[0].strip()
+        end = parts[1].strip() if len(parts) > 1 else ""
+        cues.append({"text": text, "start": start, "end": end})
+
+    return cues
 
 
 def _generate_text_samples(count: int, randomize: bool = True) -> list[dict[str, Any]]:

@@ -164,3 +164,87 @@ def test_create_plot_3d(plot_panel):
     assert not panel.selection_container.isVisible()
     html = panel.get_current_html()
     assert html is not None
+
+
+# ---------------------------------------------------------------------------
+# PlotEventBridge.onInteraction slot
+# ---------------------------------------------------------------------------
+
+
+def test_bridge_on_interaction_emits_signal():
+    """onInteraction slot forwards to the interaction signal."""
+    bridge = PlotEventBridge()
+    received = []
+    bridge.interaction.connect(lambda action, count: received.append((action, count)))
+
+    bridge.onInteraction("zoom", 3)
+
+    assert received == [("zoom", 3)]
+
+
+def test_bridge_on_interaction_coerces_count():
+    """onInteraction wraps count in int() and re-emits."""
+    bridge = PlotEventBridge()
+    received = []
+    bridge.interaction.connect(lambda _action, c: received.append(c))
+    bridge.onInteraction("pan", 0)
+    assert received == [0]
+
+
+# ---------------------------------------------------------------------------
+# PlotPanel._on_interaction — telemetry emission
+# ---------------------------------------------------------------------------
+
+
+def test_on_interaction_calls_telemetry(plot_panel, monkeypatch):
+    """_on_interaction sends a telemetry event via TelemetryService.send_event."""
+    import vector_inspector.ui.views.visualization.plot_panel as pp_mod
+
+    events = []
+    monkeypatch.setattr(
+        pp_mod.TelemetryService, "send_event", staticmethod(lambda name, payload: events.append((name, payload)))
+    )
+
+    plot_panel._on_interaction("zoom", 2)
+
+    assert events, "Expected at least one telemetry send_event call"
+    name, payload = events[0]
+    assert name == "ui.visualization_interacted"
+    assert payload["metadata"]["action"] == "zoom"
+    assert payload["metadata"]["selected_count"] == 2
+
+
+def test_on_interaction_tolerates_exception(plot_panel, monkeypatch):
+    """_on_interaction must not raise even if telemetry fails."""
+    import vector_inspector.ui.views.visualization.plot_panel as pp_mod
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("telemetry down")
+
+    monkeypatch.setattr(pp_mod.TelemetryService, "send_event", staticmethod(boom))
+
+    # Should not raise
+    plot_panel._on_interaction("pan", 0)
+
+
+# ---------------------------------------------------------------------------
+# dispose()
+# ---------------------------------------------------------------------------
+
+
+def test_dispose_clears_references(qtbot):
+    """dispose() nulls out web_view, channel, and _event_bridge."""
+    panel = PlotPanel()
+    qtbot.addWidget(panel)
+    panel.dispose()
+    assert panel.web_view is None
+    assert panel.channel is None
+    assert panel._event_bridge is None
+
+
+def test_dispose_is_idempotent(qtbot):
+    """Calling dispose() twice must not raise."""
+    panel = PlotPanel()
+    qtbot.addWidget(panel)
+    panel.dispose()
+    panel.dispose()  # second call must be safe

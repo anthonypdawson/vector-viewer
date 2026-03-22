@@ -1,5 +1,7 @@
 """Hardware info utilities for Vector Inspector."""
 
+from vector_inspector.core.logging import log_warning
+
 
 def get_hardware_info():
     """
@@ -33,22 +35,28 @@ def get_hardware_info():
 
     # GPU info
     try:
-        import GPUtil
+        import warnings
 
-        gpus = GPUtil.getGPUs()
-        if gpus:
-            info["gpu"] = [
-                {
-                    "name": gpu.name,
-                    "memory_total_mb": gpu.memoryTotal,
-                    "driver": gpu.driver,
-                    "uuid": gpu.uuid,
-                }
-                for gpu in gpus
-            ]
-        else:
-            info["gpu"] = []
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", module="GPUtil")
+
+            import GPUtil
+
+            gpus = GPUtil.getGPUs()
+            if gpus:
+                info["gpu"] = [
+                    {
+                        "name": gpu.name,
+                        "memory_total_mb": gpu.memoryTotal,
+                        "driver": gpu.driver,
+                        "uuid": gpu.uuid,
+                    }
+                    for gpu in gpus
+                ]
+            else:
+                info["gpu"] = []
     except ImportError:
+        log_warning("GPUtil not installed; GPU info will be unavailable.")
         info["gpu"] = None
     except Exception:
         info["gpu"] = None

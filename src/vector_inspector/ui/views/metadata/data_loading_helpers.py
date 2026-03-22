@@ -26,6 +26,7 @@ def process_loaded_data(
     prev_button: QPushButton,
     next_button: QPushButton,
     filter_builder: Any,
+    total_label: QLabel | None = None,
 ) -> None:
     """Process data loaded from background thread.
 
@@ -49,26 +50,36 @@ def process_loaded_data(
     """
     # If no data returned
     if not data or not data.get("ids"):
-        _handle_empty_data(ctx, status_label, table, page_label, prev_button, next_button)
+        _handle_empty_data(ctx, status_label, table, page_label, prev_button, next_button, total_label)
         return
 
-    # Apply client-side filters across the full dataset if present
+    # Apply client-side filters across the full dataset if present.
+    # `ctx.client_filters` may be a boolean flag (True means "use
+    # client-side pagination") or an iterable of filter dicts. Normalize to
+    # a list for the filter service.
     full_data = data
     if ctx.client_filters:
-        full_data = apply_client_side_filters(data, ctx.client_filters)
+        filters = ctx.client_filters if isinstance(ctx.client_filters, list) else []
+        full_data = apply_client_side_filters(data, filters)
 
     if not full_data or not full_data.get("ids"):
         status_label.setText("No data after filtering")
         table.setRowCount(0)
+        try:
+            total_label.setText("")
+        except Exception:
+            pass
         return
 
     # If client-side filtering was used, perform pagination locally
     if ctx.client_filters:
-        _handle_client_side_pagination(full_data, table, ctx, page_label, prev_button, next_button, filter_builder)
+        _handle_client_side_pagination(
+            full_data, table, ctx, page_label, prev_button, next_button, filter_builder, total_label
+        )
         return
 
     # No client-side filters: display server-paginated data
-    _handle_server_side_pagination(data, table, ctx, page_label, prev_button, next_button, filter_builder)
+    _handle_server_side_pagination(data, table, ctx, page_label, prev_button, next_button, filter_builder, total_label)
 
 
 def _handle_empty_data(
@@ -78,8 +89,15 @@ def _handle_empty_data(
     page_label: QLabel,
     prev_button: QPushButton,
     next_button: QPushButton,
+    total_label: QLabel | None = None,
 ) -> None:
     """Handle case when no data is returned."""
+    # Clear the total label so it doesn't show stale data from a previous load
+    try:
+        if total_label is not None:
+            total_label.setText("")
+    except Exception:
+        pass
     # If we're on a page beyond 0 and got no data, go back to previous page
     if ctx.current_page > 0:
         ctx.current_page -= 1
@@ -103,6 +121,7 @@ def _handle_client_side_pagination(
     prev_button: QPushButton,
     next_button: QPushButton,
     filter_builder: Any,
+    total_label: QLabel | None = None,
 ) -> None:
     """Handle client-side filtering and pagination."""
     total_count = len(full_data.get("ids", []))
@@ -129,6 +148,13 @@ def _handle_client_side_pagination(
         total_count=total_count,
     )
 
+    # Update total count display
+    try:
+        if total_label is not None:
+            total_label.setText(f"Total: {total_count}")
+    except Exception:
+        pass
+
     # Update filter fields based on the full filtered dataset
     update_filter_fields(filter_builder, full_data)
 
@@ -144,6 +170,7 @@ def _handle_server_side_pagination(
     prev_button: QPushButton,
     next_button: QPushButton,
     filter_builder: Any,
+    total_label: QLabel | None = None,
 ) -> None:
     """Handle server-side pagination without client filtering."""
     # Check if we fetched more items than page_size (to detect next page)
@@ -165,6 +192,25 @@ def _handle_server_side_pagination(
         next_button,
         has_next_page=has_next_page,
     )
+
+    # Use total_count when it is included in the response data.
+    # Avoid a synchronous count_collection() call here because this runs
+    # on the UI thread and would stall for remote / large collections.
+    total_count = None
+    try:
+        if isinstance(data, dict) and ("total_count" in data or "count" in data):
+            total_count = data.get("total_count") or data.get("count")
+    except Exception:
+        total_count = None
+
+    try:
+        if total_label is not None:
+            if total_count is not None:
+                total_label.setText(f"Total: {total_count}")
+            else:
+                total_label.setText("")
+    except Exception:
+        pass
 
     # Update filter builder with available metadata fields
     update_filter_fields(filter_builder, data)
@@ -236,11 +282,12 @@ def _save_to_cache(
 
 def _select_item_if_needed(table: QTableWidget, ctx: Any) -> None:
     """Select an item if ctx has a pending selection request."""
-    if not ctx._select_id_after_load:
+    sel_id = getattr(ctx, "_select_id_after_load", None)
+    if not sel_id:
         return
 
     try:
-        sel_id = ctx._select_id_after_load
+        sel_id = sel_id
         ids = ctx.current_data.get("ids", []) if ctx.current_data else []
         if ids and sel_id in ids:
             row_idx = ids.index(sel_id)

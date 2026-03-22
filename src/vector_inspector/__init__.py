@@ -1,6 +1,6 @@
 """Vector Inspector - A comprehensive desktop application for vector database visualization."""
 
-__version__ = "0.6.0"  # Keep in sync with pyproject.toml for dev mode fallback
+__version__ = "0.6.1"  # Keep in sync with pyproject.toml for dev mode fallback
 
 
 def get_version():

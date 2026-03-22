@@ -7,6 +7,7 @@ from typing import Any
 from PySide6.QtCore import QObject, Signal
 
 from vector_inspector.core.logging import log_error
+from vector_inspector.services.telemetry_service import TelemetryService
 
 from .connections.base_connection import VectorDBConnection
 
@@ -275,11 +276,24 @@ class ConnectionManager(QObject):
                 self.active_connection_changed.emit(None)
 
         self.connection_closed.emit(connection_id)
+
+        # If there is no active connection after closing, clear cached
+        # provider/collection in the TelemetryService to avoid sending stale
+        # context with subsequent events.
+        try:
+            if self._active_connection_id is None:
+                try:
+                    svc = TelemetryService.get_instance()
+                    svc.set_provider(None)
+                    svc.set_collection(None)
+                except Exception:
+                    # Best-effort; telemetry failures must not raise here
+                    pass
+        except Exception:
+            pass
         return True
 
-    def update_connection_state(
-        self, connection_id: str, state: ConnectionState, error: str | None = None
-    ):
+    def update_connection_state(self, connection_id: str, state: ConnectionState, error: str | None = None):
         """
         Update the state of a connection.
 

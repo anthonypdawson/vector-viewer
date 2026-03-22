@@ -120,6 +120,28 @@ def test_status_label_shows_provider_info(qtbot):
     assert "fake-model" in text
 
 
+def test_status_label_reflects_runtime_manager_provider_and_model(qtbot):
+    """Status label should reflect the provider/model returned by the runtime manager."""
+    from unittest.mock import MagicMock
+
+    from vector_inspector.state import AppState
+
+    provider = MagicMock()
+    provider.get_provider_name.return_value = "cool-provider"
+    provider.get_model_name.return_value = "cool-model:42"
+    provider.is_available.return_value = True
+
+    app_state = MagicMock(spec=AppState)
+    app_state.llm_runtime_manager = MagicMock()
+    app_state.llm_runtime_manager.get_provider.return_value = provider
+
+    dlg = AskAIDialog(app_state, context=CONTEXT)
+    qtbot.addWidget(dlg)
+    text = dlg._status_label.text()
+    assert "cool-provider" in text
+    assert "cool-model" in text
+
+
 def test_status_label_green_when_available(qtbot):
     provider = FakeLLMProvider()
     dlg = _make_dialog(qtbot, app_state=_make_app_state(provider))
@@ -830,3 +852,69 @@ def test_reset_selection_restores_auto_default(qtbot):
             checked.append(item.data(_Qt.ItemDataRole.UserRole))
     expected_count = min(LLM_CONTEXT_MAX, len(_ALL_RESULTS["ids"]))
     assert sorted(checked) == list(range(expected_count))
+
+
+# ---------------------------------------------------------------------------
+# eventFilter — Ctrl+Enter shortcut triggers _send()
+# ---------------------------------------------------------------------------
+
+
+def test_ctrl_enter_triggers_send(qtbot, monkeypatch):
+    """Pressing Ctrl+Enter in the prompt input calls _send()."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    dlg = _make_dialog(qtbot)
+    sent = []
+    monkeypatch.setattr(dlg, "_send", lambda: sent.append(True))
+
+    key_event = QKeyEvent(
+        QEvent.Type.KeyPress,
+        Qt.Key.Key_Return,
+        Qt.KeyboardModifier.ControlModifier,
+    )
+    dlg.eventFilter(dlg._prompt_input, key_event)
+    assert sent, "Ctrl+Enter should have triggered _send()"
+
+
+def test_event_filter_non_ctrl_enter_not_captured(qtbot):
+    """Plain Enter in the prompt input does NOT trigger _send()."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    dlg = _make_dialog(qtbot)
+    plain_enter = QKeyEvent(
+        QEvent.Type.KeyPress,
+        Qt.Key.Key_Return,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    result = dlg.eventFilter(dlg._prompt_input, plain_enter)
+    assert not result  # event passed through
+
+
+# ---------------------------------------------------------------------------
+# _on_worker_finished — clears worker reference
+# ---------------------------------------------------------------------------
+
+
+def test_on_worker_finished_clears_worker_ref(qtbot):
+    """_on_worker_finished must delete and null out self._worker."""
+    dlg = _make_dialog(qtbot)
+    worker_mock = MagicMock()
+    dlg._worker = worker_mock
+    dlg._on_worker_finished()
+    assert dlg._worker is None
+    worker_mock.deleteLater.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _clear_response
+# ---------------------------------------------------------------------------
+
+
+def test_clear_response_empties_response_area(qtbot):
+    """_clear_response must clear the response text area."""
+    dlg = _make_dialog(qtbot)
+    dlg._response_area.setPlainText("some text here")
+    dlg._clear_response()
+    assert dlg._response_area.toPlainText() == ""

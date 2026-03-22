@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout
+
 from vector_inspector.extensions import settings_panel_hook
 
 
@@ -14,7 +15,17 @@ def add_telemetry_section(parent_layout, settings_service, dialog=None):
     )
 
     def on_state_changed(state):
-        settings_service.set_telemetry_enabled(bool(state))
+        new_val = bool(state)
+
+        try:
+            from vector_inspector.services.telemetry_service import TelemetryService
+
+            TelemetryService.send_event(
+                "feature.toggled", {"metadata": {"feature_name": "anonymous_telemetry", "new_value": new_val}}
+            )
+        except Exception:
+            pass
+        settings_service.set_telemetry_enabled(new_val)
 
     telemetry_checkbox.stateChanged.connect(on_state_changed)
     layout = QHBoxLayout()

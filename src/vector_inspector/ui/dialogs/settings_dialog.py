@@ -9,7 +9,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 from vector_inspector.extensions import settings_panel_hook
@@ -27,10 +29,57 @@ class SettingsDialog(QDialog):
         self._load_values()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
 
-        # Breadcrumb controls are provided by pro extensions (vector-studio)
-        # via the settings_panel_hook. Core does not add breadcrumb options.
+        # Central tab widget
+        self._tabs = QTabWidget()
+        outer_layout.addWidget(self._tabs)
+
+        # Internal registry: tab name -> (QWidget, QVBoxLayout)
+        self._tab_widgets: dict[str, tuple[QWidget, QVBoxLayout]] = {}
+
+        # Build the core tabs in display order
+        self._create_general_tab()
+        self._create_embeddings_tab()
+        self._create_appearance_tab()
+        self._create_llm_tab()
+
+        # Allow extensions to inject into tabs.
+        # General tab layout is passed as parent_layout for backward-compatible
+        # handlers (e.g. telemetry).  Tab-aware handlers use dialog.get_tab_layout().
+        try:
+            settings_panel_hook.trigger(self.get_tab_layout("General"), self.settings, self)
+        except Exception:
+            pass
+
+        # Action buttons live outside the tab widget
+        btn_layout = QHBoxLayout()
+        self.apply_btn = QPushButton("Apply")
+        self.ok_btn = QPushButton("OK")
+        self.cancel_btn = QPushButton("Cancel")
+        self.reset_btn = QPushButton("Reset to defaults")
+        btn_layout.addWidget(self.reset_btn)
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.apply_btn)
+        btn_layout.addWidget(self.ok_btn)
+        btn_layout.addWidget(self.cancel_btn)
+        outer_layout.addLayout(btn_layout)
+
+        # Signals
+        self.apply_btn.clicked.connect(self._apply)
+        self.ok_btn.clicked.connect(self._ok)
+        self.cancel_btn.clicked.connect(self.reject)
+        self.reset_btn.clicked.connect(self._reset_defaults)
+
+        # Container for programmatic sections
+        self._extra_sections = []
+
+    # ------------------------------------------------------------------
+    # Tab builders
+    # ------------------------------------------------------------------
+
+    def _create_general_tab(self):
+        layout = self.get_tab_layout("General")
 
         # Search defaults
         search_layout = QHBoxLayout()
@@ -39,9 +88,10 @@ class SettingsDialog(QDialog):
         self.default_results.setMinimum(1)
         self.default_results.setMaximum(1000)
         search_layout.addWidget(self.default_results)
+        search_layout.addStretch()
         layout.addLayout(search_layout)
 
-        # Embeddings
+        # Embeddings auto-generate
         self.auto_embed_checkbox = QCheckBox("Auto-generate embeddings for new text")
         layout.addWidget(self.auto_embed_checkbox)
 
@@ -53,19 +103,29 @@ class SettingsDialog(QDialog):
         self.hide_splash_checkbox = QCheckBox("Hide loading screen on startup")
         layout.addWidget(self.hide_splash_checkbox)
 
-        # Model cache section
+        layout.addStretch()
+
+        # Signals — immediate apply on change
+        self.default_results.valueChanged.connect(lambda v: self.settings.set_default_n_results(v))
+        self.auto_embed_checkbox.stateChanged.connect(lambda s: self.settings.set_auto_generate_embeddings(bool(s)))
+        self.restore_geometry_checkbox.stateChanged.connect(
+            lambda s: self.settings.set_window_restore_geometry(bool(s))
+        )
+        self.hide_splash_checkbox.stateChanged.connect(lambda s: self.settings.set("hide_loading_screen", bool(s)))
+
+    def _create_embeddings_tab(self):
+        layout = self.get_tab_layout("Embeddings")
+
         cache_group = QGroupBox("Embedding Model Cache")
         cache_layout = QVBoxLayout()
 
         self.cache_enabled_checkbox = QCheckBox("Enable disk caching for embedding models")
         cache_layout.addWidget(self.cache_enabled_checkbox)
 
-        # Cache info display
         self.cache_info_label = QLabel("Cache info loading...")
         self.cache_info_label.setWordWrap(True)
         cache_layout.addWidget(self.cache_info_label)
 
-        # Cache controls
         cache_btn_layout = QHBoxLayout()
         self.clear_cache_btn = QPushButton("Clear Cache")
         self.clear_cache_btn.clicked.connect(self._clear_cache)
@@ -78,9 +138,14 @@ class SettingsDialog(QDialog):
 
         cache_group.setLayout(cache_layout)
         layout.addWidget(cache_group)
+        layout.addStretch()
 
-        # Appearance section (highlight colors)
-        appearance_group = QGroupBox("Appearance")
+        self.cache_enabled_checkbox.stateChanged.connect(lambda s: self.settings.set_embedding_cache_enabled(bool(s)))
+
+    def _create_appearance_tab(self):
+        layout = self.get_tab_layout("Appearance")
+
+        appearance_group = QGroupBox("Highlight Colors")
         appearance_layout = QVBoxLayout()
 
         top_row = QHBoxLayout()
@@ -94,80 +159,65 @@ class SettingsDialog(QDialog):
         self.highlight_bg_btn.setFixedSize(40, 22)
         top_row.addWidget(self.highlight_bg_btn)
         top_row.addStretch()
-
         appearance_layout.addLayout(top_row)
 
-        # Toggle to enable/disable accent/highlight colors
         self.use_accent_checkbox = QCheckBox("Enable accent/highlight colors")
         appearance_layout.addWidget(self.use_accent_checkbox)
 
-        # Reset highlight defaults button (underneath the color selectors)
         reset_row = QHBoxLayout()
         self.reset_highlight_btn = QPushButton("Reset highlight to default")
         reset_row.addWidget(self.reset_highlight_btn)
         reset_row.addStretch()
         self.reset_highlight_btn.clicked.connect(self._reset_highlight_defaults)
-
         appearance_layout.addLayout(reset_row)
+
         appearance_group.setLayout(appearance_layout)
         layout.addWidget(appearance_group)
+        layout.addStretch()
 
-        # Buttons
-        btn_layout = QHBoxLayout()
-        self.apply_btn = QPushButton("Apply")
-        self.ok_btn = QPushButton("OK")
-        self.cancel_btn = QPushButton("Cancel")
-        self.reset_btn = QPushButton("Reset to defaults")
-        btn_layout.addWidget(self.reset_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(self.apply_btn)
-        btn_layout.addWidget(self.ok_btn)
-        btn_layout.addWidget(self.cancel_btn)
-        # Allow external extensions to add sections before the buttons
-        try:
-            # Handlers receive (parent_layout, settings_service, dialog)
-            settings_panel_hook.trigger(layout, self.settings, self)
-        except Exception:
-            pass
-
-        layout.addLayout(btn_layout)
-
-        # Signals
-        self.apply_btn.clicked.connect(self._apply)
-        self.ok_btn.clicked.connect(self._ok)
-        self.cancel_btn.clicked.connect(self.reject)
-        self.reset_btn.clicked.connect(self._reset_defaults)
-
-        # Immediate apply on change for some controls
-        self.default_results.valueChanged.connect(lambda v: self.settings.set_default_n_results(v))
-        self.auto_embed_checkbox.stateChanged.connect(lambda s: self.settings.set_auto_generate_embeddings(bool(s)))
-        self.restore_geometry_checkbox.stateChanged.connect(
-            lambda s: self.settings.set_window_restore_geometry(bool(s))
-        )
-        self.hide_splash_checkbox.stateChanged.connect(lambda s: self.settings.set("hide_loading_screen", bool(s)))
-        self.cache_enabled_checkbox.stateChanged.connect(lambda s: self.settings.set_embedding_cache_enabled(bool(s)))
-
-        # Appearance controls
         self.highlight_btn.clicked.connect(lambda: self._pick_color("ui.highlight_color", self.highlight_btn))
         self.highlight_bg_btn.clicked.connect(lambda: self._pick_color("ui.highlight_color_bg", self.highlight_bg_btn))
         self.use_accent_checkbox.stateChanged.connect(self._on_use_accent_changed)
 
-        # Container for programmatic sections
-        self._extra_sections = []
+    def _create_llm_tab(self):
+        # Pre-create the tab so it appears in the correct position.
+        # Content is injected by llm_settings_panel via the settings_panel_hook
+        # using dialog.get_tab_layout("LLM").
+        self.get_tab_layout("LLM")
 
-    def add_section(self, widget_or_layout):
-        """Programmatically add a section (widget or layout) to the dialog.
+    # ------------------------------------------------------------------
+    # Tab access API
+    # ------------------------------------------------------------------
 
-        `widget_or_layout` can be a QWidget or QLayout. It will be added
-        immediately to the dialog's main layout.
+    def get_tab_layout(self, tab_name: str) -> QVBoxLayout:
+        """Return the QVBoxLayout for the named tab, creating the tab if needed.
+
+        Extensions can use this to target a specific tab::
+
+            dialog.get_tab_layout("LLM").addWidget(my_group)
+        """
+        if tab_name in self._tab_widgets:
+            return self._tab_widgets[tab_name][1]
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        self._tabs.addTab(widget, tab_name)
+        self._tab_widgets[tab_name] = (widget, layout)
+        return layout
+
+    def add_section(self, widget_or_layout, tab: str = "General"):
+        """Add a section (widget or layout) to the specified tab.
+
+        Args:
+            widget_or_layout: A QWidget or QLayout to add.
+            tab: Name of the destination tab (default ``'General'``).  If the
+                named tab does not exist it will be created automatically.
         """
         try:
+            layout = self.get_tab_layout(tab)
             if hasattr(widget_or_layout, "setParent"):
-                # QWidget
-                self.layout().addWidget(widget_or_layout)
+                layout.addWidget(widget_or_layout)
             else:
-                # Assume QLayout
-                self.layout().addLayout(widget_or_layout)
+                layout.addLayout(widget_or_layout)
             self._extra_sections.append(widget_or_layout)
         except Exception:
             pass

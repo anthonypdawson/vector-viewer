@@ -330,3 +330,96 @@ def test_select_item_if_needed_exception_clears_select_id(qtbot):
     _select_item_if_needed(table, ctx)
 
     assert ctx._select_id_after_load is None
+
+
+# ---------------------------------------------------------------------------
+# total_label update paths
+# ---------------------------------------------------------------------------
+
+
+def test_process_loaded_data_server_side_sets_total_label_from_response(qtbot):
+    """total_count in server response data is shown in the total_label."""
+    data = {
+        "ids": ["a"],
+        "documents": ["doc1"],
+        "metadatas": [{"field": "val"}],
+        "embeddings": None,
+        "total_count": 42,
+    }
+    ctx = _make_ctx()
+    table, page_label, prev_btn, next_btn, status_label = _make_widgets(qtbot)
+    total_label = QLabel()
+    qtbot.addWidget(total_label)
+
+    process_loaded_data(
+        data, table, ctx, status_label, page_label, prev_btn, next_btn, FakeFilterBuilder(), total_label=total_label
+    )
+
+    assert "42" in total_label.text()
+
+
+def test_process_loaded_data_server_side_empty_total_label_when_no_count(qtbot):
+    """When total_count not in data, total_label should be cleared."""
+    data = {"ids": ["a"], "documents": ["doc1"], "metadatas": [{}]}
+    ctx = _make_ctx()
+    table, page_label, prev_btn, next_btn, status_label = _make_widgets(qtbot)
+    total_label = QLabel("old value")
+    qtbot.addWidget(total_label)
+
+    process_loaded_data(
+        data, table, ctx, status_label, page_label, prev_btn, next_btn, FakeFilterBuilder(), total_label=total_label
+    )
+
+    assert total_label.text() == ""
+
+
+def test_process_loaded_data_client_side_sets_total_label(qtbot, monkeypatch):
+    """Client-side path should show filtered total count in total_label."""
+    import vector_inspector.ui.views.metadata.data_loading_helpers as dlh
+
+    filtered = {"ids": ["a", "b"], "documents": ["d1", "d2"], "metadatas": [{}, {}]}
+    monkeypatch.setattr(dlh, "apply_client_side_filters", lambda data, filters: filtered)
+
+    data = {"ids": ["a", "b", "c"], "documents": ["d1", "d2", "d3"], "metadatas": [{}, {}, {}]}
+    ctx = _make_ctx(client_filters=True)
+    table, page_label, prev_btn, next_btn, status_label = _make_widgets(qtbot)
+    total_label = QLabel()
+    qtbot.addWidget(total_label)
+
+    process_loaded_data(
+        data, table, ctx, status_label, page_label, prev_btn, next_btn, FakeFilterBuilder(), total_label=total_label
+    )
+
+    assert "2" in total_label.text()
+
+
+def test_process_loaded_data_empty_clears_total_label(qtbot):
+    """Empty data path should clear total_label."""
+    ctx = _make_ctx()
+    table, page_label, prev_btn, next_btn, status_label = _make_widgets(qtbot)
+    total_label = QLabel("stale")
+    qtbot.addWidget(total_label)
+
+    process_loaded_data(
+        {}, table, ctx, status_label, page_label, prev_btn, next_btn, FakeFilterBuilder(), total_label=total_label
+    )
+
+    assert total_label.text() == ""
+
+
+def test_save_to_cache_with_to_dict_filter_builder(qtbot):
+    """_save_to_cache should call filter_builder.to_dict() when available."""
+    from vector_inspector.ui.views.metadata.data_loading_helpers import _save_to_cache
+
+    class DictFilterBuilder(FakeFilterBuilder):
+        def to_dict(self):
+            return {"field": "x", "op": "=", "value": "y"}
+
+    ctx = _make_ctx()
+    table, *_ = _make_widgets(qtbot)
+
+    _save_to_cache(ctx, {"ids": ["a"]}, DictFilterBuilder(), table)
+
+    entry = ctx.cache_manager.get("db1", "col1")
+    assert entry is not None
+    assert entry.search_query == {"field": "x", "op": "=", "value": "y"}

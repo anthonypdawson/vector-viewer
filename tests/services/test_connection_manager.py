@@ -436,3 +436,60 @@ def test_get_all_connections_is_a_copy(fake_provider):
     all_conns = manager.get_all_connections()
     all_conns.clear()
     assert manager.get_connection_count() == 1
+
+
+def test_close_last_connection_clears_telemetry_context(fake_provider):
+    """Closing the only connection should clear provider/collection in TelemetryService."""
+    from vector_inspector.services.telemetry_service import TelemetryService
+
+    TelemetryService.reset_for_tests()
+    svc = TelemetryService.get_instance()
+    svc.set_provider("chromadb")
+    svc.set_collection("some_col")
+
+    manager = ConnectionManager()
+    conn_id = manager.create_connection("only", "fake", fake_provider, {})
+    manager.close_connection(conn_id)
+
+    # After the last connection is closed, telemetry context should be cleared
+    assert svc._cached_provider is None
+    assert svc._cached_collection is None
+    TelemetryService.reset_for_tests()
+
+
+def test_mark_connection_opened_emits_signal(fake_provider):
+    """mark_connection_opened should emit connection_opened signal."""
+    manager = ConnectionManager()
+    received = []
+    manager.connection_opened.connect(lambda cid: received.append(cid))
+    conn_id = manager.create_connection("c", "fake", fake_provider, {})
+    manager.mark_connection_opened(conn_id)
+    assert conn_id in received
+
+
+def test_mark_connection_opened_unknown_id_is_noop(fake_provider):
+    """mark_connection_opened with unknown id should not raise."""
+    manager = ConnectionManager()
+    received = []
+    manager.connection_opened.connect(lambda cid: received.append(cid))
+    manager.mark_connection_opened("nonexistent-id")
+    assert received == []
+
+
+def test_create_connection_with_explicit_id(fake_provider):
+    """create_connection should honour an explicit connection_id."""
+    manager = ConnectionManager()
+    cid = manager.create_connection("c", "fake", fake_provider, {}, connection_id="explicit-id-123")
+    assert cid == "explicit-id-123"
+    assert manager.get_connection("explicit-id-123") is not None
+
+
+def test_create_connection_max_limit_raises(fake_provider, empty_fake_provider):
+    """Exceeding MAX_CONNECTIONS should raise RuntimeError."""
+    manager = ConnectionManager()
+    for i in range(ConnectionManager.MAX_CONNECTIONS):
+        from tests.fakes.fake_provider import FakeProvider
+
+        manager.create_connection(f"c{i}", "fake", FakeProvider(), {})
+    with pytest.raises(RuntimeError, match="Maximum"):
+        manager.create_connection("overflow", "fake", fake_provider, {})

@@ -1,54 +1,72 @@
-## Release Notes (0.6.0) — 2026-03-12
+# Vector Inspector 0.6.1 (2026‑03‑19) — Session‑Aware Telemetry, LLM Runtime Fixes, and UI Polish
 
-### 🚀 Vector Inspector Becomes AI‑Augmented
-
-This release introduces **Ask the AI**, an interactive assistant that explains search results, analyzes ranking behavior, and summarizes clusters so you can see *why* items ranked the way they did. Vector Inspector now not only shows your data — it **interprets** it.
-
-_Upgrade note: This is a non‑breaking, drop‑in upgrade from 0.5.x. After updating, configure your preferred LLM provider under Settings → Integrations → LLM to enable Ask the AI._
+Vector Inspector 0.6.1 is a tightening pass across the entire stack:
+more reliable LLM behavior, fully session‑aware telemetry, and a smoother, more predictable user interface.
 
 ---
 
-## 🧠 Ask the AI — Search Results
+## New & Improved
 
-Vector Inspector now includes an AI‑powered assistant that provides natural‑language insight into semantic search behavior directly from your search results.
+### Ask‑AI Enhancements
+- Added a persistent **“Configure LLM…”** button inside the Ask‑AI dialog for easier access.
+- Provider status now **refreshes automatically** when LLM settings change.
+- Ask‑AI now **re‑reads the active provider’s model** before sending prompts.
 
-- Added **Ask the AI** button to the Search Results toolbar and **Explain result** to the right‑click context menu.  
-- Opening Ask the AI launches a non‑modal streaming dialog (`ui/components/ask_ai_dialog.py`) pre‑filled with:
-  - the search query  
-  - top‑N results (id, snippet, score, metadata)  
-  - the selected result  
-- **Explain result** auto‑generates a focused explanation prompt (editable before sending) for the selected result.  
-- Responses stream in real time from the configured LLM provider (Ollama, llama‑cpp, or any OpenAI‑compatible API) using the existing `app_state.llm_provider`.  
-- A collapsible **Context Preview** shows exactly what will be sent to the LLM.  
-- Added `services/search_ai_service.py` — a pure‑Python payload builder and prompt formatter (fully unit‑tested, no Qt dependencies).  
-- Added extensive unit tests covering payload building, nested result unwrapping, snippet truncation, prompt generation, and context formatting.  
-
-**Privacy & Data Handling**
-
-- Before sending, users can preview the exact context in the dialog's **Context Preview** — use this to redact or remove any sensitive fields. 
-- Providers are fully configurable. Local providers (e.g., llama‑cpp or other on‑device runtimes) are supported and recommended when data must remain on‑device.
-
-**Supported providers & configuration**
-
-- Supported provider types: Ollama, local `llama‑cpp` runtimes, and OpenAI‑compatible APIs (e.g., OpenAI, Azure OpenAI, or self‑hosted OpenAI‑compatible gateways). 
-- Configure providers in Settings → AI Providers, or via environment variables where supported by the provider integration. See `docs/LLM_INTEGRATION_AND_CONFIGURATION.md` for capabilities, authentication, and context‑budget recommendations.
+### UI Improvements
+- Data view now includes a **total record count** label.
+- Closing the last connection now **clears cached provider/collection context**.
 
 ---
 
-## 🎛️ Ask the AI — Context Clamping & Result Selection
+## LLM Runtime Fixes
+- Fixed an issue where Ask‑AI could use a **stale model** if preferences changed while the dialog was open.
+- Runtime manager now **respects provider‑specific model settings** and avoids cross‑provider leakage.
 
-To keep prompts efficient and avoid runaway context windows, Ask the AI includes smarter defaults and user‑controlled selection tools.
+---
 
-- **Context clamped** to the top 10 results (`LLM_CONTEXT_MAX = 10`) to avoid accidental overflows.  
-- New **Result Selection** panel:
-  - checkable list of all results  
-  - range selectors (From/To + Apply Range)  
-  - **Reset to Default** restores the initial top‑N  
-- **Real‑time token estimate** (`~X tokens — Y results selected`) updates as the selection changes.  
-- **Over‑limit warning** when more than 20 results are selected (`LLM_CONTEXT_WARN = 20`).  
-- **Configure LLM…** button appears when no provider is configured.  
-- LLM availability checks added to `_ask_ai()` and `_explain_result()` with direct Settings shortcuts.  
-- **Explain result** now uses a **3‑item window** (selected row ± 1) for more focused prompts that still preserve local ranking context.  
-- Added `estimate_tokens(context)` utility (chars / 4 heuristic).  
-- Added `row_indices` override to `build_search_context`.  
-- Service tests expanded to 31; view tests expanded to 13.  
+## Telemetry Overhaul
+
+### Core Session Model
+- Added full **session‑aware telemetry**: session start/end events, duration tracking, OS metadata, and provider/collection context caching.
+- `TelemetryService` is now a **singleton**, initialized once at startup with the app version.
+- Anonymous telemetry toggle now emits a **feature‑toggle event**.
+- Closing the last DB connection **clears cached provider/collection** to prevent stale context from leaking into subsequent events.
+- Documentation updated to match the new session‑aware model.
+
+### Reliability & Sampling
+- **Deterministic sampling:** SHA‑256‑based `should_sample()` helper produces stable, reproducible decisions per event type and seed — backend can reconstruct sampled populations reliably.
+- **Error grouping:** canonical `error_hash` fingerprint normalizes numbers and hex addresses before hashing, grouping similar errors without transmitting raw traces.
+- **Crash‑marker lifecycle:** on startup the app detects an un‑cleared crash marker from a previous run and emits `session.end` with `exit_reason: "crash"`. Clean shutdown clears the marker.
+- **Sampled event metadata:** `queue_sampled_event()` attaches `sampling_rate`, `sampling_version`, and `sampling_seed_type` to every sampled event for backend aggregation.
+- **Test safety:** `TelemetryService` forces test sentinel values (`app_version: "0.0-test"`, `client_type: "unit-tests"`) when running under pytest, making any escaped event immediately identifiable on the backend.
+
+---
+
+## Preferences & Settings Redesign
+The Settings dialog has been restructured into a scalable, tabbed interface that better reflects Vector Inspector’s growing feature set.
+
+- Settings are now organized into four tabs: **General**, **Embeddings**, **Appearance**, and **LLM**
+- LLM provider configuration (provider selector, connection fields, model list, health check) now lives in its own dedicated **LLM** tab
+- Action buttons (Apply, OK, Cancel, Reset to defaults) remain outside the tab widget for consistent visibility
+
+### Extension API Updates
+- `SettingsDialog.add_section(widget_or_layout, tab="General")` now accepts an optional `tab` keyword, allowing extensions to inject controls into any named tab (or create new tabs on demand)
+- `SettingsDialog.get_tab_layout(tab_name)` is a new public API returning the `QVBoxLayout` for a named tab, creating it if needed
+- `llm_settings_panel` hook handler updated to inject its group into the **LLM** tab when supported, with backward‑compatible fallback to `parent_layout`
+
+---
+
+## Testing & CI
+- Replaced timing‑dependent polling with **deterministic worker synchronization** via `_batch_processed.wait()` — eliminates flakiness under CI load.
+- **Global HTTP guard** in `conftest.py` returns synthetic 200 responses, preventing network leakage and ensuring batches clear cleanly across all tests.
+- **Autouse singleton reset** plus test‑mode queue‑file purge guarantees clean state at every test boundary regardless of execution order.
+- Added tests covering: sampling determinism, `error_hash` normalization, crash‑marker full lifecycle, singleton enforcement, retry semantics, stale‑context clearing on connection close, and the mid‑flight shutdown race condition.
+
+---
+
+## Summary
+0.6.1 strengthens Vector Inspector’s identity as a **diagnostic, session‑aware intelligence console**.
+Telemetry is now reconstructable end‑to‑end, Ask‑AI behaves consistently across providers,
+and the user interface surfaces more context with less friction.
+
+---

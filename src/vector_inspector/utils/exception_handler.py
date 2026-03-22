@@ -57,12 +57,20 @@ def setup_global_exception_handler(app_version: str):
 
         # Send to telemetry (best-effort, don't let telemetry failures break exception handling)
         try:
+            from vector_inspector.services.telemetry_service import make_error_hash
+
             telemetry = _get_telemetry_service()
             telemetry.send_error_event(
                 message=error_message,
                 tb=tb_text,
                 event_name="UncaughtException",
-                extra={"exception_type": exc_type.__name__, "correlation_id": correlation_id},
+                extra={
+                    "exception_type": exc_type.__name__,
+                    "correlation_id": correlation_id,
+                    # error_hash is also computed inside send_error_event, but
+                    # passing it here makes it visible at the call site for logging.
+                    "error_hash": make_error_hash(exc_type.__name__, error_message),
+                },
             )
         except Exception as telemetry_error:
             # Don't let telemetry failures break exception handling
@@ -97,6 +105,9 @@ def setup_qt_exception_handler():
 
                 try:
                     telemetry = _get_telemetry_service()
+                    from vector_inspector.services.telemetry_service import make_error_hash
+
+                    qt_top_frame = f"{context.file}:{context.line}" if context.file else None
                     telemetry.send_error_event(
                         message=message,
                         tb=f"Qt {msg_type.name} in {context.file}:{context.line}",
@@ -107,6 +118,7 @@ def setup_qt_exception_handler():
                             "line": context.line,
                             "function": context.function,
                             "correlation_id": correlation_id,
+                            "error_hash": make_error_hash("QtError", message, qt_top_frame),
                         },
                     )
                 except Exception as telemetry_error:

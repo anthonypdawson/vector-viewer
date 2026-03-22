@@ -23,6 +23,7 @@ def try_load_from_cache(
     next_button: QPushButton,
     filter_builder: Any,
     status_label: QLabel,
+    total_label: QLabel | None = None,
 ) -> bool:
     """Try to load data from cache.
 
@@ -79,5 +80,15 @@ def try_load_from_cache(
         # Restore filter state if applicable
         pass
 
-    status_label.setText(f"✓ Loaded from cache - {len(cached.data.get('ids', []))} items")
+    status_label.setText(f"✓ Loaded from cache - {cached_count} items")
+    try:
+        # Only show "Total" when the cache holds the complete (filtered) dataset.
+        # For server-side page caches cached_count is just one page, not the full total.
+        if total_label is not None:
+            if cached.search_query:
+                total_label.setText(f"Total: {cached_count}")
+            else:
+                total_label.setText(f"Showing: {cached_count}")
+    except Exception:
+        pass
     return True

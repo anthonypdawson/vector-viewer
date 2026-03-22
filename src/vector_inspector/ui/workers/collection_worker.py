@@ -67,8 +67,7 @@ class CollectionCreationWorker(QThread):
             # Send started event if sample data requested
             if self.add_sample:
                 try:
-                    telemetry = TelemetryService()
-                    telemetry.queue_event(
+                    TelemetryService.queue_event_static(
                         {
                             "event_name": "sample_db.create_started",
                             "metadata": {
@@ -120,7 +119,6 @@ class CollectionCreationWorker(QThread):
 
                 # Send telemetry
                 try:
-                    telemetry = TelemetryService()
                     event_name = "sample_db.create_completed" if success else "sample_db.create_failed"
                     metadata = {
                         "db_type": provider_type,
@@ -134,8 +132,7 @@ class CollectionCreationWorker(QThread):
                     else:
                         metadata["error_code"] = "SAMPLE_CREATION_FAILED"
                         metadata["retriable"] = True
-                    telemetry.queue_event({"event_name": event_name, "metadata": metadata})
-                    telemetry.send_batch()
+                    TelemetryService.send_event(event_name, {"metadata": metadata})
                 except Exception:
                     pass  # Best effort telemetry
 

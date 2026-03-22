@@ -106,12 +106,17 @@ def test_add_section_and_cache_info(monkeypatch, qtbot):
     dlg = SettingsDialog(settings_service=fake_settings)
     qtbot.addWidget(dlg)
 
-    # Add a layout or widget as extra section
+    # add_section with default tab ("General")
     from PySide6.QtWidgets import QGroupBox
 
     box = QGroupBox("Extra")
     dlg.add_section(box)
     assert box in dlg._extra_sections
+
+    # add_section targeting a specific existing tab
+    box2 = QGroupBox("Extra Embeddings")
+    dlg.add_section(box2, tab="Embeddings")
+    assert box2 in dlg._extra_sections
 
     # Test _update_cache_info when cache disabled (label updated)
     dlg._update_cache_info()
@@ -294,3 +299,90 @@ def test_load_values_accent_checkbox_checked_when_enabled(qtbot):
     qtbot.addWidget(dlg)
 
     assert dlg.use_accent_checkbox.isChecked() is True
+
+
+# ---------------------------------------------------------------------------
+# Tabbed layout tests
+# ---------------------------------------------------------------------------
+
+
+def test_dialog_has_tab_widget(qtbot):
+    """SettingsDialog uses a QTabWidget as its central container."""
+    from PySide6.QtWidgets import QTabWidget
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+
+    assert hasattr(dlg, "_tabs")
+    assert isinstance(dlg._tabs, QTabWidget)
+
+
+def test_core_tabs_present(qtbot):
+    """The four core tabs — General, Embeddings, Appearance, LLM — are created."""
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+
+    tab_titles = [dlg._tabs.tabText(i) for i in range(dlg._tabs.count())]
+    for expected in ("General", "Embeddings", "Appearance", "LLM"):
+        assert expected in tab_titles, f"Tab '{expected}' not found; tabs are: {tab_titles}"
+
+
+def test_get_tab_layout_returns_existing(qtbot):
+    """get_tab_layout returns the same layout object for a tab that already exists."""
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+
+    layout_a = dlg.get_tab_layout("General")
+    layout_b = dlg.get_tab_layout("General")
+    assert layout_a is layout_b
+
+
+def test_get_tab_layout_creates_new_tab(qtbot):
+    """get_tab_layout creates a new tab on-demand when the name is unknown."""
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+
+    count_before = dlg._tabs.count()
+    dlg.get_tab_layout("Custom")
+    assert dlg._tabs.count() == count_before + 1
+    tab_titles = [dlg._tabs.tabText(i) for i in range(dlg._tabs.count())]
+    assert "Custom" in tab_titles
+
+
+def test_add_section_creates_tab_if_missing(qtbot):
+    """add_section with an unknown tab name auto-creates that tab."""
+    from PySide6.QtWidgets import QGroupBox
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+
+    count_before = dlg._tabs.count()
+    box = QGroupBox("Plugin Section")
+    dlg.add_section(box, tab="Plugin")
+
+    assert box in dlg._extra_sections
+    assert dlg._tabs.count() == count_before + 1
+    tab_titles = [dlg._tabs.tabText(i) for i in range(dlg._tabs.count())]
+    assert "Plugin" in tab_titles
+
+
+def test_add_section_layout_routed_to_correct_tab(qtbot):
+    """A widget added via add_section(..., tab='Embeddings') lands in the Embeddings tab."""
+    from PySide6.QtWidgets import QGroupBox
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+
+    box = QGroupBox("My Embeddings Extra")
+    dlg.add_section(box, tab="Embeddings")
+
+    # The widget's parent should be the Embeddings tab widget
+    emb_widget = dlg._tab_widgets["Embeddings"][0]
+    assert box.parent() is emb_widget

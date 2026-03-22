@@ -8,11 +8,14 @@ from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from vector_inspector.services.telemetry_service import TelemetryService
+
 
 class PlotEventBridge(QObject):
     """Bridge for receiving events from Plotly JavaScript."""
 
     point_selected = Signal(int, str)  # Signal(point_index, point_id)
+    interaction = Signal(str, int)  # Signal(action, selected_count)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,6 +24,14 @@ class PlotEventBridge(QObject):
     def onPointSelected(self, point_index: int, point_id: str):
         """Called from JavaScript when a point is selected."""
         self.point_selected.emit(point_index, point_id)
+
+    @Slot(str, int)
+    def onInteraction(self, action: str, selected_count: int):
+        """Called from JavaScript for interactions like zoom/pan/lasso."""
+        try:
+            self.interaction.emit(action, int(selected_count))
+        except Exception:
+            pass
 
 
 class PlotPanel(QWidget):
@@ -36,6 +47,7 @@ class PlotPanel(QWidget):
         self._cluster_labels = None
         self._event_bridge = PlotEventBridge(self)
         self._event_bridge.point_selected.connect(self._on_point_selected)
+        self._event_bridge.interaction.connect(self._on_interaction)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -122,6 +134,17 @@ class PlotPanel(QWidget):
         """Handle View in Data Browser button click."""
         if self._selected_index is not None and self._selected_id is not None:
             self.view_in_data_browser.emit(self._selected_index, self._selected_id)
+
+    def _on_interaction(self, action: str, selected_count: int):
+        """Handle generic plot interactions from JS bridge and emit telemetry."""
+        try:
+            collection = getattr(self.parent(), "current_collection", "") or ""
+            TelemetryService.send_event(
+                "ui.visualization_interacted",
+                {"metadata": {"action": action, "selected_count": int(selected_count), "collection_name": collection}},
+            )
+        except Exception:
+            pass
 
     def create_plot(
         self,
@@ -297,6 +320,10 @@ class PlotPanel(QWidget):
                             if (plotBridge && plotBridge.onPointSelected) {
                                 plotBridge.onPointSelected(pointIndex, pointId);
                             }
+                            // Notify interaction bridge with selected count
+                            if (plotBridge && plotBridge.onInteraction) {
+                                plotBridge.onInteraction('select', data.points.length);
+                            }
                         }
                     });
                     
@@ -305,6 +332,25 @@ class PlotPanel(QWidget):
                         selectedPointIndex = -1;
                         if (plotBridge && plotBridge.onPointSelected) {
                             plotBridge.onPointSelected(-1, '');
+                        }
+                        if (plotBridge && plotBridge.onInteraction) {
+                            plotBridge.onInteraction('select', 0);
+                        }
+                    });
+                    
+                    // Handle zoom / pan via relayout event
+                    plotDiv.on('plotly_relayout', function(layout) {
+                        // Basic heuristic: presence of axis range keys indicates zoom
+                        var action = 'pan';
+                        try {
+                            if (layout['xaxis.range'] || layout['xaxis.range[0]'] || layout['yaxis.range'] || layout['xaxis.autorange'] === false) {
+                                action = 'zoom';
+                            }
+                        } catch (e) {
+                            action = 'pan';
+                        }
+                        if (plotBridge && plotBridge.onInteraction) {
+                            plotBridge.onInteraction(action, 0);
                         }
                     });
                 }

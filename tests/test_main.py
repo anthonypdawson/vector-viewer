@@ -8,11 +8,15 @@ def test_early_telemetry_called(monkeypatch):
     called = {}
 
     class FakeTelemetry:
-        def __init__(self):
+        def __init__(self, *args, **kwargs):
             pass
 
         def send_launch_ping(self, app_version=None):
             called["launch"] = app_version
+
+        @staticmethod
+        def get_instance():
+            return FakeTelemetry()
 
     # Patch the TelemetryService in the package before reloading main
     import vector_inspector.services.telemetry_service as ts
