@@ -1,6 +1,7 @@
 """Metadata browsing and data view."""
 
 import hashlib
+import time
 from datetime import UTC
 from typing import Any, Optional
 
@@ -84,6 +85,7 @@ class MetadataView(QWidget):
         self.loading_dialog = LoadingDialog("Loading data...", self)
         self.settings_service = SettingsService()
         self.import_thread = None
+        self._load_start_time: float = 0.0
         self.filter_reload_timer = QTimer()
         self.filter_reload_timer.setSingleShot(True)
         self.filter_reload_timer.timeout.connect(self._reload_with_filters)
@@ -385,6 +387,9 @@ class MetadataView(QWidget):
         # Start background task to load data
         self.ctx.server_filter = server_filter
 
+        # Record start time for status reporting
+        self._load_start_time = time.time()
+
         # Use TaskRunner if available, otherwise fall back to legacy threading
         if self.task_runner:
             self.task_runner.run_task(
@@ -420,6 +425,19 @@ class MetadataView(QWidget):
             self.filter_builder,
             self.total_count_label,
         )
+
+        # Report to status bar with timing and row count
+        try:
+            elapsed = time.time() - self._load_start_time
+            row_count = self.table.rowCount()
+            self.app_state.status_reporter.report_action(
+                "Data loaded",
+                result_count=row_count,
+                result_label="item",
+                elapsed_seconds=elapsed,
+            )
+        except Exception:
+            pass
         # Telemetry: table view opened (collection data loaded)
         try:
             TelemetryService.send_event(
@@ -440,6 +458,10 @@ class MetadataView(QWidget):
         """Handle error from background thread."""
         self.status_label.setText(f"Failed to load data: {error_msg}")
         self.table.setRowCount(0)
+        try:
+            self.app_state.status_reporter.report(f"Data load failed: {error_msg}", level="error")
+        except Exception:
+            pass
 
     def _previous_page(self) -> None:
         """Go to previous page."""

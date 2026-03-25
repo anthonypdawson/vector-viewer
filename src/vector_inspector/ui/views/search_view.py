@@ -568,6 +568,20 @@ class SearchView(QWidget):
         self.search_results = results
         self._display_results(results)
 
+        # Report completion to the status bar (with timing and result count)
+        try:
+            elapsed = time.time() - self._search_start_time
+            ids = results.get("ids", [[]])
+            displayed_count = len(ids[0]) if ids and isinstance(ids[0], list) else 0
+            self.app_state.status_reporter.report_action(
+                "Search",
+                result_count=displayed_count,
+                result_label="result",
+                elapsed_seconds=elapsed,
+            )
+        except Exception:
+            pass
+
         # Update app state with search context
         self.app_state.set_search_results(
             results,
@@ -633,6 +647,12 @@ class SearchView(QWidget):
     def _on_search_error(self, error_message: str) -> None:
         """Handle search error."""
         self.loading_dialog.hide_loading()
+
+        # Report error to status bar
+        try:
+            self.app_state.status_reporter.report(f"Search failed: {error_message}", level="error")
+        except Exception:
+            pass
 
         # Send telemetry for failed search
         duration_ms = int((time.time() - self._search_start_time) * 1000)

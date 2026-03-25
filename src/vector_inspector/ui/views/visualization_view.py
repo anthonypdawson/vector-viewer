@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import traceback
 import webbrowser
 from datetime import UTC
@@ -157,6 +158,10 @@ class VisualizationView(QWidget):
         self._last_temp_html = None
         self.loading_dialog = LoadingDialog("Loading visualization...", self)
         self._connection_manager = connection_manager
+        # Timers for status reporting
+        self._viz_load_start_time: float = 0.0
+        self._dr_start_time: float = 0.0
+        self._cluster_start_time: float = 0.0
         self._setup_ui()
         self._connect_plot_signals()
 
@@ -333,6 +338,7 @@ class VisualizationView(QWidget):
 
         # Show loading dialog during data load
         self.loading_dialog.show_loading("Loading data for visualization...")
+        self._viz_load_start_time = time.time()
         self.data_load_thread.start()
 
     def _on_data_loaded(self, data: dict) -> None:
@@ -374,6 +380,7 @@ class VisualizationView(QWidget):
         self.visualization_thread.error.connect(self._on_reduction_error)
         # Show loading during reduction
         self.loading_dialog.show_loading("Reducing dimensions...")
+        self._dr_start_time = time.time()
         self.visualization_thread.start()
 
     def _on_data_load_error(self, error_message: str) -> None:
@@ -399,6 +406,19 @@ class VisualizationView(QWidget):
         self.dr_panel.generate_button.setEnabled(True)
         self.dr_panel.open_browser_button.setEnabled(True)
         self.status_label.setText("Visualization complete")
+
+        # Report to status bar with timing
+        try:
+            elapsed = time.time() - self._dr_start_time
+            n_points = len(reduced_data) if reduced_data is not None else 0
+            self.app_state.status_reporter.report_action(
+                "Visualization",
+                result_count=n_points,
+                result_label="point",
+                elapsed_seconds=elapsed,
+            )
+        except Exception:
+            pass
 
     def _on_reduction_error(self, error_msg: str):
         """Handle dimensionality reduction error."""
@@ -497,6 +517,7 @@ class VisualizationView(QWidget):
         self.clustering_thread = ClusteringThread(self.current_data["embeddings"], algorithm, params)
         self.clustering_thread.finished.connect(self._on_clustering_finished)
         self.clustering_thread.error.connect(self._on_clustering_error)
+        self._cluster_start_time = time.time()
         self.clustering_thread.start()
 
     def _on_clustering_finished(self, result):
@@ -521,6 +542,18 @@ class VisualizationView(QWidget):
         self.status_label.setText(msg)
         self.status_label.setStyleSheet("color: green;")
         self.clustering_panel.cluster_button.setEnabled(True)
+
+        # Report to status bar with timing
+        try:
+            elapsed = time.time() - self._cluster_start_time
+            self.app_state.status_reporter.report_action(
+                "Clustering",
+                result_count=n_clusters,
+                result_label="cluster",
+                elapsed_seconds=elapsed,
+            )
+        except Exception:
+            pass
 
         # Save cluster labels to metadata if checkbox is checked
         if self.clustering_panel.save_to_metadata_checkbox.isChecked():

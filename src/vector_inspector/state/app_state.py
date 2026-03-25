@@ -13,6 +13,7 @@ from vector_inspector.core.cache_manager import CacheManager
 from vector_inspector.core.connection_manager import ConnectionInstance
 from vector_inspector.core.model_registry import EmbeddingModelRegistry
 from vector_inspector.services.settings_service import SettingsService
+from vector_inspector.services.status_reporter import StatusReporter
 from vector_inspector.state.search_context import SearchContext
 
 
@@ -61,6 +62,10 @@ class AppState(QObject):
 
         # Settings service (owned by AppState, not global)
         self.settings_service = SettingsService()
+
+        # Status reporter (owned by AppState — centralises all status bar messages
+        # and maintains a bounded in-memory activity log)
+        self.status_reporter = StatusReporter(parent=self)
 
         # Feature flags
         self._advanced_features_enabled: bool = False

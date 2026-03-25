@@ -293,7 +293,11 @@ class MainWindow(InspectorShell):
         self.update_indicator.setCursor(Qt.PointingHandCursor)
         self.statusBar().addPermanentWidget(self.update_indicator)
 
-        self.statusBar().showMessage("Ready")
+        # Route all status messages through the centralised StatusReporter so
+        # they are both displayed AND recorded in the in-memory activity log.
+        self.app_state.status_reporter.status_updated.connect(self.statusBar().showMessage)
+
+        self.app_state.status_reporter.report("Ready", timeout_ms=0)
 
         # Connect click event
         self.update_indicator.mousePressEvent = self._on_update_indicator_clicked
@@ -427,7 +431,9 @@ class MainWindow(InspectorShell):
         if success:
             # Switch to Active connections tab
             self.set_left_panel_active(0)
-            self.statusBar().showMessage(f"Connected successfully ({len(collections)} collections)", 5000)
+            self.app_state.status_reporter.report(
+                f"Connected successfully ({len(collections)} collections)", timeout_ms=5000
+            )
 
     def _on_tab_changed(self, index: int):
         """Handle tab change - lazy load visualization tab."""
@@ -655,7 +661,7 @@ class MainWindow(InspectorShell):
         try:
             collections = active.list_collections()
             self.connection_manager.update_collections(active.id, collections)
-            self.statusBar().showMessage(f"Refreshed collections ({len(collections)} found)", 3000)
+            self.app_state.status_reporter.report(f"Refreshed collections ({len(collections)} found)", timeout_ms=3000)
 
             try:
                 TelemetryService.send_event(
@@ -676,9 +682,9 @@ class MainWindow(InspectorShell):
         # For now, we'll just show a message if there are saved profiles
         profiles = self.profile_service.get_all_profiles()
         if profiles:
-            self.statusBar().showMessage(
+            self.app_state.status_reporter.report(
                 f"{len(profiles)} saved profile(s) available. Switch to Profiles tab to connect.",
-                10000,
+                timeout_ms=10000,
             )
 
         # Apply settings to views after UI is built
@@ -697,7 +703,7 @@ class MainWindow(InspectorShell):
         else:
             self.app_state.cache_manager.disable()
         status = "enabled" if checked else "disabled"
-        self.statusBar().showMessage(f"Caching {status}", 3000)
+        self.app_state.status_reporter.report(f"Caching {status}", timeout_ms=3000)
 
     def _show_migration_dialog(self):
         """Show cross-database migration dialog."""
@@ -726,7 +732,7 @@ class MainWindow(InspectorShell):
 
         # Show dialog and create collection
         if self.connection_controller.create_collection_with_dialog(active.id):
-            self.statusBar().showMessage("Collection created successfully", 3000)
+            self.app_state.status_reporter.report("Collection created successfully", timeout_ms=3000)
             # Refresh the active connection to show the new collection
             self._refresh_active_connection()
 
