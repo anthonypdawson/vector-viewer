@@ -92,7 +92,9 @@ class ConnectionController(QObject):
     - Emitting signals for UI updates
     """
 
-    connection_completed = Signal(str, bool, list, str)  # connection_id, success, collections, error
+    connection_completed = Signal(
+        str, bool, list, str, float
+    )  # connection_id, success, collections, error, duration_ms
 
     def __init__(
         self,
@@ -255,7 +257,7 @@ class ConnectionController(QObject):
             self.connection_manager.close_connection(connection_id)
 
         # Emit signal for UI updates
-        self.connection_completed.emit(connection_id, success, collections, error_message)
+        self.connection_completed.emit(connection_id, success, collections, error_message, duration_ms)
 
     def create_collection_with_dialog(self, connection_id: str = None) -> bool:
         """Show dialog to create a new collection with optional sample data.

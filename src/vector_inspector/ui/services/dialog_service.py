@@ -1,6 +1,7 @@
 """Service for managing application dialogs."""
 
-from PySide6.QtWidgets import QMessageBox, QDialog, QWidget
+from PySide6.QtWidgets import QDialog, QMessageBox, QWidget
+
 from vector_inspector.core.connection_manager import ConnectionManager
 
 
@@ -13,9 +14,7 @@ class DialogService:
         from vector_inspector.utils.version import get_app_version
 
         version = get_app_version()
-        version_html = (
-            f"<h2>Vector Inspector {version}</h2>" if version else "<h2>Vector Inspector</h2>"
-        )
+        version_html = f"<h2>Vector Inspector {version}</h2>" if version else "<h2>Vector Inspector</h2>"
         about_text = (
             version_html + "<p>A comprehensive desktop application for visualizing, "
             "querying, and managing multiple vector databases simultaneously.</p>"
@@ -28,7 +27,7 @@ class DialogService:
 
     @staticmethod
     def show_backup_restore_dialog(
-        connection, collection_name: str = "", parent: QWidget = None
+        connection, collection_name: str = "", parent: QWidget = None, status_reporter=None
     ) -> int:
         """Show backup/restore dialog.
 
@@ -36,6 +35,7 @@ class DialogService:
             connection: Active connection instance
             collection_name: Optional collection name
             parent: Parent widget
+            status_reporter: Optional StatusReporter for activity-log integration
 
         Returns:
             QDialog.Accepted or QDialog.Rejected
@@ -56,7 +56,7 @@ class DialogService:
         from vector_inspector.ui.components.backup_restore_dialog import BackupRestoreDialog
 
         # Pass through the connection object (ConnectionInstance expected by UI)
-        dialog = BackupRestoreDialog(connection, collection_name or "", parent)
+        dialog = BackupRestoreDialog(connection, collection_name or "", parent, status_reporter=status_reporter)
         return dialog.exec()
 
     @staticmethod
@@ -101,8 +101,8 @@ class DialogService:
             latest_release: Latest release info from GitHub API
             parent: Parent widget
         """
-        from vector_inspector.ui.components.update_details_dialog import UpdateDetailsDialog
         from vector_inspector.services.update_service import UpdateService
+        from vector_inspector.ui.components.update_details_dialog import UpdateDetailsDialog
 
         version = latest_release.get("tag_name", "?")
         notes = latest_release.get("body", "")

@@ -1,5 +1,6 @@
 """Dialog for backup and restore operations."""
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -38,17 +39,19 @@ class BackupRestoreDialog(QDialog):
     backup_dir: str
     loading_dialog: LoadingDialog
 
-    def __init__(self, connection: ConnectionInstance, collection_name: str = "", parent=None):
+    def __init__(self, connection: ConnectionInstance, collection_name: str = "", parent=None, status_reporter=None):
         super().__init__(parent)
         self.connection = connection
         self.collection_name = collection_name
         self.backup_service = BackupRestoreService()
         self.settings_service = SettingsService()
+        self._status_reporter = status_reporter
         default_backup_dir = str(Path.home() / "vector-viewer-backups")
         self.backup_dir = self.settings_service.get("backup_directory", default_backup_dir)
         self.loading_dialog = LoadingDialog("Processing...", self)
         self.backup_thread = None
         self.restore_thread = None
+        self._op_start_time: float = 0.0
         self.setWindowTitle("Backup & Restore")
         self.setMinimumSize(600, 500)
         self._setup_ui()
@@ -86,9 +89,7 @@ class BackupRestoreDialog(QDialog):
         collection_layout = QFormLayout()
 
         # Collection name
-        collection_layout.addRow(
-            "Collection:", QLabel(self.collection_name or "No collection selected")
-        )
+        collection_layout.addRow("Collection:", QLabel(self.collection_name or "No collection selected"))
 
         # Backup directory
         dir_layout = QHBoxLayout()
@@ -186,9 +187,7 @@ class BackupRestoreDialog(QDialog):
 
     def _select_backup_dir(self):
         """Select backup directory."""
-        dir_path = QFileDialog.getExistingDirectory(
-            self, "Select Backup Directory", self.backup_dir
-        )
+        dir_path = QFileDialog.getExistingDirectory(self, "Select Backup Directory", self.backup_dir)
 
         if dir_path:
             self.backup_dir = dir_path
@@ -228,19 +227,29 @@ class BackupRestoreDialog(QDialog):
 
         # Show loading dialog during backup
         self.loading_dialog.show_loading("Creating backup...")
+        self._op_start_time = time.time()
         self.backup_thread.start()
 
     def _on_backup_finished(self, backup_path: str) -> None:
         """Handle successful backup completion."""
         self.loading_dialog.hide_loading()
-        QMessageBox.information(
-            self, "Backup Successful", f"Backup created successfully:\n{backup_path}"
-        )
+        elapsed = time.time() - self._op_start_time
+        if self._status_reporter is not None:
+            try:
+                self._status_reporter.report_action("Backup", elapsed_seconds=elapsed)
+            except Exception:
+                pass
+        QMessageBox.information(self, "Backup Successful", f"Backup created successfully:\n{backup_path}")
         self._refresh_backups_list()
 
     def _on_backup_error(self, error_message: str) -> None:
         """Handle backup error."""
         self.loading_dialog.hide_loading()
+        if self._status_reporter is not None:
+            try:
+                self._status_reporter.report(f"Backup failed: {error_message}", level="error")
+            except Exception:
+                pass
         QMessageBox.warning(self, "Backup Failed", f"Failed to create backup: {error_message}")
 
     def _refresh_backups_list(self):
@@ -391,9 +400,7 @@ class BackupRestoreDialog(QDialog):
                 layout.addWidget(info_label)
 
                 # Radio buttons for options
-                use_stored_radio = QRadioButton(
-                    "Use stored embeddings (recommended for new collections)"
-                )
+                use_stored_radio = QRadioButton("Use stored embeddings (recommended for new collections)")
                 use_stored_radio.setChecked(True)  # Default option
                 layout.addWidget(use_stored_radio)
 
@@ -401,9 +408,7 @@ class BackupRestoreDialog(QDialog):
                 if has_model:
                     recompute_radio.setToolTip(f"Will use model: {embedding_model}")
                 else:
-                    recompute_radio.setToolTip(
-                        "Will attempt using your current embedding configuration"
-                    )
+                    recompute_radio.setToolTip("Will attempt using your current embedding configuration")
                 layout.addWidget(recompute_radio)
 
                 omit_radio = QRadioButton("Omit embeddings (documents and metadata only)")
@@ -454,11 +459,18 @@ class BackupRestoreDialog(QDialog):
 
         # Show loading dialog during restore
         self.loading_dialog.show_loading("Restoring backup...")
+        self._op_start_time = time.time()
         self.restore_thread.start()
 
     def _on_restore_finished(self, collection_name: str) -> None:
         """Handle successful restore completion."""
         self.loading_dialog.hide_loading()
+        elapsed = time.time() - self._op_start_time
+        if self._status_reporter is not None:
+            try:
+                self._status_reporter.report_action("Restore", elapsed_seconds=elapsed)
+            except Exception:
+                pass
         QMessageBox.information(
             self,
             "Restore Successful",
@@ -468,6 +480,11 @@ class BackupRestoreDialog(QDialog):
     def _on_restore_error(self, error_message: str) -> None:
         """Handle restore error."""
         self.loading_dialog.hide_loading()
+        if self._status_reporter is not None:
+            try:
+                self._status_reporter.report(f"Restore failed: {error_message}", level="error")
+            except Exception:
+                pass
         QMessageBox.warning(self, "Restore Failed", f"Failed to restore backup: {error_message}")
 
     def _delete_backup(self):

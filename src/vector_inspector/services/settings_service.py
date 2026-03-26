@@ -145,6 +145,14 @@ class SettingsService:
             log_error("Failed to get window geometry: %s", e)
             return None
 
+    def get_status_timeout_ms(self) -> int:
+        """Return how long status bar messages are visible (ms). 0 = permanent."""
+        return int(self.settings.get("status.timeout_ms", 5000))
+
+    def set_status_timeout_ms(self, ms: int) -> None:
+        """Set status bar message visibility duration in ms. 0 = permanent."""
+        self.set("status.timeout_ms", int(ms))
+
     def get_cache_enabled(self) -> bool:
         """Get whether caching is enabled (default: True)."""
         return self.settings.get("cache_enabled", True)

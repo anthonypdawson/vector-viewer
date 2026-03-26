@@ -103,6 +103,23 @@ class SettingsDialog(QDialog):
         self.hide_splash_checkbox = QCheckBox("Hide loading screen on startup")
         layout.addWidget(self.hide_splash_checkbox)
 
+        # Status bar message duration
+        status_group = QGroupBox("Status Bar")
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(QLabel("Message duration:"))
+        self.status_timeout_spin = QSpinBox()
+        self.status_timeout_spin.setMinimum(0)
+        self.status_timeout_spin.setMaximum(30)
+        self.status_timeout_spin.setSuffix(" s")
+        self.status_timeout_spin.setSpecialValueText("Permanent")
+        self.status_timeout_spin.setToolTip(
+            "How long status bar messages stay visible.\n0 = permanent (until the next message replaces it)."
+        )
+        status_layout.addWidget(self.status_timeout_spin)
+        status_layout.addStretch()
+        status_group.setLayout(status_layout)
+        layout.addWidget(status_group)
+
         layout.addStretch()
 
         # Signals — immediate apply on change
@@ -112,6 +129,7 @@ class SettingsDialog(QDialog):
             lambda s: self.settings.set_window_restore_geometry(bool(s))
         )
         self.hide_splash_checkbox.stateChanged.connect(lambda s: self.settings.set("hide_loading_screen", bool(s)))
+        self.status_timeout_spin.valueChanged.connect(lambda v: self.settings.set_status_timeout_ms(v * 1000))
 
     def _create_embeddings_tab(self):
         layout = self.get_tab_layout("Embeddings")
@@ -228,6 +246,7 @@ class SettingsDialog(QDialog):
         self.auto_embed_checkbox.setChecked(self.settings.get_auto_generate_embeddings())
         self.restore_geometry_checkbox.setChecked(self.settings.get_window_restore_geometry())
         self.hide_splash_checkbox.setChecked(self.settings.get("hide_loading_screen", False))
+        self.status_timeout_spin.setValue(self.settings.get_status_timeout_ms() // 1000)
         self.cache_enabled_checkbox.setChecked(self.settings.get_embedding_cache_enabled())
         self._update_cache_info()
         # Load appearance colors
@@ -257,6 +276,7 @@ class SettingsDialog(QDialog):
         self.auto_embed_checkbox.setChecked(True)
         self.restore_geometry_checkbox.setChecked(True)
         self.hide_splash_checkbox.setChecked(False)
+        self.status_timeout_spin.setValue(5)  # 5 second default
         self._apply()
 
     def _set_button_color(self, btn: QPushButton, color: str):

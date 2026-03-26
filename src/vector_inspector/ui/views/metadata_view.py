@@ -507,23 +507,63 @@ class MetadataView(QWidget):
                 if "created_at" not in item_data["metadata"]:
                     item_data["metadata"]["created_at"] = datetime.now(UTC).isoformat()
 
-            # Add item to collection
-            success = self.ctx.connection.add_items(
-                self.ctx.current_collection,
-                documents=[item_data["document"]],
-                metadatas=[item_data["metadata"]] if item_data["metadata"] else None,
-                ids=[item_data["id"]] if item_data["id"] else None,
-            )
+            # Run the DB write in the background so the UI stays responsive.
+            self.loading_dialog.show_loading("Adding item…")
+            self._add_start_time = time.time()
+            _collection = self.ctx.current_collection
+            _documents = [item_data["document"]]
+            _metadatas = [item_data["metadata"]] if item_data["metadata"] else None
+            _ids = [item_data["id"]] if item_data["id"] else None
 
-            if success:
-                # Invalidate cache after adding item
-                if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
-                QMessageBox.information(self, "Success", "Item added successfully.")
-                # Fallback to full reload (row index is not available here)
-                self._load_data()
+            def _do_add():
+                return self.ctx.connection.add_items(
+                    _collection,
+                    documents=_documents,
+                    metadatas=_metadatas,
+                    ids=_ids,
+                )
+
+            if self.task_runner:
+                self.task_runner.run_task(
+                    _do_add,
+                    on_finished=self._on_item_add_finished,
+                    on_error=self._on_item_add_error,
+                )
             else:
-                QMessageBox.warning(self, "Error", "Failed to add item.")
+                try:
+                    success = _do_add()
+                    self._on_item_add_finished(success)
+                except Exception as exc:
+                    self._on_item_add_error(str(exc))
+
+    def _on_item_add_finished(self, success: bool) -> None:
+        """Handle background add_items completion."""
+        self.loading_dialog.hide_loading()
+        if success:
+            elapsed = time.time() - self._add_start_time
+            if self.ctx.current_database and self.ctx.current_collection:
+                self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
+            try:
+                self.app_state.status_reporter.report_action(
+                    "Item added",
+                    result_count=1,
+                    result_label="item",
+                    elapsed_seconds=elapsed,
+                )
+            except Exception:
+                pass
+            self._load_data()
+        else:
+            QMessageBox.warning(self, "Error", "Failed to add item.")
+
+    def _on_item_add_error(self, error_message: str) -> None:
+        """Handle background add_items error."""
+        self.loading_dialog.hide_loading()
+        try:
+            self.app_state.status_reporter.report(f"Add item failed: {error_message}", level="error")
+        except Exception:
+            pass
+        QMessageBox.warning(self, "Add Error", f"Failed to add item: {error_message}")
 
     def _delete_selected(self) -> None:
         """Delete selected items."""
@@ -556,15 +596,51 @@ class MetadataView(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            success = self.ctx.connection.delete_items(self.ctx.current_collection, ids=ids_to_delete)
-            if success:
-                # Invalidate cache after deletion
-                if self.ctx.current_database and self.ctx.current_collection:
-                    self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
-                QMessageBox.information(self, "Success", "Items deleted successfully.")
-                self._load_data()
+            self.loading_dialog.show_loading(f"Deleting {len(ids_to_delete)} item(s)…")
+            self._delete_start_time = time.time()
+            _collection = self.ctx.current_collection
+            _ids = ids_to_delete
+            _count = len(ids_to_delete)
+
+            def _do_delete():
+                return self.ctx.connection.delete_items(_collection, ids=_ids)
+
+            def _on_delete_done(success: bool) -> None:
+                self.loading_dialog.hide_loading()
+                elapsed = time.time() - self._delete_start_time
+                if success:
+                    if self.ctx.current_database and self.ctx.current_collection:
+                        self.ctx.cache_manager.invalidate(self.ctx.current_database, self.ctx.current_collection)
+                    try:
+                        self.app_state.status_reporter.report_action(
+                            f"Deleted {_count} item" + ("s" if _count != 1 else ""),
+                            elapsed_seconds=elapsed,
+                        )
+                    except Exception:
+                        pass
+                    self._load_data()
+                else:
+                    QMessageBox.warning(self, "Error", "Failed to delete items.")
+
+            def _on_delete_error(error: str) -> None:
+                self.loading_dialog.hide_loading()
+                try:
+                    self.app_state.status_reporter.report(f"Delete failed: {error}", level="error")
+                except Exception:
+                    pass
+                QMessageBox.warning(self, "Delete Error", f"Failed to delete: {error}")
+
+            if self.task_runner:
+                self.task_runner.run_task(
+                    _do_delete,
+                    on_finished=_on_delete_done,
+                    on_error=_on_delete_error,
+                )
             else:
-                QMessageBox.warning(self, "Error", "Failed to delete items.")
+                try:
+                    _on_delete_done(_do_delete())
+                except Exception as exc:
+                    _on_delete_error(str(exc))
 
     def _on_filter_changed(self) -> None:
         """Handle filter changes - debounce and reload data."""

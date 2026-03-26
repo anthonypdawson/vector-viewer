@@ -64,6 +64,9 @@ class StatusReporter(QObject):
         super().__init__(parent)
         self._max_log_size = max_log_size
         self._log: list[StatusLogEntry] = []
+        #: Mutable default timeout used when callers omit ``timeout_ms``.
+        #: Updated at runtime by MainWindow when the user changes the preference.
+        self._default_timeout_ms: int = StatusReporter.DEFAULT_TIMEOUT_MS
 
     # ------------------------------------------------------------------
     # Public API
@@ -73,7 +76,7 @@ class StatusReporter(QObject):
         self,
         message: str,
         level: str = "info",
-        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        timeout_ms: Optional[int] = None,
     ) -> None:
         """Record and emit a plain status message.
 
@@ -81,7 +84,10 @@ class StatusReporter(QObject):
             message: The text to display in the status bar.
             level: Severity — "info", "warning", or "error".
             timeout_ms: How long the message stays visible (ms). 0 = permanent.
+                Defaults to ``self._default_timeout_ms`` (user-configurable).
         """
+        if timeout_ms is None:
+            timeout_ms = self._default_timeout_ms
         entry = StatusLogEntry(
             message=message,
             level=level,
@@ -96,7 +102,7 @@ class StatusReporter(QObject):
         result_count: Optional[int] = None,
         result_label: str = "result",
         elapsed_seconds: Optional[float] = None,
-        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        timeout_ms: Optional[int] = None,
         level: str = "info",
     ) -> None:
         """Record and emit a completed-action message with optional metrics.
@@ -115,8 +121,11 @@ class StatusReporter(QObject):
                 ``"result"``, ``"item"``, ``"cluster"``.
             elapsed_seconds: Duration of the action in seconds.
             timeout_ms: How long the status message stays visible (ms).
+                Defaults to ``self._default_timeout_ms`` (user-configurable).
             level: Severity — "info", "warning", or "error".
         """
+        if timeout_ms is None:
+            timeout_ms = self._default_timeout_ms
         # Build the right-hand side detail string
         detail_parts: list[str] = []
 
