@@ -70,6 +70,13 @@ class FakeSettingsForAppearance:
     def set_embedding_cache_enabled(self, v):
         self._store["embedding_cache_enabled"] = bool(v)
 
+    # Status timeout
+    def get_status_timeout_ms(self):
+        return self._store.get("status.timeout_ms", 5000)
+
+    def set_status_timeout_ms(self, ms):
+        self._store["status.timeout_ms"] = int(ms)
+
 
 def _monkeypatch_qcolordialog_accept(monkeypatch, color=None):
     """Monkeypatch QColorDialog so exec() returns Accepted and currentColor() returns `color`."""

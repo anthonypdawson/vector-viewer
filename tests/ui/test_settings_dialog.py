@@ -45,6 +45,13 @@ class FakeSettings:
     def set_embedding_cache_enabled(self, v):
         self._store["embedding_cache_enabled"] = v
 
+    # Status timeout setting
+    def get_status_timeout_ms(self):
+        return self._store.get("status.timeout_ms", 5000)
+
+    def set_status_timeout_ms(self, ms):
+        self._store["status.timeout_ms"] = int(ms)
+
     # Highlight color stubs for new Appearance controls
     def get_highlight_color(self):
         return self._store.get("ui.highlight_color", "rgba(0,122,204,1)")
@@ -386,3 +393,51 @@ def test_add_section_layout_routed_to_correct_tab(qtbot):
     # The widget's parent should be the Embeddings tab widget
     emb_widget = dlg._tab_widgets["Embeddings"][0]
     assert box.parent() is emb_widget
+
+
+# ---------------------------------------------------------------------------
+# Status timeout spinbox tests
+# ---------------------------------------------------------------------------
+
+
+def test_status_timeout_spinbox_loads_default(qtbot):
+    """Spinbox reflects the value returned by get_status_timeout_ms (in seconds)."""
+    fake_settings = FakeSettings()
+    fake_settings._store["status.timeout_ms"] = 8000  # 8 s
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    assert dlg.status_timeout_spin.value() == 8
+
+
+def test_status_timeout_spinbox_zero_shows_permanent_text(qtbot):
+    """When the spinbox is at 0 it should display its specialValueText 'Permanent'."""
+    fake_settings = FakeSettings()
+    fake_settings._store["status.timeout_ms"] = 0
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    assert dlg.status_timeout_spin.value() == 0
+    assert dlg.status_timeout_spin.specialValueText() == "Permanent"
+
+
+def test_status_timeout_spinbox_change_calls_settings(qtbot):
+    """Changing the spinbox value stores the correct milliseconds in settings."""
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    dlg.status_timeout_spin.setValue(12)
+    assert fake_settings.get_status_timeout_ms() == 12_000
+
+
+def test_reset_defaults_sets_timeout_to_5s(qtbot, monkeypatch):
+    """_reset_defaults resets the status timeout spinbox to 5 seconds."""
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+
+    fake_settings = FakeSettings()
+    fake_settings._store["status.timeout_ms"] = 20_000  # start with a non-default
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    dlg._reset_defaults()
+    assert dlg.status_timeout_spin.value() == 5

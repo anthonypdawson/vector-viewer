@@ -425,3 +425,67 @@ def test_handle_collection_complete_no_sample_does_not_save_but_refreshes(monkey
 
     assert called["save"] is False
     assert called["refresh"] is True
+
+
+# ---------------------------------------------------------------------------
+# duration_ms in connection_completed signal
+# ---------------------------------------------------------------------------
+
+
+def test_connection_completed_signal_includes_duration_ms(monkeypatch):
+    """connection_completed signal emits a float duration_ms as its 5th element."""
+    monkeypatch.setattr(cc_module, "LoadingDialog", lambda msg, parent: FakeLoadingDialog())
+
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService()
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    received: list = []
+    ctrl.connection_completed.connect(lambda *args: received.append(args))
+
+    ctrl._on_connection_finished(
+        connection_id="test_id",
+        provider="chroma",
+        success=True,
+        collections=["a", "b"],
+        error=None,
+        duration_ms=350.0,
+        correlation_id="corr1",
+    )
+
+    assert len(received) == 1
+    args = received[0]
+    # Signal: (connection_id, success, collections, error_msg, duration_ms)
+    assert args[0] == "test_id"  # connection_id
+    assert args[1] is True  # success
+    assert isinstance(args[4], float)  # duration_ms is float
+    assert args[4] == 350.0
+
+
+def test_on_connection_finished_failure_emits_duration_ms(monkeypatch):
+    """duration_ms is emitted even on connection failure."""
+    monkeypatch.setattr(cc_module, "LoadingDialog", lambda msg, parent: FakeLoadingDialog())
+    monkeypatch.setattr(cc_module.QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService()
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    received: list = []
+    ctrl.connection_completed.connect(lambda *args: received.append(args))
+
+    ctrl._on_connection_finished(
+        connection_id="fail_id",
+        provider="chroma",
+        success=False,
+        collections=[],
+        error=Exception("timeout"),
+        duration_ms=120.0,
+        correlation_id="corr2",
+    )
+
+    assert len(received) == 1
+    args = received[0]
+    assert args[1] is False
+    assert isinstance(args[4], float)
+    assert args[4] == 120.0
