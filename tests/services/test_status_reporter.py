@@ -224,6 +224,46 @@ class TestStatusReporterReportAction:
         reporter.report_action("Search", level="warning")
         assert reporter.get_log()[0].level == "warning"
 
+    def test_subject_included_in_message(self, qapp):
+        reporter = StatusReporter()
+        received = _collect_signals(reporter)
+
+        reporter.report_action(
+            "Connection",
+            subject="MyDB",
+            result_count=10,
+            result_label="collection",
+            elapsed_seconds=0.15,
+        )
+
+        msg = received[0][0]
+        assert msg.startswith("Connection complete")
+        assert "MyDB" in msg
+        assert "MyDB:" in msg
+        assert "10 collections" in msg
+        assert "in 0.15s" in msg
+
+    def test_subject_without_detail_parts(self, qapp):
+        reporter = StatusReporter()
+        received = _collect_signals(reporter)
+
+        reporter.report_action("Connection", subject="MyDB")
+
+        msg = received[0][0]
+        assert msg == "Connection complete \u2013 MyDB"
+
+    def test_no_subject_preserves_original_format(self, qapp):
+        reporter = StatusReporter()
+        received = _collect_signals(reporter)
+
+        reporter.report_action("Search", result_count=5, result_label="result", elapsed_seconds=1.0)
+
+        msg = received[0][0]
+        # No colon-separated subject should appear
+        assert ":" not in msg
+        assert "5 results" in msg
+        assert "in 1.00s" in msg
+
 
 # ===========================================================================
 # Log management

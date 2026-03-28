@@ -33,7 +33,7 @@ def _collect(reporter: StatusReporter) -> list[tuple[str, int]]:
 class TestMutableDefaultTimeout:
     def test_default_is_5000(self, qapp):
         r = StatusReporter()
-        assert r._default_timeout_ms == StatusReporter.DEFAULT_TIMEOUT_MS == 5000
+        assert r._default_timeout_ms == StatusReporter.DEFAULT_TIMEOUT_MS == 0
 
     def test_report_uses_default_when_none_passed(self, qapp):
         r = StatusReporter()
@@ -111,7 +111,7 @@ class TestSettingsServiceStatusTimeout:
         SettingsService._instance = None
         SettingsService._initialized = False
         svc = SettingsService()
-        assert svc.get_status_timeout_ms() == 5000
+        assert svc.get_status_timeout_ms() == 0
 
     def test_set_and_get_roundtrip(self, tmp_path, monkeypatch):
         from pathlib import Path

@@ -108,7 +108,7 @@ def test_on_connection_completed_success_calls_report_action(qtbot, monkeypatch)
         duration_ms=250.0,
     )
 
-    assert "Connected" in received.get("msg", "")
+    assert "Connection" in received.get("msg", "")
     assert "3" in received.get("msg", "")  # 3 collections
     assert "0.25s" in received.get("msg", "")  # 250ms → 0.25s
 

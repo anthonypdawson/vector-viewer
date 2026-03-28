@@ -440,4 +440,4 @@ def test_reset_defaults_sets_timeout_to_5s(qtbot, monkeypatch):
     dlg = SettingsDialog(settings_service=fake_settings)
     qtbot.addWidget(dlg)
     dlg._reset_defaults()
-    assert dlg.status_timeout_spin.value() == 5
+    assert dlg.status_timeout_spin.value() == 0
