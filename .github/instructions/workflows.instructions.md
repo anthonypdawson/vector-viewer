@@ -42,20 +42,20 @@ This file is cleared when the version is incremented and a new release is create
 **Format:**
 
 ```markdown
-## Release Notes (0.x.y) — YYYY-MM-DD
+# Release Notes (0.x.y) — YYYY-MM-DD
 
-### Section heading
+## Section heading
 - Individual change
 - Individual change
 
-### Another section (omit if empty)
+## Another section (omit if empty)
 - Individual change
 
 ---
 ```
 
 - The heading uses the *next* version number and today's date (update the date whenever new entries are added).
-- Group changes under short section headings (e.g. `### UI`, `### Providers`, `### Testing`, `### Bug Fixes`). Omit a section if it has no entries.
+- Group changes under short section headings (e.g. `## UI`, `## Providers`, `## Testing`, `## Bug Fixes`). Omit a section if it has no entries.
 - Each bullet is one user-visible or developer-visible change, written in plain language.
 - The file ends with a horizontal rule `---` on its own line.
 - When a release is cut, this file is cleared and a fresh heading for the next version is started.
