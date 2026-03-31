@@ -94,6 +94,7 @@ def _lazy_docx() -> Any:
 # Chunking
 # ---------------------------------------------------------------------------
 
+
 def _chunk_text(text: str, max_chunk_size: int) -> list[str]:
     """Split *text* into chunks of at most *max_chunk_size* characters.
 
@@ -119,6 +120,7 @@ def _chunk_text(text: str, max_chunk_size: int) -> list[str]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _md5(path: str) -> str:
     h = hashlib.md5()
@@ -167,9 +169,7 @@ def _scan_folder(
     for root, _dirs, files in walk_fn(folder_path):
         for fname in sorted(files):
             full = os.path.join(root, fname)
-            if file_kind == "image" and _is_image_file(full):
-                matched.append(full)
-            elif file_kind == "document" and _is_document_file(full):
+            if (file_kind == "image" and _is_image_file(full)) or (file_kind == "document" and _is_document_file(full)):
                 matched.append(full)
     return matched
 
@@ -230,6 +230,7 @@ def _delete_chunks_by_parent(connection: Any, collection_name: str, parent_id: s
 # Main service
 # ---------------------------------------------------------------------------
 
+
 class FileIngestionService:
     """Unified ingestion service for images and documents."""
 
@@ -276,13 +277,26 @@ class FileIngestionService:
 
         if file_kind == "image":
             self._ingest_image_files(
-                file_paths, connection, collection_name, batch_size, overwrite,
-                source_folder, result, progress_callback,
+                file_paths,
+                connection,
+                collection_name,
+                batch_size,
+                overwrite,
+                source_folder,
+                result,
+                progress_callback,
             )
         else:
             self._ingest_document_files(
-                file_paths, connection, collection_name, batch_size, overwrite,
-                max_chunk_size, source_folder, result, progress_callback,
+                file_paths,
+                connection,
+                collection_name,
+                batch_size,
+                overwrite,
+                max_chunk_size,
+                source_folder,
+                result,
+                progress_callback,
             )
 
         return result
@@ -330,8 +344,7 @@ class FileIngestionService:
                 batch_metadatas.clear()
                 if not ok:
                     raise RuntimeError(
-                        f"Failed to write {count} item(s) to '{collection_name}' "
-                        "— see error log above for details"
+                        f"Failed to write {count} item(s) to '{collection_name}' — see error log above for details"
                     )
                 result.chunks_written += count
 
@@ -469,8 +482,7 @@ class FileIngestionService:
                 batch_metadatas.clear()
                 if not ok:
                     raise RuntimeError(
-                        f"Failed to write {count} chunk(s) to '{collection_name}' "
-                        "— see error log above for details"
+                        f"Failed to write {count} chunk(s) to '{collection_name}' — see error log above for details"
                     )
                 result.chunks_written += count
 
@@ -502,13 +514,14 @@ class FileIngestionService:
                         if stored_total is not None and existing_count >= stored_total:
                             result.skipped += 1
                             continue
-                        else:
-                            # Partial ingestion — clean up and re-ingest
-                            log_info(
-                                "Partial ingestion detected for %s (%d/%s chunks). Re-ingesting.",
-                                os.path.basename(path), existing_count, stored_total,
-                            )
-                            _delete_chunks_by_parent(connection, collection_name, file_hash)
+                        # Partial ingestion — clean up and re-ingest
+                        log_info(
+                            "Partial ingestion detected for %s (%d/%s chunks). Re-ingesting.",
+                            os.path.basename(path),
+                            existing_count,
+                            stored_total,
+                        )
+                        _delete_chunks_by_parent(connection, collection_name, file_hash)
 
                 # Extract text
                 full_text, page_count = _extract_text(path)
@@ -568,7 +581,9 @@ class FileIngestionService:
                             chunk_upsert_failed = True
                             result.failed += 1
                             result.errors.append(f"{filename}: upsert failed at chunk {chunk_index}: {str(exc)[:200]}")
-                            log_error("Document chunk upsert failed (%s chunk %d): %.300s", filename, chunk_index, str(exc))
+                            log_error(
+                                "Document chunk upsert failed (%s chunk %d): %.300s", filename, chunk_index, str(exc)
+                            )
                             # Clear pending batch and clean up already-flushed chunks
                             batch_ids.clear()
                             batch_embeddings.clear()

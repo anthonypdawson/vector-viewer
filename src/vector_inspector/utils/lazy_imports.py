@@ -59,8 +59,7 @@ def get_sklearn_model(model_name: str) -> Any:
                 _sklearn_cache["HDBSCAN"] = hdbscan.HDBSCAN
             except ImportError as e:
                 raise ImportError(
-                    "hdbscan is not installed. This is a premium feature. "
-                    "Install with: pip install hdbscan"
+                    "hdbscan is not installed. This is a premium feature. Install with: pip install hdbscan"
                 ) from e
         elif model_name == "KMeans":
             from sklearn.cluster import KMeans

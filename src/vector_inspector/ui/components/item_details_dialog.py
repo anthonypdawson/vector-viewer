@@ -1,14 +1,21 @@
 """Dialog for viewing item details (read-only)."""
 
 import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from typing import Any, Optional
 
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
@@ -141,6 +148,13 @@ class ItemDetailsDialog(QDialog):
         self.document_display.setMaximumHeight(150)
         form_layout.addRow(self.document_display)
 
+        # File preview section (shown only when previewable paths exist)
+        self._preview_frame = QFrame()
+        self._preview_layout = QVBoxLayout(self._preview_frame)
+        self._preview_layout.setContentsMargins(0, 0, 0, 0)
+        self._preview_frame.setVisible(False)
+        form_layout.addRow("File Preview:", self._preview_frame)
+
         # Metadata field
         form_layout.addRow("Metadata:", QLabel(""))
         self.metadata_display = QTextEdit()
@@ -198,9 +212,7 @@ class ItemDetailsDialog(QDialog):
             embedding = self.item_data.get("embedding")
             if has_embedding(embedding):
                 try:
-                    dimension = len(
-                        embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
-                    )
+                    dimension = len(embedding.tolist() if hasattr(embedding, "tolist") else list(embedding))
                     self.dimension_label.setText(str(dimension))
                 except Exception:
                     self.dimension_label.setText("N/A")
@@ -238,6 +250,9 @@ class ItemDetailsDialog(QDialog):
         document = self.item_data.get("document", "")
         self.document_display.setPlainText(str(document) if document else "(No document)")
 
+        # File preview
+        self._populate_file_preview(metadata or {})
+
         # Metadata - filter out the fields we've already shown separately
         if metadata:
             filtered_metadata = self._filter_metadata_for_display(metadata)
@@ -256,9 +271,7 @@ class ItemDetailsDialog(QDialog):
             if has_embedding(embedding):
                 try:
                     # Handle different vector types
-                    vector_list = (
-                        embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
-                    )
+                    vector_list = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
                     dimension = len(vector_list)
 
                     # Show first few and last few dimensions
@@ -273,6 +286,93 @@ class ItemDetailsDialog(QDialog):
                     self.vector_display.setPlainText(f"(Error displaying vector: {e})")
             else:
                 self.vector_display.setPlainText("(No embedding)")
+
+    def _populate_file_preview(self, metadata: dict[str, Any]):
+        """Show image/text preview if previewable file paths exist in metadata."""
+        from vector_inspector.utils.file_preview_utils import file_type, find_preview_paths
+
+        paths = find_preview_paths(metadata)
+        if not paths:
+            self._preview_frame.setVisible(False)
+            return
+
+        self._preview_frame.setVisible(True)
+        for path in paths:
+            ft = file_type(path)
+            if ft == "image":
+                self._add_dialog_image_preview(path)
+            elif ft == "text":
+                self._add_dialog_text_preview(path)
+
+    def _add_dialog_image_preview(self, path: str):
+        """Add an image preview widget to the dialog."""
+        try:
+            from vector_inspector.utils.file_preview_utils import load_image_pixmap
+
+            pixmap = load_image_pixmap(path, max_w=320, max_h=240)
+        except Exception:
+            return
+
+        img_label = QLabel()
+        img_label.setPixmap(pixmap)
+        img_label.setToolTip(path)
+        img_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        img_label.customContextMenuRequested.connect(lambda _pos, p=path: self._show_preview_menu(p))
+        img_label.mouseDoubleClickEvent = lambda _evt, p=path: QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+        self._preview_layout.addWidget(img_label)
+
+        dim_text = f"{pixmap.width()}×{pixmap.height()}" if not pixmap.isNull() else ""
+        info_label = QLabel(f"{os.path.basename(path)}  {dim_text}")
+        info_label.setStyleSheet("color: #a0a0a0; font-size: 9pt;")
+        self._preview_layout.addWidget(info_label)
+
+    def _add_dialog_text_preview(self, path: str):
+        """Add a text file preview widget to the dialog."""
+        try:
+            from vector_inspector.utils.file_preview_utils import read_text_preview
+
+            content, truncated = read_text_preview(path, max_lines=100, max_bytes=8192)
+        except Exception:
+            return
+
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setMaximumHeight(300)
+        text_edit.setPlainText(content)
+        text_edit.setToolTip(path)
+        self._preview_layout.addWidget(text_edit)
+
+        if truncated:
+            trunc_label = QLabel("… (truncated)")
+            trunc_label.setStyleSheet("color: #a0a0a0; font-size: 8pt;")
+            self._preview_layout.addWidget(trunc_label)
+
+    def _show_preview_menu(self, path: str):
+        """Show right-click context menu for a preview image in the dialog."""
+        menu = QMenu(self)
+        open_action = menu.addAction("Open")
+        open_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+
+        if sys.platform == "darwin":
+            reveal_label = "Reveal in Finder"
+        elif sys.platform == "win32":
+            reveal_label = "Reveal in Explorer"
+        else:
+            reveal_label = "Reveal in Files"
+        reveal_action = menu.addAction(reveal_label)
+        reveal_action.triggered.connect(lambda: self._reveal_in_file_manager(path))
+        menu.popup(self.cursor().pos())
+
+    @staticmethod
+    def _reveal_in_file_manager(path: str):
+        """Open the containing folder and select the file."""
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", path])
+        elif sys.platform == "win32":
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+        else:
+            folder = os.path.dirname(path)
+            subprocess.Popen(["xdg-open", folder])
 
     def _extract_timestamp(self, metadata: dict[str, Any], field_names: list[str]) -> Optional[Any]:
         """Extract timestamp from metadata using common field names.

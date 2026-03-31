@@ -5,9 +5,7 @@ import os
 import pathlib
 from typing import Any, Literal
 
-IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
-)
+IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"})
 
 CANDIDATE_KEYS: tuple[str, ...] = (
     "file_path",
@@ -132,5 +130,7 @@ def load_image_pixmap(path: str, max_w: int = 320, max_h: int = 240):  # -> QPix
     if pixmap.isNull():
         raise ValueError(f"Could not load image: {path}")
     if pixmap.width() > max_w or pixmap.height() > max_h:
-        pixmap = pixmap.scaled(max_w, max_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        pixmap = pixmap.scaled(
+            max_w, max_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+        )
     return pixmap

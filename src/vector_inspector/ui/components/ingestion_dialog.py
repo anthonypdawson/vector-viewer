@@ -196,7 +196,9 @@ class IngestionDialog(QDialog):
         def _do_create() -> None:
             name = name_edit.text().strip()
             if not name or not _COLLECTION_NAME_RE.match(name):
-                QMessageBox.warning(dlg, "Invalid Name", "Collection name must be non-empty and contain only A-Z, a-z, 0-9, _ or -.")
+                QMessageBox.warning(
+                    dlg, "Invalid Name", "Collection name must be non-empty and contain only A-Z, a-z, 0-9, _ or -."
+                )
                 return
             # Dimension is always known from the file_kind; use the spinner value
             # only when the backend exposes it as a configurable field.
