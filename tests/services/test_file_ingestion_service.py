@@ -11,12 +11,14 @@ from vector_inspector.services.file_ingestion_service import (
     IngestionResult,
     _chunk_text,
     _count_existing_chunks,
+    _delete_chunks_by_parent,
+    _extract_text,
+    _get_stored_chunk_total,
     _is_document_file,
     _is_image_file,
     _l2_normalize,
     _scan_folder,
 )
-
 
 # ---------------------------------------------------------------------------
 # Unit helpers
@@ -230,7 +232,9 @@ class TestImageIngestion:
         with (
             patch("vector_inspector.utils.lazy_imports.get_clip_model_and_processor", return_value=(model, processor)),
             patch("vector_inspector.utils.lazy_imports.get_pillow", return_value=fake_pillow),
-            patch.object(torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)),
+            patch.object(
+                torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)
+            ),
         ):
             result = FileIngestionService().ingest_files(
                 file_paths=[sample_png],
@@ -260,7 +264,9 @@ class TestImageIngestion:
         with (
             patch("vector_inspector.utils.lazy_imports.get_clip_model_and_processor", return_value=(model, processor)),
             patch("vector_inspector.utils.lazy_imports.get_pillow", return_value=fake_pillow),
-            patch.object(torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)),
+            patch.object(
+                torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)
+            ),
         ):
             result = FileIngestionService().ingest_files(
                 file_paths=[sample_png],
@@ -284,7 +290,9 @@ class TestImageIngestion:
         with (
             patch("vector_inspector.utils.lazy_imports.get_clip_model_and_processor", return_value=(model, processor)),
             patch("vector_inspector.utils.lazy_imports.get_pillow", return_value=fake_pillow),
-            patch.object(torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)),
+            patch.object(
+                torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)
+            ),
         ):
             result = FileIngestionService().ingest_files(
                 file_paths=["/does/not/exist.png"],
@@ -362,7 +370,10 @@ class TestDocumentIngestion:
 
         conn = MagicMock()
         # Both chunks already present and chunk_total stored
-        conn.get_all_items.return_value = {"ids": ["hash-0", "hash-1"], "metadatas": [{"chunk_total": 2, "parent_id": "x"}]}
+        conn.get_all_items.return_value = {
+            "ids": ["hash-0", "hash-1"],
+            "metadatas": [{"chunk_total": 2, "parent_id": "x"}],
+        }
         model = _fake_sentence_transformer()
 
         with patch("vector_inspector.utils.lazy_imports.get_sentence_transformer", return_value=model):
@@ -524,7 +535,9 @@ class TestFolderIngestion:
         ):
             import torch
 
-            with patch.object(torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)):
+            with patch.object(
+                torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)
+            ):
                 result = FileIngestionService().ingest_folder(
                     folder_path=str(tmp_path),
                     connection=conn,
@@ -534,3 +547,222 @@ class TestFolderIngestion:
 
         assert result.total == 2
         assert result.succeeded == 2
+
+
+# ---------------------------------------------------------------------------
+# _extract_text
+# ---------------------------------------------------------------------------
+
+
+class TestExtractText:
+    def test_plain_text(self, tmp_path):
+        f = tmp_path / "readme.txt"
+        f.write_text("Hello world\nLine 2")
+        text, page_count = _extract_text(str(f))
+        assert "Hello world" in text
+        assert page_count is None
+
+    def test_html_strips_tags(self, tmp_path):
+        f = tmp_path / "page.html"
+        f.write_text("<html><body><p>Hello</p></body></html>")
+        text, page_count = _extract_text(str(f))
+        assert "<p>" not in text
+        assert "Hello" in text
+        assert page_count is None
+
+    def test_xml_strips_tags(self, tmp_path):
+        f = tmp_path / "data.xml"
+        f.write_text("<root><item>Value</item></root>")
+        text, _ = _extract_text(str(f))
+        assert "<item>" not in text
+        assert "Value" in text
+
+    def test_pdf_extraction(self, tmp_path):
+        """PDF extraction via mocked pypdf."""
+        f = tmp_path / "doc.pdf"
+        f.write_bytes(b"%PDF-1.4")
+
+        fake_page = MagicMock()
+        fake_page.extract_text.return_value = "Page 1 text"
+        fake_reader = MagicMock()
+        fake_reader.pages = [fake_page]
+
+        fake_pypdf = MagicMock()
+        fake_pypdf.PdfReader.return_value = fake_reader
+
+        with patch("vector_inspector.services.file_ingestion_service._lazy_pypdf", return_value=fake_pypdf):
+            text, page_count = _extract_text(str(f))
+
+        assert "Page 1 text" in text
+        assert page_count == 1
+
+    def test_docx_extraction(self, tmp_path):
+        """Docx extraction via mocked python-docx."""
+        f = tmp_path / "doc.docx"
+        f.write_bytes(b"PK\x03\x04")
+
+        para1 = MagicMock()
+        para1.text = "First paragraph"
+        para2 = MagicMock()
+        para2.text = "Second paragraph"
+        fake_doc = MagicMock()
+        fake_doc.paragraphs = [para1, para2]
+
+        fake_docx = MagicMock()
+        fake_docx.Document.return_value = fake_doc
+
+        with patch("vector_inspector.services.file_ingestion_service._lazy_docx", return_value=fake_docx):
+            text, page_count = _extract_text(str(f))
+
+        assert "First paragraph" in text
+        assert "Second paragraph" in text
+        assert page_count is None
+
+
+# ---------------------------------------------------------------------------
+# _get_stored_chunk_total / _delete_chunks_by_parent
+# ---------------------------------------------------------------------------
+
+
+class TestChunkHelpers:
+    def test_get_stored_chunk_total_returns_value(self):
+        conn = MagicMock()
+        conn.get_all_items.return_value = {"metadatas": [{"chunk_total": 5}]}
+        assert _get_stored_chunk_total(conn, "coll", "hash123") == 5
+
+    def test_get_stored_chunk_total_returns_none_on_empty(self):
+        conn = MagicMock()
+        conn.get_all_items.return_value = {"metadatas": []}
+        assert _get_stored_chunk_total(conn, "coll", "hash123") is None
+
+    def test_get_stored_chunk_total_returns_none_on_error(self):
+        conn = MagicMock()
+        conn.get_all_items.side_effect = Exception("err")
+        assert _get_stored_chunk_total(conn, "coll", "hash123") is None
+
+    def test_delete_chunks_by_parent(self):
+        conn = MagicMock()
+        conn.get_all_items.return_value = {"ids": ["h-0", "h-1"]}
+        _delete_chunks_by_parent(conn, "coll", "hash123")
+        conn.delete_items.assert_called_once_with(collection_name="coll", ids=["h-0", "h-1"])
+
+    def test_delete_chunks_by_parent_no_ids(self):
+        conn = MagicMock()
+        conn.get_all_items.return_value = {"ids": []}
+        _delete_chunks_by_parent(conn, "coll", "hash123")
+        conn.delete_items.assert_not_called()
+
+    def test_delete_chunks_by_parent_error_does_not_raise(self):
+        conn = MagicMock()
+        conn.get_all_items.side_effect = Exception("boom")
+        _delete_chunks_by_parent(conn, "coll", "hash123")  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# Image: minimum dimension rejection
+# ---------------------------------------------------------------------------
+
+
+class TestMinImageDimension:
+    def test_tiny_image_rejected(self, tmp_path):
+        """Images below 3×3 are rejected as too small."""
+        img_file = tmp_path / "tiny.png"
+        img_file.write_bytes(b"\x89PNG" + b"\x00" * 10)
+
+        conn = _make_connection()
+        model, processor = _fake_clip_outputs()
+        fake_pillow = MagicMock()
+        fake_img = MagicMock()
+        fake_img.size = (2, 2)  # Below _MIN_IMAGE_DIM=3
+        fake_img.convert.return_value = fake_img
+        fake_pillow.open.return_value = fake_img
+
+        import torch
+
+        with (
+            patch("vector_inspector.utils.lazy_imports.get_clip_model_and_processor", return_value=(model, processor)),
+            patch("vector_inspector.utils.lazy_imports.get_pillow", return_value=fake_pillow),
+            patch.object(
+                torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)
+            ),
+        ):
+            result = FileIngestionService().ingest_files(
+                file_paths=[str(img_file)],
+                connection=conn,
+                collection_name="images",
+                file_kind="image",
+            )
+
+        assert result.failed == 1
+        assert result.succeeded == 0
+        assert any("too small" in e for e in result.errors)
+
+
+# ---------------------------------------------------------------------------
+# Image: _flush failure path
+# ---------------------------------------------------------------------------
+
+
+class TestImageFlushFailure:
+    def test_flush_failure_raises(self, tmp_path):
+        """When add_items returns False at final flush, RuntimeError propagates."""
+        img_file = tmp_path / "photo.jpg"
+        img_file.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 10)
+
+        conn = _make_connection()
+        conn.add_items.return_value = False  # flush fails
+
+        model, processor = _fake_clip_outputs()
+        fake_pillow = MagicMock()
+        fake_img = MagicMock()
+        fake_img.size = (100, 100)
+        fake_img.convert.return_value = fake_img
+        fake_img.__array__ = MagicMock(return_value=np.zeros((100, 100, 3), dtype=np.uint8))
+        fake_pillow.open.return_value = fake_img
+
+        import torch
+
+        with (
+            patch("vector_inspector.utils.lazy_imports.get_clip_model_and_processor", return_value=(model, processor)),
+            patch("vector_inspector.utils.lazy_imports.get_pillow", return_value=fake_pillow),
+            patch.object(
+                torch, "no_grad", return_value=MagicMock(__enter__=lambda _s: _s, __exit__=lambda _s, *_a: None)
+            ),
+            pytest.raises(RuntimeError, match="Failed to write"),
+        ):
+            FileIngestionService().ingest_files(
+                file_paths=[str(img_file)],
+                connection=conn,
+                collection_name="images",
+                file_kind="image",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Document: flush failure at final flush
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentFlushFailure:
+    def test_final_flush_failure_recorded(self, tmp_path):
+        """When add_items returns False at final flush, the document is recorded as failed."""
+        doc_file = tmp_path / "test.txt"
+        doc_file.write_text("Hello world test content for embedding purposes.")
+
+        conn = _make_connection()
+        conn.add_items.return_value = False  # flush fails
+
+        fake_model = MagicMock()
+        fake_model.encode.return_value = MagicMock(tolist=lambda: [0.1] * 384)
+
+        with patch("vector_inspector.utils.lazy_imports.get_sentence_transformer", return_value=fake_model):
+            result = FileIngestionService().ingest_files(
+                file_paths=[str(doc_file)],
+                connection=conn,
+                collection_name="docs",
+                file_kind="document",
+            )
+
+        assert result.failed == 1
+        assert result.succeeded == 0
+        assert any("failed" in e.lower() for e in result.errors)
