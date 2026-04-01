@@ -157,6 +157,7 @@ class MainWindow(InspectorShell):
                 self.info_panel = widget
             elif i == InspectorTabs.DATA_TAB:
                 self.metadata_view = widget
+                self.metadata_view.connection_manager = self.connection_manager
             elif i == InspectorTabs.SEARCH_TAB:
                 self.search_view = widget
             # Visualization is lazy-loaded, so it's a placeholder for now
@@ -216,6 +217,16 @@ class MainWindow(InspectorShell):
         migrate_action = QAction("&Migrate Data...", self)
         migrate_action.triggered.connect(self._show_migration_dialog)
         connection_menu.addAction(migrate_action)
+
+        connection_menu.addSeparator()
+
+        import_images_action = QAction("Import &Images...", self)
+        import_images_action.triggered.connect(self._ingest_images)
+        connection_menu.addAction(import_images_action)
+
+        import_documents_action = QAction("Import &Documents...", self)
+        import_documents_action.triggered.connect(self._ingest_documents)
+        connection_menu.addAction(import_documents_action)
 
         # Tools menu
         tools_menu = menubar.addMenu("&Tools")
@@ -728,6 +739,20 @@ class MainWindow(InspectorShell):
             on_finished=_on_refresh_done,
             on_error=_on_refresh_error,
         )
+
+    def _ingest_images(self) -> None:
+        """Trigger image ingestion via the metadata view."""
+        if self.metadata_view is None or not hasattr(self.metadata_view, "_run_ingestion"):
+            QMessageBox.information(self, "Not Available", "Switch to the Data tab first.")
+            return
+        self.metadata_view._run_ingestion("image")
+
+    def _ingest_documents(self) -> None:
+        """Trigger document ingestion via the metadata view."""
+        if self.metadata_view is None or not hasattr(self.metadata_view, "_run_ingestion"):
+            QMessageBox.information(self, "Not Available", "Switch to the Data tab first.")
+            return
+        self.metadata_view._run_ingestion("document")
 
     def _restore_session(self):
         """Restore previously active connections on startup."""

@@ -3,8 +3,6 @@
 import json
 import uuid
 
-import pytest
-
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
 
 

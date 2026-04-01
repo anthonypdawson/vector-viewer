@@ -566,7 +566,9 @@ class InlineDetailsPane(QWidget):
                     },
                     indent=2,
                 )
-                safe = make_json_safe({"id": self._current_item.get("id"), "vector": vector_list, "dimension": len(vector_list)})
+                safe = make_json_safe(
+                    {"id": self._current_item.get("id"), "vector": vector_list, "dimension": len(vector_list)}
+                )
                 QApplication.clipboard().setText(json.dumps(safe, indent=2))
             except Exception:
                 pass

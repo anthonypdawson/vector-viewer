@@ -1,4 +1,4 @@
-# Release Notes (0.6.3) — 2026-03-31
+# Release Notes (0.7.0) — 2026-04-01
 
 ## Ingestion
 - New image ingestion pipeline: embed images with CLIP (`openai/clip-vit-base-patch32`, 512-dim) via "Import Images…" in the Import menu
@@ -8,6 +8,12 @@
 - Three-way duplicate detection: new files are ingested, fully-present files are skipped, partially-ingested files are cleaned up and re-ingested automatically
 - "Re-ingest file…" context menu item in the metadata table re-ingests a single item's source file with `overwrite=True` when `file_path` metadata is present
 - All lazy dependencies (`torch`, `transformers`, `Pillow`, `sentence-transformers`, `pypdf`, `python-docx`) imported on first use with clear install guidance if absent
+- Loading dialog now shows the current filename and progress count (e.g. "Ingesting (3 of 42): report.pdf") while ingesting files
+- Collection list refreshes automatically after ingestion creates a new collection — no manual refresh needed
+- Per-file log entries restored: `Ingested image: <filename>` and `Ingested document: <filename> (N chunks)` logged on each successful file
+- Ingestion fires `ingestion.started` telemetry at the beginning (file_kind, collection, file_count, overwrite, folder_mode) and `ingestion.completed` at the end (succeeded, skipped, failed, chunks_written, duration_ms)
+- Completion-only log summary retained alongside per-file entries for quick status overview
+- "Import Images…" and "Import Documents…" items added to the Connection menu for direct access without navigating to the Data tab
 - New collection creation deferred to ingestion start and delegated to `CollectionService`; backends that don't support configurable vector size (e.g. ChromaDB) show a read-only dimension label
 
 ## File Preview

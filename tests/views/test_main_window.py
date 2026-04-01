@@ -135,3 +135,86 @@ def test_on_connection_completed_failure_no_report_action(qtbot, monkeypatch):
     assert len(received) == 0
 
     mw.close()
+
+
+def test_ingest_images_delegates_to_metadata_view(qtbot, monkeypatch):
+    """_ingest_images calls metadata_view._run_ingestion('image')."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    calls = []
+
+    class FakeMetadataView:
+        connection_manager = None
+
+        def _run_ingestion(self, kind):
+            calls.append(kind)
+
+    mw.metadata_view = FakeMetadataView()
+    mw._ingest_images()
+    assert calls == ["image"]
+
+    mw.close()
+
+
+def test_ingest_documents_delegates_to_metadata_view(qtbot, monkeypatch):
+    """_ingest_documents calls metadata_view._run_ingestion('document')."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    calls = []
+
+    class FakeMetadataView:
+        connection_manager = None
+
+        def _run_ingestion(self, kind):
+            calls.append(kind)
+
+    mw.metadata_view = FakeMetadataView()
+    mw._ingest_documents()
+    assert calls == ["document"]
+
+    mw.close()
+
+
+def test_ingest_no_metadata_view_shows_info(qtbot, monkeypatch):
+    """_ingest_images/_ingest_documents shows an info box when metadata_view is None."""
+    from unittest.mock import patch
+
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+    mw.metadata_view = None
+
+    with patch("vector_inspector.ui.main_window.QMessageBox.information") as mock_info:
+        mw._ingest_images()
+        assert mock_info.called
+
+    with patch("vector_inspector.ui.main_window.QMessageBox.information") as mock_info:
+        mw._ingest_documents()
+        assert mock_info.called
+
+    mw.close()
+
+
+def test_connection_menu_has_import_actions(qtbot, monkeypatch):
+    """Connection menu exposes 'Import Images' and 'Import Documents' actions."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    menu_bar = mw.menuBar()
+    connection_menu = None
+    for action in menu_bar.actions():
+        if "Connection" in action.text():
+            connection_menu = action.menu()
+            break
+
+    assert connection_menu is not None, "Connection menu not found"
+    action_texts = [a.text() for a in connection_menu.actions()]
+    assert any("Image" in t for t in action_texts), f"Import Images not found in {action_texts}"
+    assert any("Document" in t for t in action_texts), f"Import Documents not found in {action_texts}"
+
+    mw.close()

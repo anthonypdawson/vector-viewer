@@ -12,6 +12,7 @@ from typing import Any, Literal
 import numpy as np
 
 from vector_inspector.core.logging import log_error, log_info
+from vector_inspector.services.telemetry_service import TelemetryService
 from vector_inspector.utils.file_preview_utils import IMAGE_EXTENSIONS, is_text_file
 
 
@@ -244,7 +245,7 @@ class FileIngestionService:
         recursive: bool = False,
         overwrite: bool = False,
         max_chunk_size: int = 1000,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> IngestionResult:
         """Scan *folder_path* for files matching *file_kind* and ingest them."""
         file_paths = _scan_folder(folder_path, file_kind, recursive)
@@ -270,10 +271,37 @@ class FileIngestionService:
         overwrite: bool = False,
         max_chunk_size: int = 1000,
         source_folder: str | None = None,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> IngestionResult:
         """Ingest an explicit list of files."""
+        import time as _time
+
         result = IngestionResult(total=len(file_paths))
+
+        log_info(
+            "Ingestion started — kind=%s collection=%s files=%d overwrite=%s",
+            file_kind,
+            collection_name,
+            len(file_paths),
+            overwrite,
+        )
+        try:
+            TelemetryService.send_event(
+                "ingestion.started",
+                {
+                    "metadata": {
+                        "file_kind": file_kind,
+                        "collection_name": collection_name,
+                        "file_count": len(file_paths),
+                        "overwrite": overwrite,
+                        "folder_mode": source_folder is not None,
+                    }
+                },
+            )
+        except Exception:
+            pass
+
+        _start = _time.monotonic()
 
         if file_kind == "image":
             self._ingest_image_files(
@@ -299,6 +327,36 @@ class FileIngestionService:
                 progress_callback,
             )
 
+        duration_ms = int((_time.monotonic() - _start) * 1000)
+        log_info(
+            "Ingestion complete — kind=%s collection=%s succeeded=%d skipped=%d failed=%d chunks=%d duration_ms=%d",
+            file_kind,
+            collection_name,
+            result.succeeded,
+            result.skipped,
+            result.failed,
+            result.chunks_written,
+            duration_ms,
+        )
+        try:
+            TelemetryService.send_event(
+                "ingestion.completed",
+                {
+                    "metadata": {
+                        "file_kind": file_kind,
+                        "collection_name": collection_name,
+                        "total": result.total,
+                        "succeeded": result.succeeded,
+                        "skipped": result.skipped,
+                        "failed": result.failed,
+                        "chunks_written": result.chunks_written,
+                        "duration_ms": duration_ms,
+                    }
+                },
+            )
+        except Exception:
+            pass
+
         return result
 
     # ------------------------------------------------------------------
@@ -314,7 +372,7 @@ class FileIngestionService:
         overwrite: bool,
         source_folder: str | None,
         result: IngestionResult,
-        progress_callback: Callable[[int, int], None] | None,
+        progress_callback: Callable[[int, int, str], None] | None,
     ) -> None:
         from vector_inspector.utils.lazy_imports import get_clip_model_and_processor, get_pillow
 
@@ -350,7 +408,7 @@ class FileIngestionService:
 
         for idx, path in enumerate(file_paths):
             if progress_callback:
-                progress_callback(idx, len(file_paths))
+                progress_callback(idx, len(file_paths), os.path.basename(path))
 
             try:
                 # Validate
@@ -439,7 +497,7 @@ class FileIngestionService:
         _flush()
 
         if progress_callback:
-            progress_callback(len(file_paths), len(file_paths))
+            progress_callback(len(file_paths), len(file_paths), "")
 
     # ------------------------------------------------------------------
     # Document pipeline
@@ -455,7 +513,7 @@ class FileIngestionService:
         max_chunk_size: int,
         source_folder: str | None,
         result: IngestionResult,
-        progress_callback: Callable[[int, int], None] | None,
+        progress_callback: Callable[[int, int, str], None] | None,
     ) -> None:
         from vector_inspector.utils.lazy_imports import get_sentence_transformer
 
@@ -488,7 +546,7 @@ class FileIngestionService:
 
         for idx, path in enumerate(file_paths):
             if progress_callback:
-                progress_callback(idx, len(file_paths))
+                progress_callback(idx, len(file_paths), os.path.basename(path))
 
             file_hash: str | None = None
             try:
@@ -614,4 +672,4 @@ class FileIngestionService:
                     _delete_chunks_by_parent(connection, collection_name, file_hash)
 
         if progress_callback:
-            progress_callback(len(file_paths), len(file_paths))
+            progress_callback(len(file_paths), len(file_paths), "")

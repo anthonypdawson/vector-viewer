@@ -1,9 +1,9 @@
-import json
-import uuid
-import pathlib
-import enum
 import datetime
 import decimal
+import enum
+import json
+import pathlib
+import uuid
 
 import pytest
 

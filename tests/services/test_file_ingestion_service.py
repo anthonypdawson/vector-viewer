@@ -503,7 +503,7 @@ class TestDocumentIngestion:
                 connection=conn,
                 collection_name="docs",
                 file_kind="document",
-                progress_callback=lambda done, total: calls.append((done, total)),
+                progress_callback=lambda done, total, filename: calls.append((done, total, filename)),
             )
 
         assert len(calls) >= 2  # at least start + end
@@ -766,3 +766,104 @@ class TestDocumentFlushFailure:
         assert result.failed == 1
         assert result.succeeded == 0
         assert any("failed" in e.lower() for e in result.errors)
+
+
+# ---------------------------------------------------------------------------
+# Telemetry events
+# ---------------------------------------------------------------------------
+
+
+class TestIngestionTelemetry:
+    """ingest_files fires ingestion.started and ingestion.completed telemetry events."""
+
+    def _doc_conn(self):
+        conn = MagicMock()
+        conn.get_all_items.return_value = {"ids": [], "metadatas": []}
+        conn.add_items.return_value = True
+        return conn
+
+    def test_telemetry_start_and_end_fired_for_documents(self, tmp_path):
+        doc = tmp_path / "a.txt"
+        doc.write_text("hello world content for ingestion telemetry test")
+
+        conn = self._doc_conn()
+        model = _fake_sentence_transformer()
+        events: list[tuple] = []
+
+        with (
+            patch("vector_inspector.utils.lazy_imports.get_sentence_transformer", return_value=model),
+            patch(
+                "vector_inspector.services.file_ingestion_service.TelemetryService.send_event",
+                side_effect=lambda name, payload: events.append((name, payload)),
+            ),
+        ):
+            FileIngestionService().ingest_files(
+                file_paths=[str(doc)],
+                connection=conn,
+                collection_name="test_col",
+                file_kind="document",
+            )
+
+        names = [e[0] for e in events]
+        assert "ingestion.started" in names
+        assert "ingestion.completed" in names
+
+        start_meta = next(e[1]["metadata"] for e in events if e[0] == "ingestion.started")
+        assert start_meta["file_kind"] == "document"
+        assert start_meta["file_count"] == 1
+        assert start_meta["collection_name"] == "test_col"
+
+        end_meta = next(e[1]["metadata"] for e in events if e[0] == "ingestion.completed")
+        assert end_meta["succeeded"] == 1
+        assert "duration_ms" in end_meta
+
+    def test_telemetry_completed_reflects_stats(self, tmp_path):
+        doc = tmp_path / "b.txt"
+        doc.write_text("paragraph one\n\nparagraph two")
+
+        conn = self._doc_conn()
+        model = _fake_sentence_transformer()
+        events: list[tuple] = []
+
+        with (
+            patch("vector_inspector.utils.lazy_imports.get_sentence_transformer", return_value=model),
+            patch(
+                "vector_inspector.services.file_ingestion_service.TelemetryService.send_event",
+                side_effect=lambda name, payload: events.append((name, payload)),
+            ),
+        ):
+            result = FileIngestionService().ingest_files(
+                file_paths=[str(doc)],
+                connection=conn,
+                collection_name="col",
+                file_kind="document",
+            )
+
+        end_meta = next(e[1]["metadata"] for e in events if e[0] == "ingestion.completed")
+        assert end_meta["total"] == result.total
+        assert end_meta["succeeded"] == result.succeeded
+        assert end_meta["chunks_written"] == result.chunks_written
+
+    def test_telemetry_exception_does_not_propagate(self, tmp_path):
+        """A broken TelemetryService must not abort ingestion."""
+        doc = tmp_path / "c.txt"
+        doc.write_text("some text to ingest safely")
+
+        conn = self._doc_conn()
+        model = _fake_sentence_transformer()
+
+        with (
+            patch("vector_inspector.utils.lazy_imports.get_sentence_transformer", return_value=model),
+            patch(
+                "vector_inspector.services.file_ingestion_service.TelemetryService.send_event",
+                side_effect=RuntimeError("telemetry down"),
+            ),
+        ):
+            result = FileIngestionService().ingest_files(
+                file_paths=[str(doc)],
+                connection=conn,
+                collection_name="col",
+                file_kind="document",
+            )
+
+        assert result.succeeded == 1

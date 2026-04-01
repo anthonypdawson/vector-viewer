@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vector_inspector.core.connection_manager import ConnectionInstance
+from vector_inspector.core.connection_manager import ConnectionInstance, ConnectionManager
 from vector_inspector.core.logging import log_info
 from vector_inspector.services import CollectionLoader, MetadataLoader, ThreadedTaskRunner
 from vector_inspector.services.settings_service import SettingsService
@@ -62,6 +62,7 @@ class MetadataView(QWidget):
     settings_service: SettingsService
     import_thread: Optional[DataImportThread]
     filter_reload_timer: QTimer
+    connection_manager: Optional[ConnectionManager]
 
     def __init__(
         self,
@@ -74,6 +75,7 @@ class MetadataView(QWidget):
         # Store AppState and task runner
         self.app_state = app_state
         self.task_runner = task_runner
+        self.connection_manager: Optional[ConnectionManager] = None
         self.collection_loader = CollectionLoader()
         self.metadata_loader = MetadataLoader()
 
@@ -979,6 +981,24 @@ class MetadataView(QWidget):
         collection_name = dlg.collection_name
         new_collection_vector_size = dlg.new_collection_vector_size
 
+        from PySide6.QtCore import QMetaObject, Qt
+
+        _loading_dialog = self.loading_dialog
+
+        def _progress_cb(idx: int, total: int, filename: str) -> None:
+            if total > 0 and filename:
+                msg = f"Ingesting ({idx + 1} of {total}): {filename}"
+            elif total > 0:
+                msg = f"Ingesting ({idx + 1} of {total})…"
+            else:
+                msg = "Ingesting files…"
+            QMetaObject.invokeMethod(
+                _loading_dialog,
+                "setLabelText",
+                Qt.ConnectionType.QueuedConnection,
+                msg,
+            )
+
         def _run() -> object:
             # Create the collection now (inside the background thread) if the user
             # chose "+ New" in the dialog.  CollectionService handles backends that
@@ -1000,6 +1020,7 @@ class MetadataView(QWidget):
                     recursive=dlg.recursive,
                     overwrite=dlg.overwrite,
                     max_chunk_size=dlg.max_chunk_size,
+                    progress_callback=_progress_cb,
                 )
             return service.ingest_files(
                 file_paths=dlg.file_paths,
@@ -1009,6 +1030,7 @@ class MetadataView(QWidget):
                 batch_size=dlg.batch_size,
                 overwrite=dlg.overwrite,
                 max_chunk_size=dlg.max_chunk_size,
+                progress_callback=_progress_cb,
             )
 
         def _on_done(result: object) -> None:
@@ -1016,6 +1038,15 @@ class MetadataView(QWidget):
             from vector_inspector.services.file_ingestion_service import IngestionResult
 
             if isinstance(result, IngestionResult):
+                if new_collection_vector_size is not None and self.connection_manager is not None:
+                    try:
+                        self.connection_manager.update_collections(
+                            connection.id,
+                            connection.list_collections(),
+                        )
+                    except Exception:
+                        pass
+                log_info("File ingestion complete — %s", result.summary())
                 from PySide6.QtWidgets import QMessageBox
 
                 QMessageBox.information(self, "Ingestion Complete", result.summary())
