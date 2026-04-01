@@ -1,22 +1,34 @@
-# Release Notes (0.6.2) — 2026-03-28
+# Release Notes (0.6.3) — 2026-03-31
 
-## UI
-- Status bar now shows real-time feedback for key actions, including result counts and elapsed time (e.g. "Search complete – 28 results in 0.43s", "Data loaded – 1,000 items in 1.20s", "Clustering complete – 5 clusters in 2.10s", "Visualization complete – 500 points in 3.51s").
-- All status bar messages are now routed through a centralised `StatusReporter` service so every message is recorded in a bounded in-memory activity log (up to 100 entries) — foundation for a future user-visible Activity Log.
-- **New:** Status bar message duration is now user-configurable in Preferences → General → "Status Bar → Message duration" (0 = Permanent, 1–30 s).
-- **change:** Default status bar message duration is now `0` (Permanent) by default — status messages stay visible until dismissed unless the user changes the preference.
-- **fix:** Refresh Collections (F5 / menu) now runs in a background thread — the UI no longer freezes on slow or remote connections, and reports elapsed time on success.
-- **fix:** "Check for Update" (Help menu) now runs in a background thread with a status bar progress message.
-- **fix:** Add Item and Delete Items in the Data tab now run in background threads with a loading indicator and status bar completion messages (e.g. "Item added complete – 1 item in 0.12s").
-- **feat:** Connection success now reports elapsed time in the status bar (e.g. "Connected complete – 42 collections in 0.95s").
-- **feat:** Backup and Restore operations now report elapsed time in the status bar on completion.
+## Ingestion
+- New image ingestion pipeline: embed images with CLIP (`openai/clip-vit-base-patch32`, 512-dim) via "Import Images…" in the Import menu
+- New document ingestion pipeline: embed text, PDF, Word, and source files with sentence-transformers (`all-MiniLM-L6-v2`, 384-dim) via "Import Documents…" in the Import menu
+- Ingestion dialog includes folder/file picker, collection selector, "+ New collection" inline creation, overwrite toggle, batch size, and (for documents) max chunk size
+- Documents are split into paragraph-aware chunks (1000 chars default); each chunk stored with `chunk_index`, `chunk_total`, `parent_id`, and file metadata
+- Three-way duplicate detection: new files are ingested, fully-present files are skipped, partially-ingested files are cleaned up and re-ingested automatically
+- "Re-ingest file…" context menu item in the metadata table re-ingests a single item's source file with `overwrite=True` when `file_path` metadata is present
+- All lazy dependencies (`torch`, `transformers`, `Pillow`, `sentence-transformers`, `pypdf`, `python-docx`) imported on first use with clear install guidance if absent
+- New collection creation deferred to ingestion start and delegated to `CollectionService`; backends that don't support configurable vector size (e.g. ChromaDB) show a read-only dimension label
 
-## Internal
-- Added `StatusReporter` service (`services/status_reporter.py`) with `report()` / `report_action()` APIs, a `StatusLogEntry` dataclass, configurable log size, and a `status_updated` Qt signal.
-- `AppState` now owns a `status_reporter` instance accessible from any view via `app_state.status_reporter`.
-- `StatusReporter._default_timeout_ms` is now mutable so the user preference is applied at runtime without restarting.
-- Default status timeout updated to `0` ms (permanent) so important system messages remain visible by default.
-- `connection_completed` signal extended to carry `duration_ms` (float) so the main window can display connection latency.
-- 29 new unit tests cover message formatting, log trimming, signal emission, and reporter isolation.
+## File Preview
+- Inline details pane: new collapsible "File Preview" section between Document Preview and Metadata
+- Image thumbnails (160×120 in inline pane, 320×240 in details dialog) with filename label
+- Text file previews: first 30 lines / 2 KB in inline pane, first 100 lines / 8 KB in details dialog, with truncation indicator
+- Right-click context menu on preview images: "Open" (OS default viewer) and "Reveal in Explorer/Finder/Files"
+- Double-click on preview image opens in OS default viewer
+- Item details dialog: "File Preview" row between Document and Metadata with larger widgets
+- Metadata table: new 📎 icon column at far left indicates rows with previewable file paths
+- Preview detection via `find_preview_paths()`: scans candidate keys first, falls back to broader metadata scan, capped at 3 paths
+- Text detection uses `mimetypes.guess_type` with null-byte sniff fallback (same heuristic as git)
+- File preview section collapsed state persisted to settings
+
+## Bug Fixes
+- Fixed `_flush()` in both image and document ingestion pipelines: now checks `add_items` return value and raises on failure instead of silently losing data
+- Fixed CLIP crash on small images: images below 3×3 pixels are rejected with a clear error instead of causing an ambiguous channel dimension error
+- Fixed embedding nesting: `_l2_normalize` now flattens input to 1D, preventing 4D-nested embeddings that ChromaDB rejects
+- Truncated error strings to 300–400 chars in ingestion pipelines and ChromaDB connection to prevent vector data from flooding logs
+- Silenced verbose third-party loggers (`chromadb`, `sentence_transformers`, `transformers`, `httpx`, `httpcore`) at WARNING level
+
+- Fixed UI crash when displaying metadata containing non-JSON-serializable types (e.g. `uuid.UUID` from Weaviate): added a sanitizer to ensure all metadata is safely rendered as JSON in details panes and dialogs.
 
 ---

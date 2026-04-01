@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.services.telemetry_service import TelemetryService
+from vector_inspector.utils.json_safe import make_json_safe
 
 
 class CollapsibleSection(QWidget):
@@ -501,7 +502,8 @@ class InlineDetailsPane(QWidget):
             if k not in ["updated_at", "created_at", "cluster", "cluster_id", "embedding_dimension"]
         }
         if filtered_metadata:
-            self.metadata_text.setText(json.dumps(filtered_metadata, indent=2))
+            safe = make_json_safe(filtered_metadata)
+            self.metadata_text.setText(json.dumps(safe, indent=2))
         else:
             self.metadata_text.setText("(No metadata)")
 
@@ -564,7 +566,8 @@ class InlineDetailsPane(QWidget):
                     },
                     indent=2,
                 )
-                QApplication.clipboard().setText(json_str)
+                safe = make_json_safe({"id": self._current_item.get("id"), "vector": vector_list, "dimension": len(vector_list)})
+                QApplication.clipboard().setText(json.dumps(safe, indent=2))
             except Exception:
                 pass
 

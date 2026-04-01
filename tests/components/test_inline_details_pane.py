@@ -570,3 +570,72 @@ def test_file_preview_clears_on_none(qtbot, tmp_path):
 
     pane.update_item(None)
     assert pane.file_preview_section.isVisible() is False
+
+
+# ---------------------------------------------------------------------------
+# UUID / non-JSON-serializable metadata regression tests  (Weaviate crash)
+# ---------------------------------------------------------------------------
+
+
+def test_update_item_uuid_in_metadata_does_not_crash(qtbot):
+    """Regression: UUID values in metadata must not raise TypeError (Weaviate).
+
+    Weaviate returns UUID objects in metadata fields such as cross-references
+    and internal identifiers.  Before the json_safe fix, this caused:
+        TypeError: Object of type UUID is not JSON serializable
+    """
+    import uuid
+
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+
+    item = {
+        "id": uuid.UUID("59b15ca8-89d4-47b6-abed-86fae7b46a85"),
+        "document": "Weaviate node",
+        "metadata": {
+            "node_id": uuid.UUID("59b15ca8-89d4-47b6-abed-86fae7b46a85"),
+            "ref_id": uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            "label": "Node",
+        },
+        "embedding": [0.1, 0.2],
+    }
+
+    # Must not raise
+    pane.update_item(item)
+
+    metadata_text = pane.metadata_text.toPlainText()
+    parsed = json.loads(metadata_text)
+    assert parsed["node_id"] == "59b15ca8-89d4-47b6-abed-86fae7b46a85"
+    assert parsed["ref_id"] == "00000000-0000-0000-0000-000000000001"
+
+
+def test_update_item_mixed_non_serializable_metadata_does_not_crash(qtbot):
+    """Regression: mixed non-JSON types (UUID, Path, frozenset) must not crash."""
+    import enum
+    import pathlib
+    import uuid
+
+    class Status(enum.Enum):
+        ACTIVE = "active"
+
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+
+    item = {
+        "id": "test-mixed",
+        "document": "doc",
+        "metadata": {
+            "ref": uuid.UUID("12345678-1234-5678-1234-567812345678"),
+            "path": pathlib.Path("/data/file.txt"),
+            "status": Status.ACTIVE,
+            "tags": frozenset(["a", "b"]),
+        },
+        "embedding": [0.1],
+    }
+
+    pane.update_item(item)
+
+    metadata_text = pane.metadata_text.toPlainText()
+    parsed = json.loads(metadata_text)
+    assert parsed["ref"] == "12345678-1234-5678-1234-567812345678"
+    assert parsed["status"] == "active"

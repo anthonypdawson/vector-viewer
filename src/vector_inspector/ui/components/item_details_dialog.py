@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from vector_inspector.utils import has_embedding
+from vector_inspector.utils.json_safe import make_json_safe
 
 
 class ItemDetailsDialog(QDialog):
@@ -257,7 +258,8 @@ class ItemDetailsDialog(QDialog):
         if metadata:
             filtered_metadata = self._filter_metadata_for_display(metadata)
             if filtered_metadata:
-                metadata_text = json.dumps(filtered_metadata, indent=2)
+                safe = make_json_safe(filtered_metadata)
+                metadata_text = json.dumps(safe, indent=2)
                 self.metadata_display.setPlainText(metadata_text)
             else:
                 self.metadata_display.setPlainText("(All metadata fields shown above)")
