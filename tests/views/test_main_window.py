@@ -199,21 +199,21 @@ def test_ingest_no_metadata_view_shows_info(qtbot, monkeypatch):
     mw.close()
 
 
-def test_connection_menu_has_import_actions(qtbot, monkeypatch):
-    """Connection menu exposes 'Import Images' and 'Import Documents' actions."""
+def test_tools_menu_has_import_actions(qtbot, monkeypatch):
+    """Tools menu exposes 'Import Images' and 'Import Documents' actions."""
     monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
     mw = MainWindow()
     qtbot.addWidget(mw)
 
     menu_bar = mw.menuBar()
-    connection_menu = None
+    tools_menu = None
     for action in menu_bar.actions():
-        if "Connection" in action.text():
-            connection_menu = action.menu()
+        if "Tools" in action.text():
+            tools_menu = action.menu()
             break
 
-    assert connection_menu is not None, "Connection menu not found"
-    action_texts = [a.text() for a in connection_menu.actions()]
+    assert tools_menu is not None, "Tools menu not found"
+    action_texts = [a.text() for a in tools_menu.actions()]
     assert any("Image" in t for t in action_texts), f"Import Images not found in {action_texts}"
     assert any("Document" in t for t in action_texts), f"Import Documents not found in {action_texts}"
 

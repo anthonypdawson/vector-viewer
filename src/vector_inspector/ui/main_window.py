@@ -218,16 +218,6 @@ class MainWindow(InspectorShell):
         migrate_action.triggered.connect(self._show_migration_dialog)
         connection_menu.addAction(migrate_action)
 
-        connection_menu.addSeparator()
-
-        import_images_action = QAction("Import &Images...", self)
-        import_images_action.triggered.connect(self._ingest_images)
-        connection_menu.addAction(import_images_action)
-
-        import_documents_action = QAction("Import &Documents...", self)
-        import_documents_action.triggered.connect(self._ingest_documents)
-        connection_menu.addAction(import_documents_action)
-
         # Tools menu
         tools_menu = menubar.addMenu("&Tools")
 
@@ -235,6 +225,16 @@ class MainWindow(InspectorShell):
         create_collection_action.setShortcut("Ctrl+T")
         create_collection_action.triggered.connect(self._create_test_collection)
         tools_menu.addAction(create_collection_action)
+
+        tools_menu.addSeparator()
+
+        import_images_action = QAction("Import &Images...", self)
+        import_images_action.triggered.connect(self._ingest_images)
+        tools_menu.addAction(import_images_action)
+
+        import_documents_action = QAction("Import &Documents...", self)
+        import_documents_action.triggered.connect(self._ingest_documents)
+        tools_menu.addAction(import_documents_action)
 
         # View menu
         view_menu = menubar.addMenu("&View")

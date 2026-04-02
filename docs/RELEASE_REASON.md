@@ -13,7 +13,7 @@
 - Per-file log entries restored: `Ingested image: <filename>` and `Ingested document: <filename> (N chunks)` logged on each successful file
 - Ingestion fires `ingestion.started` telemetry at the beginning (file_kind, collection, file_count, overwrite, folder_mode) and `ingestion.completed` at the end (succeeded, skipped, failed, chunks_written, duration_ms)
 - Completion-only log summary retained alongside per-file entries for quick status overview
-- "Import Images…" and "Import Documents…" items added to the Connection menu for direct access without navigating to the Data tab
+- "Import Images…" and "Import Documents…" items added to the Tools menu (below Create Test Collection) for direct access without navigating to the Data tab
 - New collection creation deferred to ingestion start and delegated to `CollectionService`; backends that don't support configurable vector size (e.g. ChromaDB) show a read-only dimension label
 
 ## File Preview
