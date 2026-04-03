@@ -47,9 +47,9 @@ def test_make_json_safe_cycles_and_numpy_optional():
     # numpy is optional — just ensure function doesn't crash when numpy exists
     try:
         import numpy as np
-
-        arr = np.array([1, 2, 3])
-        safe_arr = make_json_safe({"arr": arr})
-        assert json.loads(json.dumps(safe_arr))["arr"] == [1, 2, 3]
-    except Exception:
+    except ImportError:
         pytest.skip("numpy not available")
+
+    arr = np.array([1, 2, 3])
+    safe_arr = make_json_safe({"arr": arr})
+    assert json.loads(json.dumps(safe_arr))["arr"] == [1, 2, 3]
