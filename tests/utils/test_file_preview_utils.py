@@ -22,15 +22,23 @@ class TestIsTextFile:
         f.write_text("print('hello')")
         assert is_text_file(str(f)) is True
 
-    def test_typescript_file(self, tmp_path):
-        """TS files may map to video/mp2t on some OSes; sniff fallback handles it."""
+    def test_typescript_file_sniff_fallback(self, tmp_path, monkeypatch):
+        """When mimetypes returns None for .ts, sniff fallback sees no null bytes -> True."""
+        import mimetypes
+
         f = tmp_path / "app.ts"
         f.write_text("const x = 1;")
-        # mimetypes may return video/mp2t for .ts on Windows;
-        # the sniff fallback sees no null bytes → True
-        result = is_text_file(str(f))
-        # Accept True (sniff succeeds) since content is valid text
-        assert result is True or result is False  # platform-dependent
+        monkeypatch.setattr(mimetypes, "guess_type", lambda _path: (None, None))
+        assert is_text_file(str(f)) is True
+
+    def test_typescript_file_non_text_mime(self, tmp_path, monkeypatch):
+        """When mimetypes returns a non-text MIME (e.g. video/mp2t on Windows), is_text_file returns False."""
+        import mimetypes
+
+        f = tmp_path / "app.ts"
+        f.write_text("const x = 1;")
+        monkeypatch.setattr(mimetypes, "guess_type", lambda _path: ("video/mp2t", None))
+        assert is_text_file(str(f)) is False
 
     def test_ruby_file(self, tmp_path):
         f = tmp_path / "app.rb"

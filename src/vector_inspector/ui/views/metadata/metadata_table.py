@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from vector_inspector.core.logging import log_info
+from vector_inspector.core.logging import log_error, log_info
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
 from vector_inspector.ui.views.metadata.context import MetadataContext
 
@@ -114,7 +114,7 @@ def populate_table(
     for row, id_val in enumerate(ids):
         # Preview icon column
         meta = metadatas[row] if row < len(metadatas) else {}
-        has_preview = bool(meta and find_preview_paths(meta))
+        has_preview = bool(meta and find_preview_paths(meta, candidates_only=True))
         preview_item = QTableWidgetItem("📎" if has_preview else "")
         preview_item.setData(PREVIEW_ROLE, has_preview)
         if has_preview:
@@ -323,7 +323,7 @@ def _reingest_item(table: QTableWidget, ctx: MetadataContext, row: int) -> None:
         )
         QMessageBox.information(table, "Re-ingest Complete", result.summary())
     except Exception as exc:
-        log_info("Re-ingest failed: %s", exc)
+        log_error("Re-ingest failed: %s", exc, exc_info=True)
         QMessageBox.critical(table, "Re-ingest Failed", str(exc))
 
 

@@ -243,16 +243,20 @@ class InlineDetailsPane(QWidget):
             self.file_preview_section.setVisible(False)
             return
 
-        self.file_preview_section.setVisible(True)
-        if self.file_preview_section.is_collapsed():
-            self.file_preview_section.set_collapsed(False)
-
+        widgets_before = self._preview_container.count()
         for path in paths:
             ft = file_type(path)
             if ft == "image":
                 self._add_image_preview(path, max_w=160, max_h=120)
             elif ft == "text":
                 self._add_text_preview(path, max_lines=30, max_bytes=2048)
+
+        if self._preview_container.count() > widgets_before:
+            self.file_preview_section.setVisible(True)
+            if self.file_preview_section.is_collapsed():
+                self.file_preview_section.set_collapsed(False)
+        else:
+            self.file_preview_section.setVisible(False)
 
     def _add_image_preview(self, path: str, max_w: int = 160, max_h: int = 120):
         """Add an image thumbnail to the preview container."""

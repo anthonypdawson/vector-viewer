@@ -5,7 +5,7 @@ import time
 from datetime import UTC
 from typing import Any, Optional
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -52,6 +52,10 @@ from vector_inspector.ui.views.metadata.metadata_table import _show_item_details
 
 class MetadataView(QWidget):
     """View for browsing collection data and metadata."""
+
+    # Emitted from the background ingestion thread; connected to
+    # loading_dialog.setLabelText so the progress label updates on the GUI thread.
+    _ingestion_progress = Signal(str)
 
     ctx: MetadataContext
     app_state: AppState
@@ -981,9 +985,17 @@ class MetadataView(QWidget):
         collection_name = dlg.collection_name
         new_collection_vector_size = dlg.new_collection_vector_size
 
-        from PySide6.QtCore import QMetaObject, Qt
+        # Copy all dialog properties to plain locals before the background thread
+        # starts — accessing Qt widgets from a non-GUI thread is not safe.
+        ingestion_file_paths: list[str] = list(dlg.file_paths)
+        ingestion_folder_mode: bool = dlg.folder_mode
+        ingestion_batch_size: int = dlg.batch_size
+        ingestion_recursive: bool = dlg.recursive
+        ingestion_overwrite: bool = dlg.overwrite
+        ingestion_max_chunk_size: int = dlg.max_chunk_size
 
-        _loading_dialog = self.loading_dialog
+        # Wire progress signal → loading dialog label (safe across threads).
+        self._ingestion_progress.connect(self.loading_dialog.setLabelText)
 
         def _progress_cb(idx: int, total: int, filename: str) -> None:
             if total > 0 and filename:
@@ -992,12 +1004,7 @@ class MetadataView(QWidget):
                 msg = f"Ingesting ({idx + 1} of {total})…"
             else:
                 msg = "Ingesting files…"
-            QMetaObject.invokeMethod(
-                _loading_dialog,
-                "setLabelText",
-                Qt.ConnectionType.QueuedConnection,
-                msg,
-            )
+            self._ingestion_progress.emit(msg)
 
         def _run() -> object:
             # Create the collection now (inside the background thread) if the user
@@ -1010,31 +1017,32 @@ class MetadataView(QWidget):
                     dimension=new_collection_vector_size,
                 )
 
-            if dlg.folder_mode:
+            if ingestion_folder_mode:
                 return service.ingest_folder(
-                    folder_path=dlg.file_paths[0],
+                    folder_path=ingestion_file_paths[0],
                     connection=connection,
                     collection_name=collection_name,
                     file_kind=file_kind,  # type: ignore[arg-type]
-                    batch_size=dlg.batch_size,
-                    recursive=dlg.recursive,
-                    overwrite=dlg.overwrite,
-                    max_chunk_size=dlg.max_chunk_size,
+                    batch_size=ingestion_batch_size,
+                    recursive=ingestion_recursive,
+                    overwrite=ingestion_overwrite,
+                    max_chunk_size=ingestion_max_chunk_size,
                     progress_callback=_progress_cb,
                 )
             return service.ingest_files(
-                file_paths=dlg.file_paths,
+                file_paths=ingestion_file_paths,
                 connection=connection,
                 collection_name=collection_name,
                 file_kind=file_kind,  # type: ignore[arg-type]
-                batch_size=dlg.batch_size,
-                overwrite=dlg.overwrite,
-                max_chunk_size=dlg.max_chunk_size,
+                batch_size=ingestion_batch_size,
+                overwrite=ingestion_overwrite,
+                max_chunk_size=ingestion_max_chunk_size,
                 progress_callback=_progress_cb,
             )
 
         def _on_done(result: object) -> None:
             self.loading_dialog.hide()
+            self._ingestion_progress.disconnect(self.loading_dialog.setLabelText)
             from vector_inspector.services.file_ingestion_service import IngestionResult
 
             if isinstance(result, IngestionResult):
@@ -1046,6 +1054,40 @@ class MetadataView(QWidget):
                         )
                     except Exception:
                         pass
+
+                # Persist the embedding model so the Info panel shows it rather than "Auto-detect".
+                if result.succeeded > 0:
+                    try:
+                        from vector_inspector.services.settings_service import SettingsService
+
+                        _MODEL_FOR_KIND = {
+                            "image": ("openai/clip-vit-base-patch32", "clip"),
+                            "document": ("all-MiniLM-L6-v2", "sentence-transformer"),
+                        }
+                        model_name, model_type = _MODEL_FOR_KIND.get(file_kind, (None, None))
+                        if model_name and model_type:
+                            profile_name = getattr(connection, "name", "") or ""
+                            SettingsService().save_embedding_model(
+                                profile_name,
+                                collection_name,
+                                model_name,
+                                model_type,
+                            )
+                            # Invalidate the collection cache so the Info panel reloads
+                            # fresh data (including the newly-saved embedding model).
+                            self.app_state.cache_manager.invalidate(
+                                getattr(connection, "id", None),
+                                collection_name,
+                            )
+                            log_info(
+                                "Saved embedding model '%s' (%s) for collection '%s'",
+                                model_name,
+                                model_type,
+                                collection_name,
+                            )
+                    except Exception:
+                        pass  # Non-critical — ingestion already succeeded
+
                 log_info("File ingestion complete — %s", result.summary())
                 from PySide6.QtWidgets import QMessageBox
 
@@ -1055,6 +1097,7 @@ class MetadataView(QWidget):
 
         def _on_error(msg: str) -> None:
             self.loading_dialog.hide()
+            self._ingestion_progress.disconnect(self.loading_dialog.setLabelText)
             from PySide6.QtWidgets import QMessageBox
 
             QMessageBox.critical(self, "Ingestion Error", msg)

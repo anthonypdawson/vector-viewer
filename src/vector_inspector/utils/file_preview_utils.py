@@ -40,8 +40,10 @@ def file_type(path: str) -> Literal["image", "text", "unknown"]:
     """Classify a path as 'image', 'text', or 'unknown'.
 
     Images are matched against IMAGE_EXTENSIONS.
-    Text is detected via mimetypes.guess_type; falls back to a null-byte sniff
-    of the first 8 KB if mimetypes returns None or a non-text/ MIME type.
+    Text is detected via is_text_file(): mimetypes.guess_type is consulted
+    first; if it returns None, a null-byte sniff of the first 8 KB is used
+    as a fallback (same heuristic as git).  If mimetypes returns a non-text
+    MIME type the file is treated as non-text without sniffing.
     .pdf and .docx are classified as 'unknown' here — the ingestion service
     handles them separately.
     """
@@ -62,11 +64,15 @@ def _looks_like_path(value: str) -> bool:
     return pathlib.Path(value).is_absolute() or ("/" in value or "\\" in value)
 
 
-def find_preview_paths(metadata: dict[str, Any]) -> list[str]:
+def find_preview_paths(metadata: dict[str, Any], candidates_only: bool = False) -> list[str]:
     """Return up to 3 valid, existing file paths found in metadata.
 
     Candidate keys are checked first for a fast path; if none match, the
     remaining string-valued fields are scanned (capped at 20 fields).
+
+    Pass ``candidates_only=True`` to skip the broader scan — useful during
+    high-frequency calls such as table population where avoiding extra
+    filesystem stats for non-candidate keys reduces UI latency.
     """
     found: list[str] = []
 
@@ -79,6 +85,9 @@ def find_preview_paths(metadata: dict[str, Any]) -> list[str]:
                     found.append(value)
                 if len(found) == 3:
                     return found
+
+    if candidates_only:
+        return found
 
     # Broader scan over remaining string fields (cap at 20)
     scanned = 0

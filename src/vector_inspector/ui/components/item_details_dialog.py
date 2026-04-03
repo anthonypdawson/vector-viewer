@@ -293,18 +293,26 @@ class ItemDetailsDialog(QDialog):
         """Show image/text preview if previewable file paths exist in metadata."""
         from vector_inspector.utils.file_preview_utils import file_type, find_preview_paths
 
+        # Clear any previously-added preview widgets before re-populating.
+        while self._preview_layout.count():
+            child = self._preview_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
         paths = find_preview_paths(metadata)
         if not paths:
             self._preview_frame.setVisible(False)
             return
 
-        self._preview_frame.setVisible(True)
         for path in paths:
             ft = file_type(path)
             if ft == "image":
                 self._add_dialog_image_preview(path)
             elif ft == "text":
                 self._add_dialog_text_preview(path)
+
+        # Only show the frame if at least one preview widget was successfully added.
+        self._preview_frame.setVisible(self._preview_layout.count() > 0)
 
     def _add_dialog_image_preview(self, path: str):
         """Add an image preview widget to the dialog."""
