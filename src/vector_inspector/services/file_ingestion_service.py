@@ -177,8 +177,8 @@ def _scan_folder(
 
 def _shallow_walk(folder_path: str):
     """Single-level os.walk replacement."""
-    entries = os.scandir(folder_path)
-    files = [e.name for e in entries if e.is_file()]
+    with os.scandir(folder_path) as entries:
+        files = [e.name for e in entries if e.is_file()]
     yield folder_path, [], files
 
 
