@@ -76,3 +76,5 @@ Chunking, duplicate detection, partial‑ingest recovery, and detailed logging e
 
 0.7.0 transforms Vector Inspector into a **true multimodal semantic debugging tool**.  
 You can now ingest real documents and images, inspect their embeddings, preview their contents, and run text→image semantic search — all with a stable, production‑grade ingestion pipeline.
+
+---
