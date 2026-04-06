@@ -3,7 +3,7 @@
 import json
 import math
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -282,7 +282,7 @@ def update_pagination_controls(
     next_button.setEnabled(has_more)
 
 
-def _ingest_kind_for_path(path: str) -> "Literal['image', 'document'] | None":
+def _ingest_kind_for_path(path: str) -> Literal["image", "document"] | None:
     """Return the ingestion kind for *path* using pipeline-aware extension logic.
 
     Uses ``_is_image_file`` / ``_is_document_file`` from the ingestion service
