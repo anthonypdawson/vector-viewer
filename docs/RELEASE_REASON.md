@@ -1,22 +1,80 @@
-# Release Notes (0.6.2) — 2026-03-28
+# Vector Inspector 0.7.0 — April 5, 2026  
+A major milestone release introducing **full text and image ingestion**, **multimodal embeddings**, and **inline file previews**.  
+You can now build real multimodal collections, inspect their embeddings, and run text→image semantic search directly inside Vector Inspector.
 
-## UI
-- Status bar now shows real-time feedback for key actions, including result counts and elapsed time (e.g. "Search complete – 28 results in 0.43s", "Data loaded – 1,000 items in 1.20s", "Clustering complete – 5 clusters in 2.10s", "Visualization complete – 500 points in 3.51s").
-- All status bar messages are now routed through a centralised `StatusReporter` service so every message is recorded in a bounded in-memory activity log (up to 100 entries) — foundation for a future user-visible Activity Log.
-- **New:** Status bar message duration is now user-configurable in Preferences → General → "Status Bar → Message duration" (0 = Permanent, 1–30 s).
-- **change:** Default status bar message duration is now `0` (Permanent) by default — status messages stay visible until dismissed unless the user changes the preference.
-- **fix:** Refresh Collections (F5 / menu) now runs in a background thread — the UI no longer freezes on slow or remote connections, and reports elapsed time on success.
-- **fix:** "Check for Update" (Help menu) now runs in a background thread with a status bar progress message.
-- **fix:** Add Item and Delete Items in the Data tab now run in background threads with a loading indicator and status bar completion messages (e.g. "Item added complete – 1 item in 0.12s").
-- **feat:** Connection success now reports elapsed time in the status bar (e.g. "Connected complete – 42 collections in 0.95s").
-- **feat:** Backup and Restore operations now report elapsed time in the status bar on completion.
+---
 
-## Internal
-- Added `StatusReporter` service (`services/status_reporter.py`) with `report()` / `report_action()` APIs, a `StatusLogEntry` dataclass, configurable log size, and a `status_updated` Qt signal.
-- `AppState` now owns a `status_reporter` instance accessible from any view via `app_state.status_reporter`.
-- `StatusReporter._default_timeout_ms` is now mutable so the user preference is applied at runtime without restarting.
-- Default status timeout updated to `0` ms (permanent) so important system messages remain visible by default.
-- `connection_completed` signal extended to carry `duration_ms` (float) so the main window can display connection latency.
-- 29 new unit tests cover message formatting, log trimming, signal emission, and reporter isolation.
+# 🚀 Highlights
+
+### **✓ Multimodal Ingestion (Images + Documents)**
+Import images, text files, PDFs, Word docs, and source files into any collection.  
+Images are embedded with CLIP (512‑dim).  
+Documents are chunked and embedded with MiniLM (384‑dim).
+
+### **✓ Text → Image Semantic Search**
+You can now type a natural‑language query and retrieve matching images from your collection using CLIP’s shared embedding space.
+
+### **✓ Inline File Previews**
+Images and text files now show thumbnails or text snippets directly in the details pane and item dialog, making it easy to verify ingestion and debug metadata.
+
+### **✓ Robust, Production‑Ready Ingestion Pipeline**
+Chunking, duplicate detection, partial‑ingest recovery, and detailed logging ensure ingestion is deterministic, resumable, and transparent.
+
+---
+
+# 🧩 Ingestion
+
+- **Image ingestion pipeline** using CLIP (`openai/clip-vit-base-patch32`, 512‑dim)  
+- **Document ingestion pipeline** using sentence-transformers (`all-MiniLM-L6-v2`, 384‑dim)  
+- Import via **“Import Images…”** and **“Import Documents…”** in the Tools menu  
+- Paragraph‑aware chunking for documents (1000 chars default) with `chunk_index`, `chunk_total`, `parent_id`, and file metadata  
+- **Three‑way duplicate detection:**  
+  - new files ingested  
+  - fully-present files skipped  
+  - partially-ingested files automatically cleaned and re‑ingested  
+- **Re-ingest file…** context menu option for single-file overwrite  
+- Lazy loading of heavy dependencies with clear install guidance  
+- Ingestion dialog shows filename + progress (e.g. “3 of 42”)  
+- Collections auto-refresh after ingestion  
+- Per-file log entries restored (`Ingested image: …`, `Ingested document: …`)  
+- Telemetry: `ingestion.started` and `ingestion.completed` with full metrics  
+- New collections created at ingestion time via `CollectionService`  
+- Backends without configurable vector size show read-only dimension label  
+
+---
+
+# 🖼️ File Preview
+
+- New **File Preview** section in the inline details pane  
+- Image thumbnails:  
+  - 160×120 inline  
+  - 320×240 in item dialog  
+- Text previews:  
+  - 30 lines / 2 KB inline  
+  - 100 lines / 8 KB in dialog  
+- Right-click actions: **Open** and **Reveal in Explorer/Finder/Files**  
+- Double-click image → open in OS viewer  
+- Metadata table now shows a 📎 icon for rows with previewable files  
+- Preview detection via `find_preview_paths()` with safe fallbacks  
+- Text detection via `mimetypes.guess_type` + null-byte sniff  
+- Collapsed state persisted in settings  
+
+---
+
+# 🛠️ Bug Fixes & Stability
+
+- Fixed `_flush()` in ingestion pipelines to correctly detect and raise on failed writes  
+- Fixed CLIP crash on tiny images (<3×3 px) with a clear error message  
+- Fixed embedding nesting: `_l2_normalize` now flattens to 1D  
+- Truncated long error strings to avoid log flooding  
+- Silenced noisy third‑party loggers (`chromadb`, `sentence_transformers`, etc.)  
+- Fixed UI crash when metadata contained non‑JSON‑serializable types (e.g. `uuid.UUID`) via a new metadata sanitizer  
+
+---
+
+# 🎉 Summary
+
+0.7.0 transforms Vector Inspector into a **true multimodal semantic debugging tool**.  
+You can now ingest real documents and images, inspect their embeddings, preview their contents, and run text→image semantic search — all with a stable, production‑grade ingestion pipeline.
 
 ---

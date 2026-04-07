@@ -479,3 +479,163 @@ def test_copy_vector_json_exception(qtbot):
     qtbot.addWidget(pane)
     pane._current_item = {"id": "test", "embedding": BadEmbedding()}
     pane._copy_vector_json()  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# File Preview Section Tests
+# ---------------------------------------------------------------------------
+
+
+def test_file_preview_section_hidden_when_no_paths(qtbot, sample_item_data):
+    """Section is hidden when metadata has no previewable file paths."""
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane.update_item(sample_item_data)
+    assert pane.file_preview_section.isVisible() is False
+
+
+def test_file_preview_section_visible_for_image(qtbot, tmp_path):
+    """Section is shown when metadata contains an existing image path."""
+    img = tmp_path / "photo.png"
+    # Create a minimal valid PNG (1×1 white pixel)
+    import struct
+    import zlib
+
+    def _minimal_png() -> bytes:
+        sig = b"\x89PNG\r\n\x1a\n"
+        ihdr_data = struct.pack(">IIBBBBB", 4, 4, 8, 2, 0, 0, 0)
+        ihdr_crc = zlib.crc32(b"IHDR" + ihdr_data) & 0xFFFFFFFF
+        ihdr = struct.pack(">I", 13) + b"IHDR" + ihdr_data + struct.pack(">I", ihdr_crc)
+        raw = b""
+        for _ in range(4):
+            raw += b"\x00" + b"\xff\xff\xff" * 4
+        compressed = zlib.compress(raw)
+        idat_crc = zlib.crc32(b"IDAT" + compressed) & 0xFFFFFFFF
+        idat = struct.pack(">I", len(compressed)) + b"IDAT" + compressed + struct.pack(">I", idat_crc)
+        iend_crc = zlib.crc32(b"IEND") & 0xFFFFFFFF
+        iend = struct.pack(">I", 0) + b"IEND" + struct.pack(">I", iend_crc)
+        return sig + ihdr + idat + iend
+
+    img.write_bytes(_minimal_png())
+
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane.update_item(
+        {
+            "id": "img-1",
+            "document": "photo",
+            "metadata": {"file_path": str(img)},
+            "embedding": [0.1],
+        }
+    )
+
+    assert pane.file_preview_section.isVisible() is True
+
+
+def test_file_preview_section_visible_for_text(qtbot, tmp_path):
+    """Section is shown when metadata contains an existing text file path."""
+    txt = tmp_path / "readme.md"
+    txt.write_text("# Hello\nWorld\n")
+
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane.update_item(
+        {
+            "id": "doc-1",
+            "document": "readme",
+            "metadata": {"file_path": str(txt)},
+            "embedding": [0.1],
+        }
+    )
+
+    assert pane.file_preview_section.isVisible() is True
+
+
+def test_file_preview_clears_on_none(qtbot, tmp_path):
+    """File preview section hides when update_item receives None."""
+    txt = tmp_path / "readme.md"
+    txt.write_text("# Hello\n")
+
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+    pane.update_item(
+        {
+            "id": "doc-1",
+            "document": "readme",
+            "metadata": {"file_path": str(txt)},
+            "embedding": [0.1],
+        }
+    )
+    assert pane.file_preview_section.isVisible() is True
+
+    pane.update_item(None)
+    assert pane.file_preview_section.isVisible() is False
+
+
+# ---------------------------------------------------------------------------
+# UUID / non-JSON-serializable metadata regression tests  (Weaviate crash)
+# ---------------------------------------------------------------------------
+
+
+def test_update_item_uuid_in_metadata_does_not_crash(qtbot):
+    """Regression: UUID values in metadata must not raise TypeError (Weaviate).
+
+    Weaviate returns UUID objects in metadata fields such as cross-references
+    and internal identifiers.  Before the json_safe fix, this caused:
+        TypeError: Object of type UUID is not JSON serializable
+    """
+    import uuid
+
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+
+    item = {
+        "id": uuid.UUID("59b15ca8-89d4-47b6-abed-86fae7b46a85"),
+        "document": "Weaviate node",
+        "metadata": {
+            "node_id": uuid.UUID("59b15ca8-89d4-47b6-abed-86fae7b46a85"),
+            "ref_id": uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            "label": "Node",
+        },
+        "embedding": [0.1, 0.2],
+    }
+
+    # Must not raise
+    pane.update_item(item)
+
+    metadata_text = pane.metadata_text.toPlainText()
+    parsed = json.loads(metadata_text)
+    assert parsed["node_id"] == "59b15ca8-89d4-47b6-abed-86fae7b46a85"
+    assert parsed["ref_id"] == "00000000-0000-0000-0000-000000000001"
+
+
+def test_update_item_mixed_non_serializable_metadata_does_not_crash(qtbot):
+    """Regression: mixed non-JSON types (UUID, Path, frozenset) must not crash."""
+    import enum
+    import pathlib
+    import uuid
+
+    class Status(enum.Enum):
+        ACTIVE = "active"
+
+    pane = InlineDetailsPane(view_mode="data_browser")
+    qtbot.addWidget(pane)
+
+    item = {
+        "id": "test-mixed",
+        "document": "doc",
+        "metadata": {
+            "ref": uuid.UUID("12345678-1234-5678-1234-567812345678"),
+            "path": pathlib.Path("/data/file.txt"),
+            "status": Status.ACTIVE,
+            "tags": frozenset(["a", "b"]),
+        },
+        "embedding": [0.1],
+    }
+
+    pane.update_item(item)
+
+    metadata_text = pane.metadata_text.toPlainText()
+    parsed = json.loads(metadata_text)
+    assert parsed["ref"] == "12345678-1234-5678-1234-567812345678"
+    assert parsed["status"] == "active"

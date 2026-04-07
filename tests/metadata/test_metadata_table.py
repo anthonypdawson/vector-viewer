@@ -8,6 +8,10 @@ from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from vector_inspector.ui.views.metadata.context import MetadataContext
 from vector_inspector.ui.views.metadata.metadata_table import (
+    DOC_COL,
+    ID_COL,
+    PREVIEW_COL,
+    PREVIEW_ROLE,
     copy_vectors_to_json,
     find_updated_item_page,
     populate_table,
@@ -178,8 +182,8 @@ def test_populate_table_and_update_row(qtbot):
     qtbot.addWidget(table)
     populate_table(table, ctx)
     assert table.rowCount() == 2
-    assert table.columnCount() >= 3
-    assert table.item(0, 0).text() == "a"
+    assert table.columnCount() >= 4  # preview + ID + Document + metadata
+    assert table.item(0, ID_COL).text() == "a"
 
     updated = update_row_in_place(
         table,
@@ -188,7 +192,7 @@ def test_populate_table_and_update_row(qtbot):
     )
     assert updated is True
     assert ctx.current_data["documents"][0] == "doc a updated"
-    assert table.item(0, 1).text().startswith("doc a updated")
+    assert table.item(0, DOC_COL).text().startswith("doc a updated")
 
 
 def test_find_updated_item_page():
@@ -277,7 +281,7 @@ def test_populate_table_restores_column_order(qtbot):
 
     # First populate — sets up columns
     populate_table(table, ctx)
-    assert table.columnCount() >= 2
+    assert table.columnCount() >= 3  # preview + ID + Document
 
     # Second populate — exercises column order restoration code
     ctx.current_data = {
@@ -288,7 +292,7 @@ def test_populate_table_restores_column_order(qtbot):
     populate_table(table, ctx)
 
     assert table.rowCount() == 1
-    assert table.item(0, 0).text() == "b"
+    assert table.item(0, ID_COL).text() == "b"
 
 
 # ---------------------------------------------------------------------------
@@ -415,3 +419,112 @@ def test_update_row_with_metadata_columns(qtbot):
     assert result is True
     assert ctx.current_data["metadatas"][0]["name"] == "Bob"
     assert ctx.current_data["metadatas"][0]["age"] == "25"
+
+
+# ---------------------------------------------------------------------------
+# Preview icon column tests
+# ---------------------------------------------------------------------------
+
+
+def test_preview_column_no_previewable_path(qtbot):
+    """Row with no previewable path has empty preview cell."""
+    table = QTableWidget()
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = {
+        "ids": ["id1"],
+        "documents": ["doc"],
+        "metadatas": [{"title": "hello"}],
+    }
+    populate_table(table, ctx)
+
+    preview_item = table.item(0, PREVIEW_COL)
+    assert preview_item is not None
+    assert preview_item.text() == ""
+    assert preview_item.data(PREVIEW_ROLE) is False
+
+
+def test_preview_column_with_previewable_path(qtbot, tmp_path):
+    """Row with an existing file path gets a 📎 icon in the preview column."""
+    txt = tmp_path / "notes.txt"
+    txt.write_text("hello")
+
+    table = QTableWidget()
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = {
+        "ids": ["id1"],
+        "documents": ["doc"],
+        "metadatas": [{"file_path": str(txt)}],
+    }
+    populate_table(table, ctx)
+
+    preview_item = table.item(0, PREVIEW_COL)
+    assert preview_item is not None
+    assert preview_item.text() == "📎"
+    assert preview_item.data(PREVIEW_ROLE) is True
+    assert "preview" in preview_item.toolTip().lower()
+
+
+def test_preview_column_width(qtbot):
+    """Preview column is narrow (≤ 30px)."""
+    table = QTableWidget()
+    qtbot.addWidget(table)
+
+    ctx = MetadataContext(connection=None)
+    ctx.current_data = {
+        "ids": ["id1"],
+        "documents": ["doc"],
+        "metadatas": [{}],
+    }
+    populate_table(table, ctx)
+
+    assert table.columnWidth(PREVIEW_COL) <= 30
+
+
+# ---------------------------------------------------------------------------
+# _ingest_kind_for_path tests
+# ---------------------------------------------------------------------------
+
+
+from vector_inspector.ui.views.metadata.metadata_table import _ingest_kind_for_path
+
+
+class TestIngestKindForPath:
+    """_ingest_kind_for_path classifies paths using ingestion-pipeline helpers,
+    correctly handling .pdf/.docx (return 'document') unlike file_type() which
+    returns 'unknown' for those formats."""
+
+    def test_png_is_image(self, tmp_path):
+        f = tmp_path / "photo.png"
+        f.write_bytes(b"")
+        assert _ingest_kind_for_path(str(f)) == "image"
+
+    def test_jpeg_is_image(self, tmp_path):
+        f = tmp_path / "photo.jpg"
+        f.write_bytes(b"")
+        assert _ingest_kind_for_path(str(f)) == "image"
+
+    def test_pdf_is_document(self, tmp_path):
+        """PDF must be 'document', not 'unknown' (regression for file_type() mismatch)."""
+        f = tmp_path / "doc.pdf"
+        f.write_bytes(b"%PDF-1.4")
+        assert _ingest_kind_for_path(str(f)) == "document"
+
+    def test_docx_is_document(self, tmp_path):
+        """DOCX must be 'document', not 'unknown'."""
+        f = tmp_path / "doc.docx"
+        f.write_bytes(b"PK\x03\x04")
+        assert _ingest_kind_for_path(str(f)) == "document"
+
+    def test_txt_is_document(self, tmp_path):
+        f = tmp_path / "notes.txt"
+        f.write_text("hello")
+        assert _ingest_kind_for_path(str(f)) == "document"
+
+    def test_binary_is_none(self, tmp_path):
+        f = tmp_path / "data.bin"
+        f.write_bytes(b"\x00\x01\x02\x03\xff")
+        assert _ingest_kind_for_path(str(f)) is None

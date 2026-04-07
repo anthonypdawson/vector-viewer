@@ -157,6 +157,7 @@ class MainWindow(InspectorShell):
                 self.info_panel = widget
             elif i == InspectorTabs.DATA_TAB:
                 self.metadata_view = widget
+                self.metadata_view.connection_manager = self.connection_manager
             elif i == InspectorTabs.SEARCH_TAB:
                 self.search_view = widget
             # Visualization is lazy-loaded, so it's a placeholder for now
@@ -224,6 +225,16 @@ class MainWindow(InspectorShell):
         create_collection_action.setShortcut("Ctrl+T")
         create_collection_action.triggered.connect(self._create_test_collection)
         tools_menu.addAction(create_collection_action)
+
+        tools_menu.addSeparator()
+
+        import_images_action = QAction("Import &Images...", self)
+        import_images_action.triggered.connect(self._ingest_images)
+        tools_menu.addAction(import_images_action)
+
+        import_documents_action = QAction("Import &Documents...", self)
+        import_documents_action.triggered.connect(self._ingest_documents)
+        tools_menu.addAction(import_documents_action)
 
         # View menu
         view_menu = menubar.addMenu("&View")
@@ -728,6 +739,20 @@ class MainWindow(InspectorShell):
             on_finished=_on_refresh_done,
             on_error=_on_refresh_error,
         )
+
+    def _ingest_images(self) -> None:
+        """Trigger image ingestion via the metadata view."""
+        if self.metadata_view is None or not hasattr(self.metadata_view, "_run_ingestion"):
+            QMessageBox.information(self, "Not Available", "Switch to the Data tab first.")
+            return
+        self.metadata_view._run_ingestion("image")
+
+    def _ingest_documents(self) -> None:
+        """Trigger document ingestion via the metadata view."""
+        if self.metadata_view is None or not hasattr(self.metadata_view, "_run_ingestion"):
+            QMessageBox.information(self, "Not Available", "Switch to the Data tab first.")
+            return
+        self.metadata_view._run_ingestion("document")
 
     def _restore_session(self):
         """Restore previously active connections on startup."""

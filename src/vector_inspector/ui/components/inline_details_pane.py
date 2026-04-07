@@ -2,16 +2,19 @@
 
 import hashlib
 import json
+import os
+import sys
 from datetime import datetime
 from typing import Any, Optional
 
-from PySide6.QtCore import Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QTextEdit,
@@ -21,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.services.telemetry_service import TelemetryService
+from vector_inspector.utils.json_safe import make_json_safe
 
 
 class CollapsibleSection(QWidget):
@@ -131,6 +135,9 @@ class InlineDetailsPane(QWidget):
         # Document preview
         self._create_document_preview(content_layout)
 
+        # File preview section (shown only when previewable paths are found)
+        self._create_file_preview_section(content_layout)
+
         # Metadata section
         self._create_metadata_section(content_layout)
 
@@ -208,6 +215,129 @@ class InlineDetailsPane(QWidget):
             }
         """)
         parent_layout.addWidget(self.document_preview)
+
+    def _create_file_preview_section(self, parent_layout: QVBoxLayout):
+        """Create collapsible file preview section (initially hidden)."""
+        self.file_preview_section = CollapsibleSection("File Preview")
+        self.file_preview_section.setVisible(False)
+
+        self._preview_container = QVBoxLayout()
+        container_widget = QWidget()
+        container_widget.setLayout(self._preview_container)
+        self.file_preview_section.add_widget(container_widget)
+
+        parent_layout.addWidget(self.file_preview_section)
+
+    def _update_file_preview(self, metadata: dict[str, Any]):
+        """Populate file preview section from metadata paths."""
+        from vector_inspector.utils.file_preview_utils import file_type, find_preview_paths
+
+        # Clear existing previews
+        while self._preview_container.count():
+            child = self._preview_container.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        paths = find_preview_paths(metadata)
+        if not paths:
+            self.file_preview_section.setVisible(False)
+            return
+
+        widgets_before = self._preview_container.count()
+        for path in paths:
+            ft = file_type(path)
+            if ft == "image":
+                self._add_image_preview(path, max_w=160, max_h=120)
+            elif ft == "text":
+                self._add_text_preview(path, max_lines=30, max_bytes=2048)
+
+        if self._preview_container.count() > widgets_before:
+            self.file_preview_section.setVisible(True)
+            if self.file_preview_section.is_collapsed():
+                self.file_preview_section.set_collapsed(False)
+        else:
+            self.file_preview_section.setVisible(False)
+
+    def _add_image_preview(self, path: str, max_w: int = 160, max_h: int = 120):
+        """Add an image thumbnail to the preview container."""
+        try:
+            from vector_inspector.utils.file_preview_utils import load_image_pixmap
+
+            pixmap = load_image_pixmap(path, max_w, max_h)
+        except Exception:
+            return
+
+        img_label = QLabel()
+        img_label.setPixmap(pixmap)
+        img_label.setToolTip(path)
+        img_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        img_label.customContextMenuRequested.connect(lambda _pos, p=path: self._show_preview_context_menu(p))
+        img_label.mouseDoubleClickEvent = lambda _evt, p=path: QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+        self._preview_container.addWidget(img_label)
+
+        name_label = QLabel(os.path.basename(path))
+        name_label.setStyleSheet("color: #a0a0a0; font-size: 9pt;")
+        self._preview_container.addWidget(name_label)
+
+    def _add_text_preview(self, path: str, max_lines: int = 30, max_bytes: int = 2048):
+        """Add a text preview to the preview container."""
+        try:
+            from vector_inspector.utils.file_preview_utils import read_text_preview
+
+            content, truncated = read_text_preview(path, max_lines=max_lines, max_bytes=max_bytes)
+        except Exception:
+            return
+
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setMaximumHeight(100)
+        text_edit.setPlainText(content)
+        text_edit.setToolTip(path)
+        text_edit.setStyleSheet("""
+            QTextEdit {
+                background: #1e1e1e;
+                border: 1px solid #3e3e42;
+                border-radius: 4px;
+                padding: 4px;
+                color: #d4d4d4;
+                font-size: 9pt;
+            }
+        """)
+        self._preview_container.addWidget(text_edit)
+
+        if truncated:
+            trunc_label = QLabel("… (truncated)")
+            trunc_label.setStyleSheet("color: #a0a0a0; font-size: 8pt;")
+            self._preview_container.addWidget(trunc_label)
+
+    def _show_preview_context_menu(self, path: str):
+        """Show right-click context menu for a preview image."""
+        menu = QMenu(self)
+        open_action = menu.addAction("Open")
+        open_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+
+        if sys.platform == "darwin":
+            reveal_label = "Reveal in Finder"
+        elif sys.platform == "win32":
+            reveal_label = "Reveal in Explorer"
+        else:
+            reveal_label = "Reveal in Files"
+        reveal_action = menu.addAction(reveal_label)
+        reveal_action.triggered.connect(lambda: self._reveal_in_file_manager(path))
+        menu.popup(self.cursor().pos())
+
+    @staticmethod
+    def _reveal_in_file_manager(path: str):
+        """Open the containing folder and select the file."""
+        import subprocess
+
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", path])
+        elif sys.platform == "win32":
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+        else:
+            folder = os.path.dirname(path)
+            subprocess.Popen(["xdg-open", folder])
 
     def _create_metadata_section(self, parent_layout: QVBoxLayout):
         """Create collapsible metadata section."""
@@ -366,6 +496,9 @@ class InlineDetailsPane(QWidget):
         else:
             self.document_preview.setText("(No document text)")
 
+        # File preview
+        self._update_file_preview(metadata)
+
         # Metadata (filter out already-displayed fields)
         filtered_metadata = {
             k: v
@@ -373,7 +506,8 @@ class InlineDetailsPane(QWidget):
             if k not in ["updated_at", "created_at", "cluster", "cluster_id", "embedding_dimension"]
         }
         if filtered_metadata:
-            self.metadata_text.setText(json.dumps(filtered_metadata, indent=2))
+            safe = make_json_safe(filtered_metadata)
+            self.metadata_text.setText(json.dumps(safe, indent=2))
         else:
             self.metadata_text.setText("(No metadata)")
 
@@ -401,6 +535,7 @@ class InlineDetailsPane(QWidget):
             self.similarity_label.setText("")
 
         self.document_preview.setText("")
+        self.file_preview_section.setVisible(False)
         self.metadata_text.setText("")
         self.vector_text.setText("")
 
@@ -435,7 +570,10 @@ class InlineDetailsPane(QWidget):
                     },
                     indent=2,
                 )
-                QApplication.clipboard().setText(json_str)
+                safe = make_json_safe(
+                    {"id": self._current_item.get("id"), "vector": vector_list, "dimension": len(vector_list)}
+                )
+                QApplication.clipboard().setText(json.dumps(safe, indent=2))
             except Exception:
                 pass
 
@@ -450,9 +588,13 @@ class InlineDetailsPane(QWidget):
         vector_collapsed = self.settings_service.get(f"{key_prefix}_vector_collapsed", True)
         self.vector_section.set_collapsed(vector_collapsed)
 
+        file_preview_collapsed = self.settings_service.get(f"{key_prefix}_file_preview_collapsed", False)
+        self.file_preview_section.set_collapsed(file_preview_collapsed)
+
     def save_state(self):
         """Save pane state to settings."""
         key_prefix = f"inline_details_{self.view_mode}"
 
         self.settings_service.set(f"{key_prefix}_metadata_collapsed", self.metadata_section.is_collapsed())
         self.settings_service.set(f"{key_prefix}_vector_collapsed", self.vector_section.is_collapsed())
+        self.settings_service.set(f"{key_prefix}_file_preview_collapsed", self.file_preview_section.is_collapsed())

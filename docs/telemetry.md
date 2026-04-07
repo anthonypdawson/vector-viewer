@@ -57,6 +57,8 @@ The following table lists all implemented telemetry events and their source file
 |------------|----------|------|
 | `session.start` | Session | `src/vector_inspector/main.py` |
 | `session.end` | Session | `src/vector_inspector/main.py` |
+| `app_launch` | Session | `src/vector_inspector/services/telemetry_service.py` |
+| `cli_first_use` | Session | `src/vector_inspector/_cli.py` |
 | `feature.toggled` | Features | `src/vector_inspector/extensions/telemetry_settings_panel.py` |
 | `ui.collection_selected` | UI | `src/vector_inspector/ui/main_window.py` |
 | `ui.table_view_opened` | UI | `src/vector_inspector/ui/views/metadata_view.py` |
@@ -67,6 +69,7 @@ The following table lists all implemented telemetry events and their source file
 | `ui.visualization_interacted` | UI | `src/vector_inspector/ui/views/visualization/plot_panel.py` |
 | `ui.embedding_preview_opened` | UI | `src/vector_inspector/ui/components/inline_details_pane.py` |
 | `ui.settings_opened` | UI | `src/vector_inspector/ui/main_window.py` |
+| `update_clicked` | UI | `src/vector_inspector/ui/main_window.py` |
 | `ui.refresh_triggered` | UI | `main_window.py`, `metadata_view.py`, `search_view.py` |
 | `db.connection_attempt` | DB | `ui/controllers/connection_controller.py` |
 | `db.connection_result` | DB | `ui/controllers/connection_controller.py` |
@@ -104,6 +107,29 @@ Emitted when the GUI closes.
 - session_id
 - duration_ms
 - exit_reason (`normal` | `crash` | `forced_close`)
+
+---
+
+### `app_launch`
+Emitted early during application startup to capture OS and minimal hardware context.
+
+**Metadata**
+- `os`
+- `hardware` (summary: CPU, GPU, RAM, etc.)
+
+Emitted by `TelemetryService.send_launch_ping()` (triggered from `main.py` at startup).
+
+---
+
+### `cli_first_use`
+Emitted the first time the CLI is invoked with common early-exit flags (e.g. `--version`, `--help`).
+
+**Metadata**
+- `command` (e.g. `--version`)
+- `platform`
+- `ts`
+
+Queued by `src/vector_inspector/_cli.py` via `TelemetryService.queue_event()`.
 
 ---
 
@@ -196,6 +222,16 @@ Emitted when the Settings dialog opens.
 
 **Metadata**
 - section
+
+---
+
+### `update_clicked`
+Emitted when the user clicks the "update" or "download latest" action in the UI (update flow).
+
+**Metadata**
+- `latest_version`
+
+Typically emitted from `src/vector_inspector/ui/main_window.py` when an update action is triggered.
 
 ---
 

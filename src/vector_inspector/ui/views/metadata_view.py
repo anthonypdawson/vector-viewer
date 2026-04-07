@@ -5,7 +5,7 @@ import time
 from datetime import UTC
 from typing import Any, Optional
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vector_inspector.core.connection_manager import ConnectionInstance
+from vector_inspector.core.connection_manager import ConnectionInstance, ConnectionManager
 from vector_inspector.core.logging import log_info
 from vector_inspector.services import CollectionLoader, MetadataLoader, ThreadedTaskRunner
 from vector_inspector.services.settings_service import SettingsService
@@ -53,6 +53,10 @@ from vector_inspector.ui.views.metadata.metadata_table import _show_item_details
 class MetadataView(QWidget):
     """View for browsing collection data and metadata."""
 
+    # Emitted from the background ingestion thread; connected to
+    # loading_dialog.setLabelText so the progress label updates on the GUI thread.
+    _ingestion_progress = Signal(str)
+
     ctx: MetadataContext
     app_state: AppState
     task_runner: ThreadedTaskRunner
@@ -62,6 +66,7 @@ class MetadataView(QWidget):
     settings_service: SettingsService
     import_thread: Optional[DataImportThread]
     filter_reload_timer: QTimer
+    connection_manager: Optional[ConnectionManager]
 
     def __init__(
         self,
@@ -74,6 +79,7 @@ class MetadataView(QWidget):
         # Store AppState and task runner
         self.app_state = app_state
         self.task_runner = task_runner
+        self.connection_manager: Optional[ConnectionManager] = None
         self.collection_loader = CollectionLoader()
         self.metadata_loader = MetadataLoader()
 
@@ -208,6 +214,8 @@ class MetadataView(QWidget):
         self.action_buttons.delete_clicked.connect(self._delete_selected)
         self.action_buttons.export_requested.connect(self._export_data)
         self.action_buttons.import_requested.connect(self._import_data)
+        self.action_buttons.ingest_images_requested.connect(self._ingest_images)
+        self.action_buttons.ingest_documents_requested.connect(self._ingest_documents)
         # Get widgets we need to reference
         self.refresh_button = self.action_buttons.refresh_button
         self.add_button = self.action_buttons.add_button
@@ -938,6 +946,170 @@ class MetadataView(QWidget):
         from vector_inspector.ui.views.metadata.import_export_helpers import on_import_error
 
         on_import_error(self.loading_dialog, self, error_message)
+
+    # ── Ingestion handlers ─────────────────────────────────────────────────
+
+    def _ingest_images(self) -> None:
+        """Open ingestion dialog and run image ingestion pipeline."""
+        self._run_ingestion("image")
+
+    def _ingest_documents(self) -> None:
+        """Open ingestion dialog and run document ingestion pipeline."""
+        self._run_ingestion("document")
+
+    def _run_ingestion(self, file_kind: str) -> None:
+        """Show ingestion config dialog then run the ingestion in a background thread."""
+        from vector_inspector.ui.components.ingestion_dialog import IngestionDialog
+
+        if not self.ctx.connection:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(self, "Not Connected", "Connect to a database before ingesting files.")
+            return
+
+        dlg = IngestionDialog(
+            self,
+            file_kind=file_kind,  # type: ignore[arg-type]
+            connection=self.ctx.connection,
+            current_collection=self.ctx.current_collection,
+        )
+        if dlg.exec() != IngestionDialog.DialogCode.Accepted:
+            return
+
+        from vector_inspector.services.collection_service import CollectionService
+        from vector_inspector.services.file_ingestion_service import FileIngestionService
+
+        service = FileIngestionService()
+        collection_service = CollectionService()
+        connection = self.ctx.connection
+        collection_name = dlg.collection_name
+        new_collection_vector_size = dlg.new_collection_vector_size
+
+        # Copy all dialog properties to plain locals before the background thread
+        # starts — accessing Qt widgets from a non-GUI thread is not safe.
+        ingestion_file_paths: list[str] = list(dlg.file_paths)
+        ingestion_folder_mode: bool = dlg.folder_mode
+        ingestion_batch_size: int = dlg.batch_size
+        ingestion_recursive: bool = dlg.recursive
+        ingestion_overwrite: bool = dlg.overwrite
+        ingestion_max_chunk_size: int = dlg.max_chunk_size
+
+        # Wire progress signal → loading dialog label (safe across threads).
+        self._ingestion_progress.connect(self.loading_dialog.setLabelText)
+
+        def _progress_cb(idx: int, total: int, filename: str) -> None:
+            if total > 0 and filename:
+                msg = f"Ingesting ({idx + 1} of {total}): {filename}"
+            elif total > 0:
+                msg = f"Ingesting ({idx + 1} of {total})…"
+            else:
+                msg = "Ingesting files…"
+            self._ingestion_progress.emit(msg)
+
+        def _run() -> object:
+            # Create the collection now (inside the background thread) if the user
+            # chose "+ New" in the dialog.  CollectionService handles backends that
+            # don't require an explicit dimension (e.g. ChromaDB).
+            if new_collection_vector_size is not None:
+                collection_service.create_collection(
+                    connection=connection,
+                    collection_name=collection_name,
+                    dimension=new_collection_vector_size,
+                )
+
+            if ingestion_folder_mode:
+                return service.ingest_folder(
+                    folder_path=ingestion_file_paths[0],
+                    connection=connection,
+                    collection_name=collection_name,
+                    file_kind=file_kind,  # type: ignore[arg-type]
+                    batch_size=ingestion_batch_size,
+                    recursive=ingestion_recursive,
+                    overwrite=ingestion_overwrite,
+                    max_chunk_size=ingestion_max_chunk_size,
+                    progress_callback=_progress_cb,
+                )
+            return service.ingest_files(
+                file_paths=ingestion_file_paths,
+                connection=connection,
+                collection_name=collection_name,
+                file_kind=file_kind,  # type: ignore[arg-type]
+                batch_size=ingestion_batch_size,
+                overwrite=ingestion_overwrite,
+                max_chunk_size=ingestion_max_chunk_size,
+                progress_callback=_progress_cb,
+            )
+
+        def _on_done(result: object) -> None:
+            self.loading_dialog.hide()
+            self._ingestion_progress.disconnect(self.loading_dialog.setLabelText)
+            from vector_inspector.services.file_ingestion_service import IngestionResult
+
+            if isinstance(result, IngestionResult):
+                if new_collection_vector_size is not None and self.connection_manager is not None:
+                    try:
+                        self.connection_manager.update_collections(
+                            connection.id,
+                            connection.list_collections(),
+                        )
+                    except Exception:
+                        pass
+
+                # Persist the embedding model so the Info panel shows it rather than "Auto-detect".
+                if result.succeeded > 0:
+                    try:
+                        _MODEL_FOR_KIND = {
+                            "image": ("openai/clip-vit-base-patch32", "clip"),
+                            "document": ("all-MiniLM-L6-v2", "sentence-transformer"),
+                        }
+                        model_name, model_type = _MODEL_FOR_KIND.get(file_kind, (None, None))
+                        if model_name and model_type:
+                            profile_name = getattr(connection, "name", "") or ""
+                            self.app_state.settings_service.save_embedding_model(
+                                profile_name,
+                                collection_name,
+                                model_name,
+                                model_type,
+                            )
+                            # Invalidate the collection cache so the Info panel reloads
+                            # fresh data (including the newly-saved embedding model).
+                            self.app_state.cache_manager.invalidate(
+                                getattr(connection, "id", None),
+                                collection_name,
+                            )
+                            log_info(
+                                "Saved embedding model '%s' (%s) for collection '%s'",
+                                model_name,
+                                model_type,
+                                collection_name,
+                            )
+                    except Exception:
+                        pass  # Non-critical — ingestion already succeeded
+
+                log_info("File ingestion complete — %s", result.summary())
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.information(self, "Ingestion Complete", result.summary())
+                if collection_name == self.ctx.current_collection:
+                    self._refresh_data()
+
+        def _on_error(msg: str) -> None:
+            self.loading_dialog.hide()
+            self._ingestion_progress.disconnect(self.loading_dialog.setLabelText)
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.critical(self, "Ingestion Error", msg)
+            from vector_inspector.core.logging import log_error
+
+            log_error("Ingestion error: %s", msg)
+
+        self.loading_dialog.show_loading("Ingesting files…")
+        self.task_runner.run_task(
+            _run,
+            task_id="file_ingestion",
+            on_finished=_on_done,
+            on_error=_on_error,
+        )
 
     def closeEvent(self, event):
         """Save state before closing."""

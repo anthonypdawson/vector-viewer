@@ -32,6 +32,8 @@ class MetadataActionButtons(QWidget):
     delete_clicked = Signal()
     export_requested = Signal(str)  # format_type
     import_requested = Signal(str)  # format_type
+    ingest_images_requested = Signal()
+    ingest_documents_requested = Signal()
     generate_on_edit_changed = Signal(bool)  # checked
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -88,6 +90,9 @@ class MetadataActionButtons(QWidget):
         import_menu.addAction("Import from JSON", lambda: self.import_requested.emit("json"))
         import_menu.addAction("Import from CSV", lambda: self.import_requested.emit("csv"))
         import_menu.addAction("Import from Parquet", lambda: self.import_requested.emit("parquet"))
+        import_menu.addSeparator()
+        import_menu.addAction("🖼️ Import Images…", self.ingest_images_requested.emit)
+        import_menu.addAction("📄 Import Documents…", self.ingest_documents_requested.emit)
         self.import_button.setMenu(import_menu)
         layout.addWidget(self.import_button)
 

@@ -73,6 +73,16 @@ class VectorDBConnection(ABC):
         """Create a collection/index with a given vector size and distance metric."""
         pass
 
+    @property
+    def supports_configurable_vector_size(self) -> bool:
+        """Return True if this backend requires/supports an explicit vector size at collection creation.
+
+        Backends like ChromaDB infer the dimension from the first inserted vector and ignore any
+        value passed here, so they should return False to hide the dimension field from the UI.
+        Backends like Qdrant, Milvus, and pgvector *require* the size upfront and return True.
+        """
+        return True
+
     @abstractmethod
     def add_items(
         self,

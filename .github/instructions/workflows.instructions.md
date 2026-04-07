@@ -43,7 +43,7 @@ This file is cleared when the version is incremented and a new release is create
 
 ```markdown
 # Release Notes (0.x.y) — YYYY-MM-DD
-
+Short introductory paragraph summarizing the release highlights and new capabilities.
 ## Section heading
 - Individual change
 - Individual change
@@ -56,6 +56,7 @@ This file is cleared when the version is incremented and a new release is create
 ```
 
 - The heading uses the *next* version number and today's date (update the date whenever new entries are added).
+- Format of each heading does not have to be exact to the example, but should be consistent and parseable by the release workflow.
 - Group changes under short section headings (e.g. `## UI`, `## Providers`, `## Testing`, `## Bug Fixes`). Omit a section if it has no entries.
 - Each bullet is one user-visible or developer-visible change, written in plain language.
 - The file ends with a horizontal rule `---` on its own line.

@@ -1,8 +1,11 @@
 """Background threads for search view operations."""
 
+import traceback
 from typing import Any, Optional
 
 from PySide6.QtCore import QThread, Signal
+
+from vector_inspector.core.logging import log_error
 
 
 class SearchThread(QThread):
@@ -47,4 +50,10 @@ class SearchThread(QThread):
             else:
                 self.error.emit("Search failed")
         except Exception as e:
+            log_error(
+                "Search failed for collection '%s': %s\n%s",
+                self.collection,
+                e,
+                traceback.format_exc(),
+            )
             self.error.emit(str(e))

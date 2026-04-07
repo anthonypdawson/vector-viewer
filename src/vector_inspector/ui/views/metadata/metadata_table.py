@@ -3,7 +3,7 @@
 import json
 import math
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -14,9 +14,18 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from vector_inspector.core.logging import log_info
+from vector_inspector.core.logging import log_error, log_info
 from vector_inspector.ui.components.item_details_dialog import ItemDetailsDialog
 from vector_inspector.ui.views.metadata.context import MetadataContext
+
+# Column index constants — preview icon sits at column 0.
+PREVIEW_COL = 0
+ID_COL = 1
+DOC_COL = 2
+META_START_COL = 3
+
+#: Custom data role storing a bool — True when the row has a previewable file.
+PREVIEW_ROLE = Qt.ItemDataRole.UserRole + 10
 
 
 def populate_table(
@@ -44,8 +53,8 @@ def populate_table(
         table.setRowCount(0)
         return
 
-    # Determine columns
-    columns: list[str] = ["ID", "Document"]
+    # Determine columns — preview icon column at position 0
+    columns: list[str] = ["", "ID", "Document"]
     metadata_keys: list[str] = []
     if metadatas and metadatas[0]:
         metadata_keys = list(metadatas[0].keys())
@@ -100,28 +109,45 @@ def populate_table(
 
     # Populate rows
     # Iterate by index to tolerate missing documents/metadatas while ids is primary.
+    from vector_inspector.utils.file_preview_utils import find_preview_paths
+
     for row, id_val in enumerate(ids):
+        # Preview icon column
+        meta = metadatas[row] if row < len(metadatas) else {}
+        has_preview = bool(meta and find_preview_paths(meta, candidates_only=True))
+        preview_item = QTableWidgetItem("📎" if has_preview else "")
+        preview_item.setData(PREVIEW_ROLE, has_preview)
+        if has_preview:
+            preview_item.setToolTip("This entry has a file preview available")
+        preview_item.setFlags(preview_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        table.setItem(row, PREVIEW_COL, preview_item)
+
         # ID column
-        table.setItem(row, 0, QTableWidgetItem(str(id_val)))
+        table.setItem(row, ID_COL, QTableWidgetItem(str(id_val)))
 
         # Document column
         doc = documents[row] if row < len(documents) else ""
         doc_text = str(doc) if doc else ""
         if len(doc_text) > 100:
             doc_text = doc_text[:100] + "..."
-        table.setItem(row, 1, QTableWidgetItem(doc_text))
+        table.setItem(row, DOC_COL, QTableWidgetItem(doc_text))
 
         # Metadata columns
-        meta = metadatas[row] if row < len(metadatas) else {}
         if meta:
-            for col_idx, key in enumerate(metadata_keys, start=2):
+            for col_idx, key in enumerate(metadata_keys, start=META_START_COL):
                 try:
                     value = meta.get(key, "")
                 except Exception:
                     value = ""
                 table.setItem(row, col_idx, QTableWidgetItem(str(value)))
 
+    # Fix preview column width
+    table.setColumnWidth(PREVIEW_COL, 28)
+    header.setSectionResizeMode(PREVIEW_COL, header.ResizeMode.Fixed)
+
     table.resizeColumnsToContents()
+    # Re-pin preview column after resizeColumnsToContents
+    table.setColumnWidth(PREVIEW_COL, 28)
 
 
 def copy_vectors_to_json(
@@ -256,6 +282,93 @@ def update_pagination_controls(
     next_button.setEnabled(has_more)
 
 
+def _ingest_kind_for_path(path: str) -> Literal["image", "document"] | None:
+    """Return the ingestion kind for *path* using pipeline-aware extension logic.
+
+    Uses ``_is_image_file`` / ``_is_document_file`` from the ingestion service
+    so that .pdf and .docx are correctly classified as 'document', unlike
+    ``file_type()`` which returns 'unknown' for those formats.
+    Returns None when the path cannot be handled by either pipeline.
+    """
+    from vector_inspector.services.file_ingestion_service import _is_document_file, _is_image_file
+
+    if _is_image_file(path):
+        return "image"
+    if _is_document_file(path):
+        return "document"
+    return None
+
+
+def _reingest_item(table: QTableWidget, ctx: MetadataContext, row: int) -> None:
+    """Re-ingest a single item's source file (overwrite=True).
+
+    Runs the heavy ingestion work in a background ``TaskRunner`` thread so the
+    GUI never freezes during model loading or embedding.
+    """
+    import os
+
+    metadatas = (ctx.current_data or {}).get("metadatas", [])
+    item_meta: dict = metadatas[row] if row < len(metadatas) and metadatas[row] else {}
+    file_path_val: str = item_meta.get("file_path", "")
+    if not file_path_val or not os.path.isfile(file_path_val):
+        QMessageBox.warning(table, "File Not Found", f"Cannot locate file: {file_path_val or '(no path)'}")
+        return
+
+    answer = QMessageBox.question(
+        table,
+        "Re-ingest File",
+        f"Re-ingest and overwrite entries for:\n{file_path_val}",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+    )
+    if answer != QMessageBox.StandardButton.Yes:
+        return
+
+    kind = _ingest_kind_for_path(file_path_val)
+    if kind is None:
+        QMessageBox.warning(table, "Unsupported File", f"Cannot ingest file type: {os.path.splitext(file_path_val)[1]}")
+        return
+
+    # Snapshot context values before the background thread starts.
+    _connection = ctx.connection
+    _collection = ctx.current_collection or ""
+
+    from PySide6.QtWidgets import QProgressDialog
+
+    from vector_inspector.services.file_ingestion_service import FileIngestionService
+    from vector_inspector.services.task_runner import TaskRunner
+
+    progress_dlg = QProgressDialog("Re-ingesting file…", None, 0, 0, table)
+    progress_dlg.setWindowTitle("Re-ingest")
+    progress_dlg.setCancelButton(None)
+    progress_dlg.setModal(True)
+    progress_dlg.show()
+
+    def _do_ingest():
+        return FileIngestionService().ingest_files(
+            file_paths=[file_path_val],
+            connection=_connection,
+            collection_name=_collection,
+            file_kind=kind,
+            overwrite=True,
+        )
+
+    def _on_done(result) -> None:
+        progress_dlg.hide()
+        QMessageBox.information(table, "Re-ingest Complete", result.summary())
+
+    def _on_error(msg: str) -> None:
+        progress_dlg.hide()
+        log_error("Re-ingest failed: %s", msg)
+        QMessageBox.critical(table, "Re-ingest Failed", msg)
+
+    runner = TaskRunner(_do_ingest)
+    runner.setParent(table)  # Qt parent keeps runner alive until finished
+    runner.result_ready.connect(_on_done)
+    runner.error.connect(_on_error)
+    runner.finished.connect(runner.deleteLater)
+    runner.start()
+
+
 def show_context_menu(
     table: QTableWidget,
     position: Any,  # QPoint
@@ -299,7 +412,18 @@ def show_context_menu(
 
     # Add "Edit" action
     edit_action = menu.addAction("✏️ Edit")
-    edit_action.triggered.connect(lambda: on_row_double_clicked_callback(table.model().index(row, 0)))
+    edit_action.triggered.connect(lambda: on_row_double_clicked_callback(table.model().index(row, ID_COL)))
+
+    # Add "Re-ingest file…" action (only when a file_path is found in item metadata)
+    metadatas = current_data.get("metadatas", [])
+    item_meta: dict = metadatas[row] if row < len(metadatas) and metadatas[row] else {}
+    # parent_id is a hash, not a path — only use file_path key
+    file_path_val: str = item_meta.get("file_path", "")
+    reingest_action = menu.addAction("🔄 Re-ingest file…")
+    import os
+
+    reingest_action.setEnabled(bool(file_path_val and os.path.isfile(file_path_val)))
+    reingest_action.triggered.connect(lambda: _reingest_item(table, ctx, row))
 
     # Add separator
     menu.addSeparator()
@@ -405,18 +529,29 @@ def update_row_in_place(
         doc_text = str(current_data["documents"][row_idx]) if current_data["documents"][row_idx] else ""
         if len(doc_text) > 100:
             doc_text = doc_text[:100] + "..."
-        table.setItem(row_idx, 1, QTableWidgetItem(doc_text))
+        table.setItem(row_idx, DOC_COL, QTableWidgetItem(doc_text))
+
+        # Update preview icon
+        from vector_inspector.utils.file_preview_utils import find_preview_paths
+
+        new_meta = current_data["metadatas"][row_idx] if row_idx < len(current_data.get("metadatas", [])) else {}
+        has_preview = bool(new_meta and find_preview_paths(new_meta))
+        preview_item = QTableWidgetItem("📎" if has_preview else "")
+        preview_item.setData(PREVIEW_ROLE, has_preview)
+        if has_preview:
+            preview_item.setToolTip("This entry has a file preview available")
+        table.setItem(row_idx, PREVIEW_COL, preview_item)
 
         # Update metadata columns based on current header names
         metadata_keys: list[str] = []
-        for col in range(2, table.columnCount()):
+        for col in range(META_START_COL, table.columnCount()):
             hdr = table.horizontalHeaderItem(col)
             if hdr:
                 metadata_keys.append(hdr.text())
 
         if "metadatas" in current_data:
             meta = current_data["metadatas"][row_idx]
-            for col_idx, key in enumerate(metadata_keys, start=2):
+            for col_idx, key in enumerate(metadata_keys, start=META_START_COL):
                 value = meta.get(key, "")
                 table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
 

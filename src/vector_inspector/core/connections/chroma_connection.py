@@ -14,14 +14,25 @@ from vector_inspector.core.logging import log_error, log_info
 
 
 class DimensionAwareEmbeddingFunction(EmbeddingFunction):
-    """Embedding function that selects model based on collection's expected dimension."""
+    """Embedding function that selects model based on collection's expected dimension.
 
-    def __init__(self, expected_dimension: int):
+    If *model_name* and *model_type* are supplied the dimension heuristic is skipped
+    and the explicit model is used instead.  This ensures that collections whose
+    embedding model was recorded in SettingsService (e.g. CLIP image collections)
+    produce query vectors with the correct encoder.
+    """
+
+    def __init__(
+        self,
+        expected_dimension: int,
+        model_name: str | None = None,
+        model_type: str | None = None,
+    ):
         """Initialize with expected dimension (model loaded lazily on first use)."""
         self.expected_dimension = expected_dimension
         self.model = None
-        self.model_name = None
-        self.model_type = None
+        self.model_name = model_name
+        self.model_type = model_type
         self._initialized = False
 
     def _ensure_model_loaded(self):
@@ -29,16 +40,27 @@ class DimensionAwareEmbeddingFunction(EmbeddingFunction):
         if self._initialized:
             return
 
-        from vector_inspector.core.embedding_utils import get_embedding_model_for_dimension
+        if self.model_name and self.model_type:
+            # Explicit model provided — skip dimension heuristic
+            from vector_inspector.core.embedding_utils import load_embedding_model
 
-        log_info("[ChromaDB] Loading embedding model for %dd vectors...", self.expected_dimension)
-        self.model, self.model_name, self.model_type = get_embedding_model_for_dimension(self.expected_dimension)
-        log_info(
-            "[ChromaDB] Using %s model '%s' for %dd embeddings",
-            self.model_type,
-            self.model_name,
-            self.expected_dimension,
-        )
+            log_info(
+                "[ChromaDB] Loading explicit %s model '%s' for query embedding",
+                self.model_type,
+                self.model_name,
+            )
+            self.model = load_embedding_model(self.model_name, self.model_type)
+        else:
+            from vector_inspector.core.embedding_utils import get_embedding_model_for_dimension
+
+            log_info("[ChromaDB] Loading embedding model for %dd vectors...", self.expected_dimension)
+            self.model, self.model_name, self.model_type = get_embedding_model_for_dimension(self.expected_dimension)
+            log_info(
+                "[ChromaDB] Using %s model '%s' for %dd embeddings",
+                self.model_type,
+                self.model_name,
+                self.expected_dimension,
+            )
         self._initialized = True
 
     def __call__(self, input: Documents) -> Embeddings:
@@ -46,6 +68,8 @@ class DimensionAwareEmbeddingFunction(EmbeddingFunction):
         self._ensure_model_loaded()
         from vector_inspector.core.embedding_utils import encode_text
 
+        # After _ensure_model_loaded(), model and model_type are always set
+        assert self.model is not None and self.model_type is not None
         embeddings = []
         for text in input:
             embedding = encode_text(text, self.model, self.model_type)
@@ -143,26 +167,53 @@ class ChromaDBConnection(VectorDBConnection):
             return None
 
     def _get_embedding_function_for_collection(self, name: str) -> Optional[EmbeddingFunction]:
-        """Get the appropriate embedding function for a collection based on its dimension."""
-        # Get basic collection to check dimension
+        """Get the appropriate embedding function for a collection.
+
+        Resolution order:
+        1. SettingsService (model explicitly saved for this profile + collection)
+        2. Dimension heuristic (sample a vector and pick by length)
+        """
+        # 1) Check SettingsService first so explicitly-recorded models (e.g. CLIP) are honoured
+        explicit_model_name: str | None = None
+        explicit_model_type: str | None = None
+        try:
+            from vector_inspector.services.settings_service import SettingsService
+
+            profile_name = getattr(self, "profile_name", None)
+            if profile_name:
+                cfg = SettingsService().get_embedding_model(profile_name, name)
+                if cfg and cfg.get("model"):
+                    explicit_model_name = cfg["model"]
+                    explicit_model_type = cfg.get("type", "sentence-transformer")
+                    log_info(
+                        "[ChromaDB] Using settings-recorded model '%s' (%s) for collection '%s'",
+                        explicit_model_name,
+                        explicit_model_type,
+                        name,
+                    )
+        except Exception:
+            pass
+
+        # 2) Dimension sniff — still needed to construct DimensionAwareEmbeddingFunction
         basic_col = self._get_collection_basic(name)
         if not basic_col:
             return None
 
         try:
-            # Get a sample to determine vector dimension
             sample = basic_col.get(limit=1, include=["embeddings"])
             embeddings = sample.get("embeddings") if sample else None
-            # Avoid numpy array truthiness issues - check is not None explicitly
             if embeddings is not None and len(embeddings) > 0:
                 from vector_inspector.utils import has_embedding
 
                 first_embedding = embeddings[0]
-                # Check if embedding exists and has content
                 if has_embedding(first_embedding):
                     vector_dim = len(first_embedding)
                     log_info("[ChromaDB] Collection '%s' has %dd vectors", name, vector_dim)
-                    return DimensionAwareEmbeddingFunction(vector_dim)
+                    return DimensionAwareEmbeddingFunction(
+                        vector_dim,
+                        model_name=explicit_model_name,
+                        model_type=explicit_model_type,
+                    )
         except Exception as e:
             import traceback
 
@@ -411,7 +462,7 @@ class ChromaDBConnection(VectorDBConnection):
             )
             return True
         except Exception as e:
-            log_error("Failed to add items: %s", e)
+            log_error("Failed to add items: %.400s", str(e))
             return False
 
     def update_items(
@@ -515,8 +566,11 @@ class ChromaDBConnection(VectorDBConnection):
             return False
 
     # Implement base connection uniform APIs
+    @property
+    def supports_configurable_vector_size(self) -> bool:
+        return False
+
     def create_collection(self, name: str, vector_size: int, distance: str = "Cosine") -> bool:
-        """Create a collection. If it doesn't exist, attempt to create it using Chroma client APIs."""
         if not self._client:
             return False
 

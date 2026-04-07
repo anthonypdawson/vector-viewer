@@ -630,14 +630,17 @@ class PineconeConnection(VectorDBConnection):
 
     def _get_embedding_function_for_collection(self, collection_name: str):
         """
-        Returns embedding function and model type for a given collection, matching ChromaDB/Qdrant API.
+        Returns embedding function and model type for a given collection.
+
+        Delegates model resolution to the base-class ``load_embedding_model_for_collection``
+        so the full resolution order (SettingsService → collection metadata → dimension →
+        DEFAULT_MODEL) is respected for all providers, including CLIP-based collections.
 
         Note: For collections using Pinecone-hosted models, this should not be called.
         Text queries are handled directly by Pinecone.
         """
+        # Warn if the caller is trying to embed locally for a hosted-model collection.
         info = self.get_collection_info(collection_name)
-
-        # Check if this collection uses a Pinecone-hosted model
         if info and info.get("embedding_model_type") == "pinecone-hosted":
             hosted_model = info.get("embedding_model", "unknown")
             log_error(
@@ -648,38 +651,9 @@ class PineconeConnection(VectorDBConnection):
                 hosted_model,
             )
 
-        dim = info.get("vector_dimension") if info else None
-        try:
-            dim_int = int(dim) if dim is not None else None
-        except Exception:
-            dim_int = None
-
-        # Prefer user-configured model for this collection
-        from vector_inspector.services.settings_service import SettingsService
-
-        model = None
-        model_type: str = "sentence-transformer"
-        profile_name = getattr(self, "profile_name", None)
-        if profile_name and collection_name:
-            settings = SettingsService()
-            cfg = settings.get_embedding_model(profile_name, collection_name)
-            if cfg and cfg.get("model") and cfg.get("type"):
-                from vector_inspector.core.embedding_utils import load_embedding_model
-
-                model = load_embedding_model(cfg["model"], cfg["type"])
-                model_type = str(cfg["type"]) or "sentence-transformer"
-
-        # Fallback to dimension-based model if none configured
-        if model is None:
-            from vector_inspector.core.embedding_utils import get_embedding_model_for_dimension
-
-            if dim_int is None:
-                dim_int = 384  # default for MiniLM
-            loaded_model, _, inferred_type = get_embedding_model_for_dimension(dim_int)
-            model = loaded_model
-            model_type = str(inferred_type) or "sentence-transformer"
-
         from vector_inspector.core.embedding_utils import encode_text
+
+        model, _, model_type = self.load_embedding_model_for_collection(collection_name)
 
         def embedding_fn(text: str):
             return encode_text(text, model, model_type)

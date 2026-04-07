@@ -493,10 +493,11 @@ def test_get_embedding_function_prefers_settings_model(monkeypatch, mock_pinecon
 
 def test_get_embedding_function_handles_hosted_model(monkeypatch, mock_pinecone_client):
     """When collection reports Pinecone-hosted model, function still returns an embedding function (with fallback)."""
+
     conn = PineconeConnection(api_key="test-api-key")
     conn.connect()
 
-    # Simulate hosted model info returned by get_collection_info
+    # Simulate hosted model info returned by get_collection_info (triggers warning)
     monkeypatch.setattr(
         PineconeConnection,
         "get_collection_info",
@@ -507,10 +508,12 @@ def test_get_embedding_function_handles_hosted_model(monkeypatch, mock_pinecone_
         },
     )
 
-    # Patch fallback embedder routines
+    # Mock the base-class resolution so no real model is loaded.
+    fake_model = object()
     monkeypatch.setattr(
-        "vector_inspector.core.embedding_utils.get_embedding_model_for_dimension",
-        lambda d: ("MDL", None, "sentence-transformer"),
+        PineconeConnection,
+        "load_embedding_model_for_collection",
+        lambda self, cname: (fake_model, "all-MiniLM-L6-v2", "sentence-transformer"),
     )
     monkeypatch.setattr("vector_inspector.core.embedding_utils.encode_text", lambda text, model, mtype: [0.1, 0.2])
 
