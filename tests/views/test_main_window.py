@@ -218,3 +218,154 @@ def test_tools_menu_has_import_actions(qtbot, monkeypatch):
     assert any("Document" in t for t in action_texts), f"Import Documents not found in {action_texts}"
 
     mw.close()
+
+
+# ---------------------------------------------------------------------------
+# _set_collection_tabs_enabled
+# ---------------------------------------------------------------------------
+
+
+def test_set_collection_tabs_enabled_true_calls_set_collection_ready(qtbot, monkeypatch):
+    """_set_collection_tabs_enabled(True) calls set_collection_ready(True) on all views."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    calls = []
+
+    class FakeView:
+        def set_collection_ready(self, val):
+            calls.append(val)
+
+    mw.metadata_view = FakeView()
+    mw.search_view = FakeView()
+    mw.visualization_view = FakeView()
+
+    mw._set_collection_tabs_enabled(True)
+
+    assert calls.count(True) == 3
+    mw.close()
+
+
+def test_set_collection_tabs_enabled_false_calls_set_collection_ready(qtbot, monkeypatch):
+    """_set_collection_tabs_enabled(False) calls set_collection_ready(False) on all views."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    calls = []
+
+    class FakeView:
+        def set_collection_ready(self, val):
+            calls.append(val)
+
+    mw.metadata_view = FakeView()
+    mw.search_view = FakeView()
+    mw.visualization_view = FakeView()
+
+    mw._set_collection_tabs_enabled(False)
+
+    assert calls.count(False) == 3
+    mw.close()
+
+
+def test_set_collection_tabs_enabled_skips_views_without_method(qtbot, monkeypatch):
+    """_set_collection_tabs_enabled does not crash when a view lacks set_collection_ready."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    mw.metadata_view = object()  # no set_collection_ready
+    mw.search_view = object()
+    mw.visualization_view = None  # None is the guarded case
+
+    # Should not raise
+    mw._set_collection_tabs_enabled(True)
+    mw.close()
+
+
+# ---------------------------------------------------------------------------
+# _update_views_for_collection empty-string branch
+# ---------------------------------------------------------------------------
+
+
+def test_update_views_for_collection_empty_disables_views(qtbot, monkeypatch):
+    """_update_views_for_collection('') calls _set_collection_tabs_enabled(False)."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    calls = []
+
+    class FakeView:
+        def set_collection_ready(self, val):
+            calls.append(val)
+
+    mw.metadata_view = FakeView()
+    mw.search_view = FakeView()
+    mw.visualization_view = None
+
+    mw._update_views_for_collection("")
+
+    assert all(v is False for v in calls)
+    mw.close()
+
+
+# ---------------------------------------------------------------------------
+# _new_connection_from_profile
+# ---------------------------------------------------------------------------
+
+
+def test_new_connection_from_profile_switches_tab_and_opens_dialog(qtbot, monkeypatch):
+    """_new_connection_from_profile activates Profiles tab and calls _create_profile."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    activated = {}
+    created = {}
+    monkeypatch.setattr(mw, "set_left_panel_active", lambda idx: activated.__setitem__("idx", idx))
+    monkeypatch.setattr(mw.profile_panel, "_create_profile", lambda: created.__setitem__("called", True))
+
+    mw._new_connection_from_profile()
+
+    assert activated.get("idx") == 1
+    assert created.get("called") is True
+    mw.close()
+
+
+# ---------------------------------------------------------------------------
+# _connect_to_profile
+# ---------------------------------------------------------------------------
+
+
+def test_connect_to_profile_success_switches_to_active_tab(qtbot, monkeypatch):
+    """_connect_to_profile switches to the Active tab (index 0) when connection succeeds."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    activated = {}
+    monkeypatch.setattr(mw.connection_controller, "connect_to_profile", lambda pid: True)
+    monkeypatch.setattr(mw, "set_left_panel_active", lambda idx: activated.__setitem__("idx", idx))
+
+    mw._connect_to_profile("p1")
+
+    assert activated.get("idx") == 0
+    mw.close()
+
+
+def test_connect_to_profile_failure_does_not_switch_tab(qtbot, monkeypatch):
+    """_connect_to_profile does NOT switch tabs when connection fails."""
+    monkeypatch.setattr(MainWindow, "_maybe_show_splash", lambda self: None)
+    mw = MainWindow()
+    qtbot.addWidget(mw)
+
+    activated = {}
+    monkeypatch.setattr(mw.connection_controller, "connect_to_profile", lambda pid: False)
+    monkeypatch.setattr(mw, "set_left_panel_active", lambda idx: activated.__setitem__("idx", idx))
+
+    mw._connect_to_profile("p1")
+
+    assert "idx" not in activated
+    mw.close()

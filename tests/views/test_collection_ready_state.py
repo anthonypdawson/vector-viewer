@@ -148,3 +148,17 @@ def test_metadata_collection_changed_empty_disables_buttons(qtbot, fake_provider
     view.set_collection_ready(True)
     view.app_state.collection_changed.emit("")
     assert not view.action_buttons.isEnabled()
+
+
+def test_metadata_collection_changed_non_empty_enables_buttons(qtbot, fake_provider, task_runner, monkeypatch):
+    """collection_changed with a non-empty name enables MetadataView action buttons."""
+    app_state = AppState()
+    fake_provider.get_supported_filter_operators = lambda: []
+    app_state.provider = fake_provider
+    view = MetadataView(app_state, task_runner)
+    qtbot.addWidget(view)
+    # Prevent actual DB load while still exercising set_collection -> set_collection_ready(True)
+    monkeypatch.setattr(view, "_load_data_internal", lambda: None)
+    app_state.database = "test_db"
+    view.app_state.collection_changed.emit("my_collection")
+    assert view.action_buttons.isEnabled()
