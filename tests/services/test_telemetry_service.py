@@ -800,3 +800,87 @@ def test_flush_on_shutdown_sends_events_queued_during_worker_join(monkeypatch):
         "Event queued during worker join was not sent by flush_on_shutdown's final send_batch"
     )
     TelemetryService.reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# Session ID — must NOT be loaded from settings on init (bug #9)
+# ---------------------------------------------------------------------------
+
+
+def test_session_id_starts_as_none_at_init():
+    """session_id must be None at init, not loaded from a previous run's settings.
+
+    Loading a stale session_id caused app_launch to carry the old session_id
+    (the early send_launch_ping call happens before set_session_id is called).
+    """
+    TelemetryService.reset_for_tests()
+    settings = DummySettings()
+    # Simulate a leftover session_id from a previous run
+    settings.settings["telemetry.session_id"] = "old-session-from-previous-run"
+    settings.settings["telemetry.enabled"] = True
+    svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+    assert svc.session_id is None, (
+        "session_id should start as None; loading from settings causes app_launch "
+        "to carry the old session_id before set_session_id is called"
+    )
+    TelemetryService.reset_for_tests()
+
+
+def test_set_session_id_sets_on_instance_and_persists():
+    """set_session_id() must update instance and settings."""
+    TelemetryService.reset_for_tests()
+    settings = DummySettings()
+    settings.settings["telemetry.enabled"] = True
+    svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+    svc.set_session_id("new-session-abc")
+    assert svc.session_id == "new-session-abc"
+    assert settings.settings.get("telemetry.session_id") == "new-session-abc"
+    TelemetryService.reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# Duplicate session.start deduplication (bug #1)
+# ---------------------------------------------------------------------------
+
+
+def test_session_start_deduplication_removes_old_event():
+    """Queuing session.start must purge any prior session.start events.
+
+    Leftover session.start events in the persistent queue (from a run that
+    failed to send) would appear as duplicate starts in analytics.
+    """
+    TelemetryService.reset_for_tests()
+    settings = DummySettings()
+    settings.settings["telemetry.enabled"] = True
+    svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+
+    # Simulate a leftover session.start from a prior run already in the queue
+    with svc._lock:
+        svc.queue.append({"event_name": "session.start", "metadata": {"session_id": "old-session"}})
+        svc._save_queue()
+
+    # Queue a new session.start for the current launch
+    svc.queue_event({"event_name": "session.start", "metadata": {"session_id": "new-session"}})
+
+    session_starts = [e for e in svc.queue if e.get("event_name") == "session.start"]
+    assert len(session_starts) == 1, "Only one session.start should exist in the queue"
+    assert session_starts[0]["metadata"]["session_id"] == "new-session"
+    TelemetryService.reset_for_tests()
+
+
+def test_session_start_deduplication_keeps_other_events():
+    """Deduplication of session.start must not affect other event types."""
+    TelemetryService.reset_for_tests()
+    settings = DummySettings()
+    settings.settings["telemetry.enabled"] = True
+    svc = TelemetryService(settings_service=settings, app_version="0.0-test")
+
+    svc.queue_event({"event_name": "app_launch", "metadata": {}})
+    svc.queue_event({"event_name": "session.start", "metadata": {"session_id": "old"}})
+    svc.queue_event({"event_name": "session.start", "metadata": {"session_id": "new"}})
+
+    event_names = [e["event_name"] for e in svc.queue]
+    assert event_names.count("session.start") == 1
+    assert "app_launch" in event_names
+    TelemetryService.reset_for_tests()
+

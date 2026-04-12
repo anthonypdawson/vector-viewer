@@ -62,7 +62,9 @@ def test_on_provider_changed_clears_results(sv, qtbot, fake_provider):
     sv.results_table.setRowCount(3)
     sv.app_state.provider_changed.emit(None)
     assert sv.results_table.rowCount() == 0
-    assert "No search performed" in sv.results_status.text() or "Connected" in sv.results_status.text()
+    # After provider cleared: buttons disabled, status shows "No search performed"
+    assert not sv.search_button.isEnabled()
+    assert "No search performed" in sv.results_status.text() or "search" in sv.results_status.text().lower()
 
 
 def test_on_provider_changed_with_connection(sv, qtbot, fake_provider):
@@ -727,6 +729,81 @@ def test_close_event_saves_pane_state(sv, qtbot, monkeypatch):
 
     sv.closeEvent(QCloseEvent())
     assert saved == [True]
+
+
+# ---------------------------------------------------------------------------
+# db_type extraction in query.executed telemetry (bug fix)
+# ---------------------------------------------------------------------------
+
+
+def test_on_search_finished_uses_provider_attribute_for_db_type(sv, qtbot, monkeypatch):
+    """query.executed event must use connection.provider for db_type, not _connection class name.
+
+    Before the fix, the code used type(connection._connection).__name__ which
+    returned 'unknown' on ConnectionInstance objects (they store the underlying
+    connection in .database, not ._connection).
+    """
+    import time
+
+    queued_events = []
+
+    import vector_inspector.ui.views.search_view as sv_mod
+
+    monkeypatch.setattr(
+        sv_mod.TelemetryService,
+        "send_event",
+        staticmethod(lambda name, payload: queued_events.append((name, payload))),
+    )
+
+    # Attach a provider name to the connection so it can be read
+    sv.connection.provider = "chromadb"
+    sv._search_start_time = time.time()
+    sv._search_correlation_id = "corr-db-type"
+    sv._search_server_filter = None
+    sv._search_client_filters = []
+    sv._search_query_text = "test"
+    sv._search_n_results = 5
+
+    results = {
+        "ids": [["id1"]],
+        "documents": [["doc1"]],
+        "metadatas": [[{"k": "v"}]],
+        "distances": [[0.1]],
+    }
+    sv._on_search_finished(results)
+
+    query_events = [(n, p) for n, p in queued_events if n == "query.executed"]
+    assert query_events, "Expected a query.executed telemetry event"
+    db_type = query_events[0][1]["metadata"]["db_type"]
+    assert db_type == "chromadb", f"Expected 'chromadb', got '{db_type}'"
+
+
+def test_on_search_error_uses_provider_attribute_for_db_type(sv, qtbot, monkeypatch):
+    """query.executed error path must also use connection.provider for db_type."""
+    import time
+
+    queued_events = []
+
+    import vector_inspector.ui.views.search_view as sv_mod
+
+    monkeypatch.setattr(
+        sv_mod.TelemetryService,
+        "send_event",
+        staticmethod(lambda name, payload: queued_events.append((name, payload))),
+    )
+
+    sv.connection.provider = "qdrant"
+    sv._search_start_time = time.time()
+    sv._search_correlation_id = "corr-err"
+    sv._search_server_filter = None
+    sv._search_client_filters = []
+
+    sv._on_search_error("connection refused")
+
+    query_events = [(n, p) for n, p in queued_events if n == "query.executed"]
+    assert query_events, "Expected a query.executed telemetry event on error"
+    db_type = query_events[0][1]["metadata"]["db_type"]
+    assert db_type == "qdrant", f"Expected 'qdrant', got '{db_type}'"
 
 
 # ---------------------------------------------------------------------------
