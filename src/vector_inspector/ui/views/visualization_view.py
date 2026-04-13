@@ -638,6 +638,7 @@ class VisualizationView(QWidget):
         self.clustering_panel.cluster_button.setToolTip(tooltip)
         if not ready:
             self.status_label.setText("Select a collection to begin")
+            self.status_label.setStyleSheet("color: gray;")
 
     def set_collection(self, collection_name: str):
         """Set the current collection to visualize."""

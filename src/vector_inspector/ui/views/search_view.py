@@ -207,6 +207,7 @@ class SearchView(QWidget):
 
         self.search_button.clicked.connect(self._perform_search)
         self.search_button.setDefault(True)
+        self.search_button.setToolTip("Perform semantic search")
 
         self.refresh_button.setToolTip("Reset search input and results")
         self.refresh_button.clicked.connect(self._refresh_search)
@@ -316,11 +317,11 @@ class SearchView(QWidget):
 
     def set_collection_ready(self, ready: bool) -> None:
         """Enable or disable action buttons based on whether a collection is selected."""
-        tooltip = "" if ready else "Select a collection to begin"
+        guard_tooltip = "Select a collection to begin"
         self.search_button.setEnabled(ready)
-        self.search_button.setToolTip(tooltip)
+        self.search_button.setToolTip("Perform semantic search" if ready else guard_tooltip)
         self.ask_ai_button.setEnabled(ready)
-        self.ask_ai_button.setToolTip(tooltip)
+        self.ask_ai_button.setToolTip("Ask an AI question about the current search results" if ready else guard_tooltip)
         if not ready:
             self.results_status.setText("Select a collection to begin searching")
 
