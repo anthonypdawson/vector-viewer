@@ -87,6 +87,8 @@ def test_ask_ai_button_connected(sv, qtbot, monkeypatch):
     """Clicking the button triggers _ask_ai (patched to avoid dialog opening)."""
     called = []
     monkeypatch.setattr(sv, "_ask_ai", lambda **kw: called.append(True))
+    # Enable the button (requires a collection to be selected in production)
+    sv.set_collection_ready(True)
     # Disconnect original and wire the monkeypatched version
     sv.ask_ai_button.clicked.disconnect()
     sv.ask_ai_button.clicked.connect(sv._ask_ai)

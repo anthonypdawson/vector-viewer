@@ -134,6 +134,8 @@ class MetadataView(QWidget):
         # Clear table
         self.table.setRowCount(0)
         self.status_label.setText("No collection selected" if not connection else "Connected - select a collection")
+        # Connection change means no collection is yet selected
+        self.set_collection_ready(False)
 
     def _on_collection_changed(self, collection: str) -> None:
         """React to collection change."""
@@ -141,6 +143,8 @@ class MetadataView(QWidget):
             # Use AppState's database name
             database_name = self.app_state.database or ""
             self.set_collection(collection, database_name)
+        else:
+            self.set_collection_ready(False)
 
     def _on_loading_started(self, message: str) -> None:
         """React to loading started."""
@@ -227,6 +231,9 @@ class MetadataView(QWidget):
 
         layout.addLayout(controls_layout)
 
+        # Disable action buttons until a collection is selected
+        self.action_buttons.setEnabled(False)
+
         # Show/Hide Filters button
         filters_toggle_layout = QHBoxLayout()
         self.show_filters_button = QPushButton("🔍 Show Filters")
@@ -302,13 +309,21 @@ class MetadataView(QWidget):
         layout.addWidget(splitter, stretch=1)
 
         # Status bar
-        self.status_label = QLabel("No collection selected")
+        self.status_label = QLabel("Select a collection to begin")
         self.status_label.setStyleSheet("color: gray;")
         layout.addWidget(self.status_label)
+
+    def set_collection_ready(self, ready: bool) -> None:
+        """Enable or disable data action buttons based on whether a collection is selected."""
+        self.action_buttons.setEnabled(ready)
+        if not ready:
+            self.status_label.setText("Select a collection to begin")
 
     def set_collection(self, collection_name: str, database_name: str = "") -> None:
         """Set the current collection to display."""
         self.ctx.current_collection = collection_name
+        # Enable action buttons now that a collection is available
+        self.set_collection_ready(True)
         # Always update database_name if provided (even if empty string on first call)
         if database_name:  # Only update if non-empty
             self.ctx.current_database = database_name

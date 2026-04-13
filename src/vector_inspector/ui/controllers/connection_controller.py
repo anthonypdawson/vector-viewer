@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog, QWidge
 from vector_inspector import get_version
 from vector_inspector.core.connection_manager import ConnectionManager, ConnectionState
 from vector_inspector.core.connections.base_connection import VectorDBConnection
+from vector_inspector.core.logging import log_info
 from vector_inspector.core.provider_factory import ProviderFactory
 from vector_inspector.services.collection_service import CollectionService
 from vector_inspector.services.profile_service import ProfileService
@@ -127,6 +128,13 @@ class ConnectionController(QObject):
         if not profile_data:
             QMessageBox.warning(self.parent_widget, "Error", "Profile not found.")
             return False
+
+        # Guard: if a connection thread for this profile is already running, do not
+        # start a duplicate.  This prevents repeated db.connection_attempt telemetry
+        # events when the user clicks "Connect" multiple times in quick succession.
+        if profile_id in self._connection_threads and self._connection_threads[profile_id].isRunning():
+            log_info("[ConnectionController] Ignoring duplicate connect request for %s — already in progress", profile_id)
+            return True
 
         # Check connection limit
         if self.connection_manager.get_connection_count() >= ConnectionManager.MAX_CONNECTIONS:

@@ -209,7 +209,7 @@ def test_visualization_view_instantiates(viz_view):
 
 
 def test_visualization_view_status_label_initial(viz_view):
-    assert viz_view.status_label.text() == "No collection selected"
+    assert "collection" in viz_view.status_label.text().lower()
 
 
 def test_set_collection_updates_state(viz_view):

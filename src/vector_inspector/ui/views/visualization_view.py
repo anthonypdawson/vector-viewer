@@ -190,11 +190,15 @@ class VisualizationView(QWidget):
         # Update connection
         self.connection = connection
         self.histogram_panel.set_connection(connection)
+        # Connection change means collection is no longer known — disable actions
+        self.set_collection_ready(False)
 
     def _on_collection_changed(self, collection: str) -> None:
         """React to collection change."""
         if collection:
             self.set_collection(collection)
+        else:
+            self.set_collection_ready(False)
 
     def _on_loading_started(self, message: str) -> None:
         """React to loading started."""
@@ -304,6 +308,9 @@ class VisualizationView(QWidget):
 
         # Connect ClusteringPanel run button
         self.clustering_panel.cluster_button.clicked.connect(self._run_clustering)
+
+        # Disable action buttons until a collection is selected
+        self.set_collection_ready(False)
 
     def _generate_visualization(self):
         """Generate visualization of vectors."""
@@ -622,9 +629,21 @@ class VisualizationView(QWidget):
         self.clustering_panel.cluster_button.setEnabled(True)
         self.status_label.setText("Clustering failed")
 
+    def set_collection_ready(self, ready: bool) -> None:
+        """Enable or disable action buttons based on whether a collection is selected."""
+        tooltip = "" if ready else "Select a collection to begin"
+        self.dr_panel.generate_button.setEnabled(ready)
+        self.dr_panel.generate_button.setToolTip(tooltip)
+        self.clustering_panel.cluster_button.setEnabled(ready)
+        self.clustering_panel.cluster_button.setToolTip(tooltip)
+        if not ready:
+            self.status_label.setText("Select a collection to begin")
+            self.status_label.setStyleSheet("color: gray;")
+
     def set_collection(self, collection_name: str):
         """Set the current collection to visualize."""
         self.current_collection = collection_name
+        self.set_collection_ready(True)
         self.current_data = None
         self.reduced_data = None
         self.cluster_labels = None

@@ -26,7 +26,31 @@ def is_text_file(path: str) -> bool:
     """
     mime, _ = mimetypes.guess_type(path)
     if mime is not None:
-        return mime.startswith("text/")
+        if mime.startswith("text/"):
+            return True
+        if mime.startswith("application/"):
+            # Known binary application/* types must return False without sniffing.
+            # PDF and docx/xlsx/pptx (application/vnd.*) are handled by the
+            # ingestion service separately and must never be classified as text.
+            # application/x-* scripting languages (e.g. application/x-ruby on
+            # Linux vs text/x-ruby on macOS) are allowed to fall through to sniff.
+            _BINARY_APPLICATION_MIMES = (
+                "application/pdf",
+                "application/zip",
+                "application/gzip",
+                "application/x-bzip2",
+                "application/x-rar-compressed",
+                "application/octet-stream",
+                "application/java-archive",
+                "application/wasm",
+            )
+            if mime in _BINARY_APPLICATION_MIMES or mime.startswith("application/vnd."):
+                return False
+            # Other application/* types (json, xml, javascript, x-* scripts)
+            # fall through to the null-byte sniff below.
+        else:
+            # Definitive non-text type (image/, video/, audio/, etc.) — skip sniff.
+            return False
     # Null-byte sniff fallback (same heuristic as git)
     try:
         with open(path, "rb") as fh:

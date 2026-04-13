@@ -127,7 +127,11 @@ class TelemetryService:
         if self._running_under_test and not self._allow_telemetry_in_tests:
             self.app_version = "0.0-test"
             self.client_type = "unit-tests"
-        self.session_id: str | None = self.settings.get("telemetry.session_id")
+        # session_id is intentionally NOT loaded from settings at init.
+        # Each app launch generates a fresh session_id via set_session_id().
+        # Loading the old id would cause app_launch to carry a stale session_id
+        # (the early send_launch_ping happens before set_session_id is called).
+        self.session_id: str | None = None
         # Cache OS and runtime context to avoid repeated platform calls
         try:
             self._cached_os = platform.platform()
@@ -361,6 +365,11 @@ class TelemetryService:
             pass
 
         with self._lock:
+            # If this is a session.start event, remove any previous session.start
+            # events that may be left in the queue from a prior run that failed
+            # to send, preventing duplicate session.start events in analytics.
+            if event.get("event_name") == "session.start":
+                self.queue = [e for e in self.queue if e.get("event_name") != "session.start"]
             self.queue.append(event)
             self._save_queue()
             # Do not automatically wake the background worker here; callers

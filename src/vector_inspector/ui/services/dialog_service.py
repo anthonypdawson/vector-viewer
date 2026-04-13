@@ -85,15 +85,6 @@ class DialogService:
         return dialog.exec()
 
     @staticmethod
-    def show_profile_editor_prompt(parent: QWidget = None):
-        """Show message prompting user to create a new profile."""
-        QMessageBox.information(
-            parent,
-            "Connect to Profile",
-            "Select a profile from the list and click 'Connect', or click '+' to create a new profile.",
-        )
-
-    @staticmethod
     def show_update_details(latest_release: dict, parent: QWidget = None):
         """Show update details dialog.
 

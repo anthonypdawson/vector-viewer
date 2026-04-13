@@ -489,3 +489,24 @@ def test_on_connection_finished_failure_emits_duration_ms(monkeypatch):
     assert args[1] is False
     assert isinstance(args[4], float)
     assert args[4] == 120.0
+
+
+def test_connect_to_profile_duplicate_is_ignored(monkeypatch):
+    """A second connect_to_profile call while a thread is already running for the same
+    profile returns True immediately without starting a duplicate thread."""
+    mgr = FakeConnectionManager()
+    svc = FakeProfileService(profile_data={"name": "DB1", "provider": "chroma", "config": {}, "id": "p1"})
+    monkeypatch.setattr(cc_module, "LoadingDialog", lambda msg, parent: FakeLoadingDialog())
+
+    ctrl = ConnectionController(connection_manager=mgr, profile_service=svc)
+
+    # Inject a fake already-running thread for profile p1
+    fake_thread = MagicMock()
+    fake_thread.isRunning.return_value = True
+    ctrl._connection_threads["p1"] = fake_thread
+
+    result = ctrl.connect_to_profile("p1")
+
+    assert result is True
+    # The existing thread must not have been restarted
+    fake_thread.start.assert_not_called()

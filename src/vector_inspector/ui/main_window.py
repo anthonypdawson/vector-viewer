@@ -554,6 +554,10 @@ class MainWindow(InspectorShell):
             # Future collection changes will be handled by app_state.collection_changed signal
             if self.app_state.collection:
                 self.visualization_view.set_collection(self.app_state.collection)
+            else:
+                # No collection yet — start with action buttons disabled
+                if hasattr(self.visualization_view, "set_collection_ready"):
+                    self.visualization_view.set_collection_ready(False)
 
     def _on_active_connection_changed(self, connection_id):
         """Handle active connection change."""
@@ -625,11 +629,27 @@ class MainWindow(InspectorShell):
         except Exception:
             pass
 
+    def _set_collection_tabs_enabled(self, enabled: bool) -> None:
+        """Enable or disable action controls in collection-dependent views.
+
+        Tabs themselves remain accessible so users can navigate freely; only
+        the action buttons (Search, Generate, etc.) inside each view are
+        gated until a collection is selected.
+        """
+        for view in (self.metadata_view, self.search_view):
+            if hasattr(view, "set_collection_ready"):
+                view.set_collection_ready(enabled)
+        if self.visualization_view is not None and hasattr(self.visualization_view, "set_collection_ready"):
+            self.visualization_view.set_collection_ready(enabled)
+
     def _update_views_with_connection(self, connection: Optional[ConnectionInstance]):
         """Update all views with a new connection."""
         # Update AppState (new pattern - triggers reactive views)
         # AppState exposes properties rather than setter methods.
         self.app_state.provider = connection
+
+        # Lock collection-dependent tabs when connection changes (collection not yet selected)
+        self._set_collection_tabs_enabled(False)
 
         # Clear current collection when switching connections (legacy pattern)
         self.info_panel.current_collection = None
@@ -657,6 +677,9 @@ class MainWindow(InspectorShell):
     def _update_views_for_collection(self, collection_name: str):
         """Update all views with the selected collection."""
         if collection_name:
+            # Unlock tabs now that a collection is available
+            self._set_collection_tabs_enabled(True)
+
             # Get active connection ID to use as database identifier
             active = self.connection_manager.get_active_connection()
             database_name = active.id if active else ""
@@ -681,16 +704,18 @@ class MainWindow(InspectorShell):
 
             if self.visualization_view is not None:
                 self.visualization_view.set_collection(collection_name)
+        else:
+            # No collection — lock the tabs again
+            self._set_collection_tabs_enabled(False)
 
     def _new_connection_from_profile(self):
-        """Show dialog to create new connection (switches to Profiles tab)."""
+        """Switch to Profiles tab and open the new profile dialog."""
         self.set_left_panel_active(1)  # Switch to Profiles tab
-        DialogService.show_profile_editor_prompt(self)
+        self.profile_panel._create_profile()
 
     def _show_profile_editor(self):
         """Show profile editor to create new profile."""
-        self.set_left_panel_active(1)  # Switch to Profiles tab
-        self.profile_panel._create_profile()
+        self._new_connection_from_profile()
 
     def _connect_to_profile(self, profile_id: str):
         """Connect to a profile using the connection controller."""

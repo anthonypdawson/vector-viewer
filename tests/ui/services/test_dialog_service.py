@@ -85,21 +85,6 @@ def test_show_migration_insufficient_connections_returns_rejected(qtbot, monkeyp
 
 
 # ---------------------------------------------------------------------------
-# show_profile_editor_prompt
-# ---------------------------------------------------------------------------
-
-
-def test_show_profile_editor_prompt(qtbot, monkeypatch):
-    messages = []
-    monkeypatch.setattr(QMessageBox, "information", lambda p, t, m: messages.append(m))
-    parent = QWidget()
-    qtbot.addWidget(parent)
-    DialogService.show_profile_editor_prompt(parent)
-    assert len(messages) == 1
-    assert "profile" in messages[0].lower()
-
-
-# ---------------------------------------------------------------------------
 # show_update_details
 # ---------------------------------------------------------------------------
 
