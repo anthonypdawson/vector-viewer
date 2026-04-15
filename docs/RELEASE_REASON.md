@@ -1,38 +1,17 @@
-# Vector Inspector 0.7.1 — April 11, 2026
+# Release Notes (0.7.2) — April 15, 2026
 
-This release addresses a set of bugs surfaced by production telemetry data, including
-duplicate analytics events, stale session IDs, misleading db_type values, and repeated
-connection attempts. It also improves the UX when no collection is selected.
+Major update: Enhanced error logging and telemetry for all vector DB providers, LLM providers, and core services. All critical errors now emit structured telemetry with category, operation, provider, and error type, while preserving full tracebacks in local logs for debugging.
 
-## UX
+## Error Logging & Telemetry
+- All `log_error` calls in provider, LLM, and service layers upgraded to `log_tracked_error` with rich metadata (category, operation, provider, error_type, summary)
+- All tracked errors now include `exc_info=True` for full traceback in logs (not sent to telemetry)
+- Telemetry payloads are strictly metadata-only (no PII, no tracebacks)
+- Centralized error tracking for ChromaDB, Qdrant, Pinecone, LanceDB, PgVector, Weaviate, and all LLM providers
+- Service layer (data loaders, search, collection, backup/restore, import/export, settings, credentials, etc.) now emits structured error events
+- Docstring and implementation of `log_tracked_error` updated to clarify safe usage and exc_info handling
 
-- Data, Search, and Visualization tabs are now always accessible; action buttons
-  (Search, Generate Visualization, Cluster, data CRUD) are disabled with a tooltip
-  until a collection is selected, preventing confusing no-op interactions.
-- Empty-state messages ("Select a collection to begin") are shown consistently
-  across Data, Search, and Visualization views when no collection is active.
-
-## Bug Fixes
-
-- Fixed `session.start` appearing twice in analytics: leftover queued events from a
-  prior run are now purged before a new `session.start` is enqueued.
-- Fixed `app_launch` carrying a stale `session_id` from a previous run. The
-  `session_id` is no longer loaded from persisted settings at init; it is assigned
-  fresh on each launch via `set_session_id()`.
-- Fixed `db_type: "unknown"` in `query.executed` telemetry events. The code
-  previously attempted to read `connection._connection` (which does not exist on
-  `ConnectionInstance`); it now correctly reads `connection.provider`.
-- Fixed repeated `db.connection_attempt` telemetry events caused by rapid or
-  duplicate connect clicks. The connection controller now ignores a new connect
-  request for a profile that already has an in-progress connection thread.
-
-## Testing
-
-- Added `tests/views/test_collection_ready_state.py` covering SearchView and
-  MetadataView button-enable/disable lifecycle.
-- Added telemetry regression tests for session_id init, session.start dedup,
-  and db_type extraction.
-- Added db_type tests to `test_search_view.py`.
-- Updated existing tests affected by the new initial button state.
+## Internal
+- 210+ call sites updated for consistent error tracking
+- All tests pass (2129 passed, 3 skipped)
 
 ---
