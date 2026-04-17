@@ -15,10 +15,6 @@ from PySide6.QtWidgets import (
 )
 
 from vector_inspector.core.connection_manager import ConnectionInstance
-from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
-from vector_inspector.core.connections.pinecone_connection import PineconeConnection
-from vector_inspector.core.connections.qdrant_connection import QdrantConnection
-from vector_inspector.core.connections.weaviate_connection import WeaviateConnection
 from vector_inspector.core.logging import log_info
 from vector_inspector.services import ThreadedTaskRunner
 from vector_inspector.state import AppState
@@ -390,7 +386,7 @@ class InfoPanel(QWidget):
         self._update_label(self.provider_label, provider_name or "Unknown")
 
         # Get connection details
-        if isinstance(backend, ChromaDBConnection):
+        if getattr(backend, "provider_type", "") == "chroma":
             if getattr(backend, "path", None):
                 self._update_label(self.connection_type_label, "Persistent (Local)")
                 self._update_label(self.endpoint_label, backend.path)
@@ -401,7 +397,7 @@ class InfoPanel(QWidget):
                 self._update_label(self.connection_type_label, "Ephemeral (In-Memory)")
                 self._update_label(self.endpoint_label, "N/A")
             self._update_label(self.api_key_label, "Not required")
-        elif isinstance(backend, QdrantConnection):
+        elif getattr(backend, "provider_type", "") == "qdrant":
             if getattr(backend, "path", None):
                 self._update_label(self.connection_type_label, "Embedded (Local)")
                 self._update_label(self.endpoint_label, backend.path)
@@ -419,7 +415,7 @@ class InfoPanel(QWidget):
             else:
                 self._update_label(self.api_key_label, "Not configured")
 
-        elif isinstance(backend, PineconeConnection):
+        elif getattr(backend, "provider_type", "") == "pinecone":
             # backend already assigned above
             self._update_label(self.connection_type_label, "Cloud")
             self._update_label(self.endpoint_label, "Pinecone Cloud")
@@ -427,7 +423,7 @@ class InfoPanel(QWidget):
                 self._update_label(self.api_key_label, "Present (hidden)")
             else:
                 self._update_label(self.api_key_label, "Not configured")
-        elif isinstance(backend, WeaviateConnection):
+        elif getattr(backend, "provider_type", "") == "weaviate":
             # Determine connection mode
             mode = getattr(backend, "mode", "http")
             if mode == "embedded":
@@ -662,12 +658,12 @@ class InfoPanel(QWidget):
         # Extract the underlying database connection from ConnectionInstance wrapper
         backend = getattr(self.connection, "database", self.connection)
 
-        if isinstance(backend, ChromaDBConnection):
+        if getattr(backend, "provider_type", "") == "chroma":
             details_list.append("• Provider: ChromaDB")
             details_list.append("• Supports: Documents, Metadata, Embeddings")
             details_list.append("• Default embedding: all-MiniLM-L6-v2")
 
-        elif isinstance(backend, QdrantConnection):
+        elif getattr(backend, "provider_type", "") == "qdrant":
             details_list.append("• Provider: Qdrant")
             details_list.append("• Supports: Points, Payload, Vectors")
             # Get additional Qdrant-specific info if available
@@ -681,7 +677,7 @@ class InfoPanel(QWidget):
                     opt = config["optimizer_config"]
                     details_list.append(f"• Indexing threshold: {opt.get('indexing_threshold', 'N/A')}")
 
-        elif isinstance(backend, PineconeConnection):
+        elif getattr(backend, "provider_type", "") == "pinecone":
             details_list.append("• Provider: Pinecone")
             details_list.append("• Supports: Vectors, Metadata")
             details_list.append("• Cloud-hosted vector database")
@@ -698,7 +694,7 @@ class InfoPanel(QWidget):
             if "spec" in collection_info:
                 details_list.append(f"• Spec: {collection_info['spec']}")
 
-        elif isinstance(backend, WeaviateConnection):
+        elif getattr(backend, "provider_type", "") == "weaviate":
             details_list.append("• Provider: Weaviate")
             details_list.append("• Supports: Objects, Properties, Vectors")
             details_list.append("• Schema-based vector database")

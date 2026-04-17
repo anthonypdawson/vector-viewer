@@ -21,11 +21,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vector_inspector.core.connections import get_connection_class
 from vector_inspector.core.connections.base_connection import VectorDBConnection
-from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
-from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
-from vector_inspector.core.connections.pinecone_connection import PineconeConnection
-from vector_inspector.core.connections.qdrant_connection import QdrantConnection
+from vector_inspector.core.provider_detection import (
+    get_all_providers,
+    get_install_instructions_message,
+    get_provider_info,
+)
 from vector_inspector.services.settings_service import SettingsService
 from vector_inspector.ui.components.loading_dialog import LoadingDialog
 
@@ -75,19 +77,35 @@ class ConnectionDialog(QDialog):
         """Setup dialog UI."""
         layout = QVBoxLayout(self)
 
-        # Provider selection
+        # Provider selection with availability detection
         provider_group = QGroupBox("Database Provider")
         provider_layout = QVBoxLayout()
 
-        self.provider_combo = QComboBox()
-        self.provider_combo.addItem("ChromaDB", "chromadb")
-        self.provider_combo.addItem("Qdrant", "qdrant")
-        self.provider_combo.addItem("Pinecone", "pinecone")
-        self.provider_combo.addItem("PgVector/PostgreSQL", "pgvector")
-        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
-        provider_layout.addWidget(self.provider_combo)
-        provider_group.setLayout(provider_layout)
+        # Provider combo + refresh button row
+        provider_row = QHBoxLayout()
 
+        self.provider_combo = QComboBox()
+        self._populate_providers()
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+        provider_row.addWidget(self.provider_combo, 1)
+
+        # Refresh button to detect newly installed providers
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setMaximumWidth(40)
+        refresh_btn.setToolTip("Refresh provider list (detects newly installed providers)")
+        refresh_btn.clicked.connect(self._refresh_providers)
+        provider_row.addWidget(refresh_btn)
+
+        provider_layout.addLayout(provider_row)
+
+        # Help text for installing providers
+        self.provider_help_label = QLabel()
+        self.provider_help_label.setStyleSheet("color: gray; font-size: 10px;")
+        self.provider_help_label.setWordWrap(True)
+        self._update_help_text()
+        provider_layout.addWidget(self.provider_help_label)
+
+        provider_group.setLayout(provider_layout)
         layout.addWidget(provider_group)
 
         # Connection type selection
@@ -204,9 +222,142 @@ class ConnectionDialog(QDialog):
         self.persistent_radio.toggled.connect(self._update_absolute_preview)
         self._update_absolute_preview()
 
+    def _populate_providers(self):
+        """Populate provider combo box with availability detection."""
+        self.provider_combo.clear()
+
+        all_providers = get_all_providers()
+        available_count = 0
+
+        for provider in all_providers:
+            if provider.available:
+                # Available provider - normal display
+                self.provider_combo.addItem(provider.name, provider.id)
+                available_count += 1
+            else:
+                # Unavailable provider - grayed out with note
+                display_name = f"{provider.name} (not installed)"
+                self.provider_combo.addItem(display_name, provider.id)
+                # Gray out unavailable providers
+                index = self.provider_combo.count() - 1
+                model = self.provider_combo.model()
+                item = model.item(index)
+                if item:
+                    item.setEnabled(False)
+
+        # If no providers available, show helpful message
+        if available_count == 0:
+            self.provider_combo.addItem("(No providers installed)", None)
+
+    def _refresh_providers(self):
+        """Refresh the provider list to detect newly installed packages."""
+        from PySide6.QtWidgets import QMessageBox
+        import importlib
+        import sys
+
+        current_provider = self.provider_combo.currentData()
+
+        # Clear import cache to detect newly installed packages
+        # This allows detecting packages installed while the app is running
+        provider_prefixes = ["chromadb", "qdrant", "pinecone", "lancedb", "psycopg2", "weaviate", "pymilvus"]
+        modules_to_remove = [
+            name for name in sys.modules.keys() if any(name.startswith(prefix) for prefix in provider_prefixes)
+        ]
+        for module_name in modules_to_remove:
+            sys.modules.pop(module_name, None)
+
+        # Repopulate combo
+        self._populate_providers()
+        self._update_help_text()
+
+        # Try to restore previous selection
+        for i in range(self.provider_combo.count()):
+            if self.provider_combo.itemData(i) == current_provider:
+                self.provider_combo.setCurrentIndex(i)
+                break
+
+        # Show success message
+        available_providers = [p for p in get_all_providers() if p.available]
+        if available_providers:
+            provider_names = ", ".join([p.name for p in available_providers])
+            QMessageBox.information(
+                self,
+                "Providers Refreshed",
+                f"Available providers: {provider_names}\n\n"
+                f"If you just installed a provider, it should now appear in the list.",
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "No Providers Found",
+                "No database providers are currently installed.\n\n"
+                "Install providers with:\n"
+                "  pip install vector-inspector[recommended]\n\n"
+                "Or install individual providers:\n"
+                "  pip install vector-inspector[chromadb]\n"
+                "  pip install vector-inspector[qdrant]",
+            )
+
+    def _update_help_text(self):
+        """Update help text based on available providers."""
+        available_providers = [p for p in get_all_providers() if p.available]
+
+        if not available_providers:
+            self.provider_help_label.setText(
+                "💡 No providers installed. Install with: pip install vector-inspector[recommended]"
+            )
+        else:
+            unavailable_count = len([p for p in get_all_providers() if not p.available])
+            if unavailable_count > 0:
+                self.provider_help_label.setText(
+                    f"💡 {len(available_providers)} provider(s) available. "
+                    f"To install more: pip install vector-inspector[all]"
+                )
+            else:
+                self.provider_help_label.setText(f"✓ All providers installed ({len(available_providers)} available)")
+
     def _on_provider_changed(self):
         """Handle provider selection change."""
-        self.provider = self.provider_combo.currentData()
+        from PySide6.QtWidgets import QMessageBox, QTextEdit
+
+        provider_id = self.provider_combo.currentData()
+
+        # Check if this is a placeholder (no providers installed)
+        if provider_id is None:
+            return
+
+        # Check if provider is available
+        provider_info = get_provider_info(provider_id)
+        if provider_info and not provider_info.available:
+            # Show installation instructions
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setWindowTitle(f"{provider_info.name} Not Installed")
+            msg.setText(f"{provider_info.name} is not currently installed.")
+
+            # Create formatted text with install instructions
+            instructions = get_install_instructions_message(provider_id)
+            text_edit = QTextEdit()
+            text_edit.setReadOnly(True)
+            text_edit.setPlainText(instructions)
+            text_edit.setMaximumHeight(200)
+            msg.layout().addWidget(text_edit, 1, 0, 1, msg.layout().columnCount())
+
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+
+            # Switch back to first available provider
+            for i in range(self.provider_combo.count()):
+                check_id = self.provider_combo.itemData(i)
+                check_info = get_provider_info(check_id) if check_id else None
+                if check_info and check_info.available:
+                    self.provider_combo.setCurrentIndex(i)
+                    return
+
+            # If no available providers, keep selection but don't proceed
+            return
+
+        self.provider = provider_id
 
         # Update default port based on provider
         if self.provider == "qdrant" and self.port_input.text() == "8000":
@@ -514,35 +665,74 @@ class ConnectionView(QWidget):
                     self, "Missing API Key", "Pinecone requires an API key to connect."
                 )
                 return
-            self.connection = PineconeConnection(api_key=api_key)
+            # Lazy import connection class
+            try:
+                ConnectionClass = get_connection_class("pinecone")
+                self.connection = ConnectionClass(api_key=api_key)
+            except ImportError as e:
+                QMessageBox.critical(
+                    self,
+                    "Provider Not Installed",
+                    f"Pinecone provider is not installed.\n\n{str(e)}\n\n"
+                    f"Install with: pip install vector-inspector[pinecone]",
+                )
+                return
         elif provider == "qdrant":
-            if conn_type == "persistent":
-                self.connection = QdrantConnection(path=config.get("path"))
-            elif conn_type == "http":
-                self.connection = QdrantConnection(
-                    host=config.get("host"),
-                    port=config.get("port"),
-                    api_key=config.get("api_key"),
+            try:
+                ConnectionClass = get_connection_class("qdrant")
+                if conn_type == "persistent":
+                    self.connection = ConnectionClass(path=config.get("path"))
+                elif conn_type == "http":
+                    self.connection = ConnectionClass(
+                        host=config.get("host"),
+                        port=config.get("port"),
+                        api_key=config.get("api_key"),
+                    )
+                else:  # ephemeral/memory
+                    self.connection = ConnectionClass()
+            except ImportError as e:
+                QMessageBox.critical(
+                    self,
+                    "Provider Not Installed",
+                    f"Qdrant provider is not installed.\n\n{str(e)}\n\n"
+                    f"Install with: pip install vector-inspector[qdrant]",
                 )
-            else:  # ephemeral/memory
-                self.connection = QdrantConnection()
+                return
         elif provider == "pgvector":
-            self.connection = PgVectorConnection(
-                host=config.get("host", "localhost"),
-                port=config.get("port", 5432),
-                database=config.get("database", "subtitles"),
-                user=config.get("user", "postgres"),
-                password=config.get("password", "postgres"),
-            )
-        else:  # chromadb
-            if conn_type == "persistent":
-                self.connection = ChromaDBConnection(path=config.get("path"))
-            elif conn_type == "http":
-                self.connection = ChromaDBConnection(
-                    host=config.get("host"), port=config.get("port")
+            try:
+                ConnectionClass = get_connection_class("pgvector")
+                self.connection = ConnectionClass(
+                    host=config.get("host", "localhost"),
+                    port=config.get("port", 5432),
+                    database=config.get("database", "subtitles"),
+                    user=config.get("user", "postgres"),
+                    password=config.get("password", "postgres"),
                 )
-            else:  # ephemeral
-                self.connection = ChromaDBConnection()
+            except ImportError as e:
+                QMessageBox.critical(
+                    self,
+                    "Provider Not Installed",
+                    f"PostgreSQL/pgvector provider is not installed.\n\n{str(e)}\n\n"
+                    f"Install with: pip install vector-inspector[pgvector]",
+                )
+                return
+        else:  # chromadb
+            try:
+                ConnectionClass = get_connection_class("chromadb")
+                if conn_type == "persistent":
+                    self.connection = ConnectionClass(path=config.get("path"))
+                elif conn_type == "http":
+                    self.connection = ConnectionClass(host=config.get("host"), port=config.get("port"))
+                else:  # ephemeral
+                    self.connection = ConnectionClass()
+            except ImportError as e:
+                QMessageBox.critical(
+                    self,
+                    "Provider Not Installed",
+                    f"ChromaDB provider is not installed.\n\n{str(e)}\n\n"
+                    f"Install with: pip install vector-inspector[chromadb]",
+                )
+                return
 
         # Store config for later use
         self._pending_config = config

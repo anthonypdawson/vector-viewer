@@ -61,9 +61,62 @@ This is the easiest and most reliable way to get started.
 
 ## From PyPI
 
+### Fast Install (Minimal)
+Start with just the core app, then add database providers as needed:
+
 ```bash
+# Install core app only (fast, ~30 seconds)
 pip install vector-inspector
+
+# Launch the app
 vector-inspector
+```
+
+When you connect to a database, the app will prompt you to install the needed provider.
+
+### Recommended Install
+Install with commonly used databases and features:
+
+```bash
+pip install vector-inspector[recommended]
+# Includes: ChromaDB, Qdrant, embeddings, and visualization tools
+```
+
+### Full Install
+Install everything (all database providers and features):
+
+```bash
+pip install vector-inspector[all]
+# Same as previous versions - includes all providers
+```
+
+### Individual Providers
+Install specific database providers:
+
+```bash
+pip install vector-inspector[chromadb]    # ChromaDB only
+pip install vector-inspector[qdrant]      # Qdrant only
+pip install vector-inspector[pinecone]    # Pinecone only
+pip install vector-inspector[pgvector]    # PostgreSQL/pgvector
+pip install vector-inspector[weaviate]    # Weaviate
+pip install vector-inspector[lancedb]     # LanceDB
+pip install vector-inspector[milvus]      # Milvus
+```
+
+### Optional Features
+Add embedding models, visualization, or document processing:
+
+```bash
+pip install vector-inspector[embeddings]  # Text embedding models
+pip install vector-inspector[clip]        # Image/text embeddings
+pip install vector-inspector[viz]         # UMAP, t-SNE, clustering
+pip install vector-inspector[documents]   # PDF, DOCX support
+```
+
+You can combine multiple extras:
+
+```bash
+pip install vector-inspector[chromadb,qdrant,embeddings,viz]
 ```
 
 ## From a Downloaded Wheel or Tarball (e.g., GitHub Release)
@@ -84,20 +137,28 @@ vector-inspector
 Note: pip install does **not** create a desktop shortcut.  
 Use the bootstrap installer for the full experience.
 
-### From Source
+### From Source (PDM)
 
 ```bash
 # Clone the repository
 git clone https://github.com/anthonypdawson/vector-inspector.git
 cd vector-inspector
 
-# Install dependencies using PDM
+# Install core dependencies only (fast)
 pdm install
+
+# OR install with recommended providers
+pdm install -G recommended
+
+# OR install everything (all providers and features)
+pdm install -G all
 
 # Launch application
 scripts/run.sh     # Linux/macOS
 scripts/run.bat    # Windows
 ```
+
+**Note for developers**: The optional dependency groups in `pyproject.toml` can be installed with PDM using `-G <group>` flag. Available groups: `chromadb`, `qdrant`, `pinecone`, `lancedb`, `pgvector`, `weaviate`, `milvus`, `embeddings`, `clip`, `viz`, `documents`, `recommended`, `all`.
 ---
 
 # 🟩 Running Vector Inspector
