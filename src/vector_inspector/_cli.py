@@ -77,6 +77,19 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,  # Hidden debug/dev flag — not shown in --help
     )
+    parser.add_argument(
+        "--install",
+        metavar="PROVIDER",
+        nargs="?",
+        const="_wizard_",
+        default=None,
+        help=(
+            "Install a database provider package without launching the GUI. "
+            "Pass a provider ID (e.g. chromadb, qdrant, pinecone, lancedb, pgvector, "
+            "weaviate, milvus) or omit the value to run an interactive wizard that lists "
+            "all unavailable providers."
+        ),
+    )
     return parser
 
 
@@ -126,6 +139,109 @@ def _handle_dump_settings(config_path: str | None) -> None:
         print(f"Error reading settings: {exc}", file=sys.stderr)  # noqa: T201
         sys.exit(1)
     sys.exit(0)
+
+
+def _handle_install(provider_arg: str) -> None:
+    """Interactive or direct provider install wizard.  Never imports Qt.
+
+    When ``provider_arg`` is ``"_wizard_"`` (the const from ``--install``
+    with no value), an interactive numbered menu is shown.  Otherwise
+    ``provider_arg`` is treated as a provider ID and installed directly.
+    """
+    from vector_inspector.core.provider_detection import get_all_providers
+    from vector_inspector.services.provider_install_service import (
+        _VALID_PROVIDER_IDS,
+        get_install_command,
+        install_provider,
+    )
+
+    _DIVIDER = "=" * 54
+
+    print("\nVector Inspector — Provider Installer")  # noqa: T201
+    print(_DIVIDER)  # noqa: T201
+    print("Checking installed providers…")  # noqa: T201
+
+    all_providers = get_all_providers()
+    unavailable = [p for p in all_providers if not p.available]
+    available = [p for p in all_providers if p.available]
+
+    if available:
+        print(f"Already installed: {', '.join(p.name for p in available)}")  # noqa: T201
+
+    if provider_arg == "_wizard_":
+        # Interactive wizard mode — list unavailable providers and ask.
+        if not unavailable:
+            print("\n✓ All providers are already installed!")  # noqa: T201
+            sys.exit(0)
+
+        print("\nAvailable to install:")  # noqa: T201
+        for idx, p in enumerate(unavailable, start=1):
+            print(f"  {idx}. {p.name:<30} ({p.install_command})")  # noqa: T201
+
+        print()  # noqa: T201
+        try:
+            raw = input("Enter a number or provider ID (or press Enter to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.")  # noqa: T201
+            sys.exit(0)
+
+        if not raw:
+            print("Cancelled.")  # noqa: T201
+            sys.exit(0)
+
+        # Accept a number from the menu or a literal provider ID.
+        selected_provider = None
+        if raw.isdigit():
+            idx = int(raw) - 1
+            if 0 <= idx < len(unavailable):
+                selected_provider = unavailable[idx]
+        if selected_provider is None:
+            # Try as a direct provider ID.
+            matches = [p for p in unavailable if p.id == raw]
+            if matches:
+                selected_provider = matches[0]
+
+        if selected_provider is None:
+            print(f"Unknown selection: {raw!r}. Aborting.", file=sys.stderr)  # noqa: T201
+            sys.exit(1)
+    else:
+        # Direct mode — the user passed a provider ID on the command line.
+        if provider_arg not in _VALID_PROVIDER_IDS:
+            print(  # noqa: T201
+                f"Unknown provider: {provider_arg!r}\nValid providers: {', '.join(sorted(_VALID_PROVIDER_IDS))}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        matches = [p for p in all_providers if p.id == provider_arg]
+        selected_provider = matches[0] if matches else None
+        if selected_provider is None:
+            print(f"Provider info not found for {provider_arg!r}.", file=sys.stderr)  # noqa: T201
+            sys.exit(1)
+
+        if selected_provider.available:
+            print(f"\n✓ {selected_provider.name} is already installed.")  # noqa: T201
+            sys.exit(0)
+
+    # Run the install.
+    cmd = get_install_command(selected_provider.id)
+    print(f"\nInstalling {selected_provider.name}…")  # noqa: T201
+    print(f"Running: {' '.join(cmd)}")  # noqa: T201
+    print(_DIVIDER)  # noqa: T201
+
+    returncode, _combined = install_provider(
+        selected_provider.id,
+        on_output=lambda line: print(line, end="", flush=True),  # noqa: T201
+    )
+
+    print(_DIVIDER)  # noqa: T201
+    if returncode == 0:
+        print(f"\n✓ {selected_provider.name} installed successfully!")  # noqa: T201
+        print("Restart Vector Inspector (or use the 🔄 Refresh button) to use it.")  # noqa: T201
+        sys.exit(0)
+    else:
+        print(f"\n✗ Installation failed (exit code {returncode}).", file=sys.stderr)  # noqa: T201
+        sys.exit(returncode)
 
 
 def parse_cli_args(argv: list[str] | None = None) -> None:
@@ -178,6 +294,10 @@ def parse_cli_args(argv: list[str] | None = None) -> None:
     # Step 4: --dump-settings is an early exit (no Qt needed).
     if args.dump_settings:
         _handle_dump_settings(args.config)
+
+    # Step 4b: --install is an early exit (no Qt needed).
+    if args.install is not None:
+        _handle_install(args.install)
 
     # Step 5: Set remaining runtime env vars.
     if args.no_splash:

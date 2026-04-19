@@ -8,7 +8,7 @@ import urllib.request
 from collections.abc import Generator
 from typing import Any
 
-from vector_inspector.core.logging import log_tracked_error
+from vector_inspector.core.logging import log_info, log_tracked_error
 
 from .base_provider import LLMProvider
 from .errors import ProviderError
@@ -203,14 +203,14 @@ class OllamaProvider(LLMProvider):
             # model exists. This allows subsequent requests to surface a
             # retryable connectivity error instead of a non-retryable
             # "model not available" error for non-default models.
-            log_tracked_error(
-                "Ollama list_models failed: %s",
+            #
+            # This is an expected condition when Ollama is not running or not yet
+            # configured — log at INFO level without a traceback so the console
+            # stays clean for end users.
+            log_info(
+                "Ollama model list unavailable (%s: %s) — provider may not be running",
+                type(exc).__name__,
                 exc,
-                category="llm",
-                operation="list_models",
-                provider="ollama",
-                error_type=type(exc).__name__,
-                exc_info=True,
             )
             return []
 

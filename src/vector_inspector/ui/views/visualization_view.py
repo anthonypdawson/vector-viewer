@@ -36,6 +36,7 @@ from vector_inspector.ui.styles import (
     TAB_PADDING,
 )
 from vector_inspector.ui.views.visualization import ClusteringPanel, DRPanel, HistogramPanel, PlotPanel
+from vector_inspector.utils.lazy_imports import FeatureDependencyMissingError
 
 
 class VisualizationThread(QThread):
@@ -43,6 +44,7 @@ class VisualizationThread(QThread):
 
     finished = Signal(np.ndarray)
     error = Signal(str)
+    feature_missing = Signal(str)  # emits feature_id when a dep is not installed
 
     def __init__(self, embeddings, method, n_components):
         super().__init__()
@@ -60,6 +62,8 @@ class VisualizationThread(QThread):
                 self.finished.emit(result)
             else:
                 self.error.emit("Dimensionality reduction failed")
+        except FeatureDependencyMissingError as exc:
+            self.feature_missing.emit(exc.feature_id)
         except Exception as e:
             traceback.print_exc()
             self.error.emit(str(e))
@@ -321,6 +325,18 @@ class VisualizationView(QWidget):
             QMessageBox.warning(self, "No Collection", "Please select a collection first.")
             return
 
+        # Check that visualization dependencies (sklearn, umap-learn) are installed
+        from vector_inspector.core.provider_detection import get_feature_info
+
+        viz_feature = get_feature_info("viz")
+        if viz_feature and not viz_feature.available:
+            from vector_inspector.ui.dialogs.provider_install_dialog import ProviderInstallDialog
+
+            dlg = ProviderInstallDialog(viz_feature, parent=self)
+            dlg.provider_installed.connect(lambda _: self._generate_visualization())
+            dlg.exec()
+            return
+
         if self.use_all_checkbox.isChecked():
             sample_size = None
         else:
@@ -383,6 +399,7 @@ class VisualizationView(QWidget):
         self.visualization_thread = VisualizationThread(data["embeddings"], method, n_components)
         self.visualization_thread.finished.connect(self._on_reduction_finished)
         self.visualization_thread.error.connect(self._on_reduction_error)
+        self.visualization_thread.feature_missing.connect(self._on_feature_missing)
         # Show loading during reduction
         self.loading_dialog.show_loading("Reducing dimensions...")
         self._dr_start_time = time.time()
@@ -429,6 +446,21 @@ class VisualizationView(QWidget):
         QMessageBox.warning(self, "Error", f"Visualization failed: {error_msg}")
         self.dr_panel.generate_button.setEnabled(True)
         self.status_label.setText("Visualization failed")
+
+    def _on_feature_missing(self, feature_id: str) -> None:
+        """Open the install dialog when a reduction dep is absent at runtime."""
+        self.loading_dialog.hide_loading()
+        self.dr_panel.generate_button.setEnabled(True)
+        self.status_label.setText("")
+
+        from vector_inspector.core.provider_detection import get_feature_info
+        from vector_inspector.ui.dialogs.provider_install_dialog import ProviderInstallDialog
+
+        feature = get_feature_info(feature_id)
+        if feature:
+            dlg = ProviderInstallDialog(feature, parent=self)
+            dlg.provider_installed.connect(lambda _: self._generate_visualization())
+            dlg.exec()
 
     def _save_temp_html(self):
         """Save current plot HTML to temp file for browser viewing."""

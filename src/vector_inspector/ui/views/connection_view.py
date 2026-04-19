@@ -3,6 +3,7 @@
 from typing import Optional
 
 from PySide6.QtCore import QThread, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -25,7 +26,6 @@ from vector_inspector.core.connections import get_connection_class
 from vector_inspector.core.connections.base_connection import VectorDBConnection
 from vector_inspector.core.provider_detection import (
     get_all_providers,
-    get_install_instructions_message,
     get_provider_info,
 )
 from vector_inspector.services.settings_service import SettingsService
@@ -235,25 +235,25 @@ class ConnectionDialog(QDialog):
                 self.provider_combo.addItem(provider.name, provider.id)
                 available_count += 1
             else:
-                # Unavailable provider - grayed out with note
+                # Unavailable provider — shown in gray but still selectable so
+                # currentIndexChanged fires and the install dialog is triggered.
                 display_name = f"{provider.name} (not installed)"
                 self.provider_combo.addItem(display_name, provider.id)
-                # Gray out unavailable providers
                 index = self.provider_combo.count() - 1
                 model = self.provider_combo.model()
                 item = model.item(index)
                 if item:
-                    item.setEnabled(False)
+                    item.setForeground(QColor("gray"))
 
         # If no providers available, show helpful message
         if available_count == 0:
             self.provider_combo.addItem("(No providers installed)", None)
 
-    def _refresh_providers(self):
+    def _refresh_providers(self, silent: bool = False):
         """Refresh the provider list to detect newly installed packages."""
-        from PySide6.QtWidgets import QMessageBox
-        import importlib
         import sys
+
+        from PySide6.QtWidgets import QMessageBox
 
         current_provider = self.provider_combo.currentData()
 
@@ -276,27 +276,28 @@ class ConnectionDialog(QDialog):
                 self.provider_combo.setCurrentIndex(i)
                 break
 
-        # Show success message
-        available_providers = [p for p in get_all_providers() if p.available]
-        if available_providers:
-            provider_names = ", ".join([p.name for p in available_providers])
-            QMessageBox.information(
-                self,
-                "Providers Refreshed",
-                f"Available providers: {provider_names}\n\n"
-                f"If you just installed a provider, it should now appear in the list.",
-            )
-        else:
-            QMessageBox.information(
-                self,
-                "No Providers Found",
-                "No database providers are currently installed.\n\n"
-                "Install providers with:\n"
-                "  pip install vector-inspector[recommended]\n\n"
-                "Or install individual providers:\n"
-                "  pip install vector-inspector[chromadb]\n"
-                "  pip install vector-inspector[qdrant]",
-            )
+        # Show success message (suppressed when called silently after an in-app install)
+        if not silent:
+            available_providers = [p for p in get_all_providers() if p.available]
+            if available_providers:
+                provider_names = ", ".join([p.name for p in available_providers])
+                QMessageBox.information(
+                    self,
+                    "Providers Refreshed",
+                    f"Available providers: {provider_names}\n\n"
+                    f"If you just installed a provider, it should now appear in the list.",
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "No Providers Found",
+                    "No database providers are currently installed.\n\n"
+                    "Install providers with:\n"
+                    "  pip install vector-inspector[recommended]\n\n"
+                    "Or install individual providers:\n"
+                    "  pip install vector-inspector[chromadb]\n"
+                    "  pip install vector-inspector[qdrant]",
+                )
 
     def _update_help_text(self):
         """Update help text based on available providers."""
@@ -318,8 +319,6 @@ class ConnectionDialog(QDialog):
 
     def _on_provider_changed(self):
         """Handle provider selection change."""
-        from PySide6.QtWidgets import QMessageBox, QTextEdit
-
         provider_id = self.provider_combo.currentData()
 
         # Check if this is a placeholder (no providers installed)
@@ -329,30 +328,25 @@ class ConnectionDialog(QDialog):
         # Check if provider is available
         provider_info = get_provider_info(provider_id)
         if provider_info and not provider_info.available:
-            # Show installation instructions
-            msg = QMessageBox(self)
-            msg.setIcon(QMessageBox.Icon.Information)
-            msg.setWindowTitle(f"{provider_info.name} Not Installed")
-            msg.setText(f"{provider_info.name} is not currently installed.")
+            # Offer to install the provider in-app
+            from vector_inspector.ui.dialogs.provider_install_dialog import ProviderInstallDialog
 
-            # Create formatted text with install instructions
-            instructions = get_install_instructions_message(provider_id)
-            text_edit = QTextEdit()
-            text_edit.setReadOnly(True)
-            text_edit.setPlainText(instructions)
-            text_edit.setMaximumHeight(200)
-            msg.layout().addWidget(text_edit, 1, 0, 1, msg.layout().columnCount())
+            dlg = ProviderInstallDialog(provider_info, parent=self)
+            # After a successful install, silently refresh the combo so the
+            # newly-installed provider shows as available immediately.
+            dlg.provider_installed.connect(lambda _pid: self._refresh_providers(silent=True))
+            dlg.exec()
 
-            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg.exec()
-
-            # Switch back to first available provider
-            for i in range(self.provider_combo.count()):
-                check_id = self.provider_combo.itemData(i)
-                check_info = get_provider_info(check_id) if check_id else None
-                if check_info and check_info.available:
-                    self.provider_combo.setCurrentIndex(i)
-                    return
+            # Switch back to the first available provider if this one is
+            # still not installed (user cancelled or install failed).
+            fresh_info = get_provider_info(provider_id)
+            if fresh_info and not fresh_info.available:
+                for i in range(self.provider_combo.count()):
+                    check_id = self.provider_combo.itemData(i)
+                    check_info = get_provider_info(check_id) if check_id else None
+                    if check_info and check_info.available:
+                        self.provider_combo.setCurrentIndex(i)
+                        return
 
             # If no available providers, keep selection but don't proceed
             return
@@ -467,9 +461,7 @@ class ConnectionDialog(QDialog):
                     "type": "http",
                     "host": self.host_input.text(),
                     "port": int(self.port_input.text()),
-                    "api_key": self.api_key_input.text()
-                    if self.api_key_input.text()
-                    else None,
+                    "api_key": self.api_key_input.text() if self.api_key_input.text() else None,
                 }
             )
         else:
@@ -516,9 +508,7 @@ class ConnectionDialog(QDialog):
                 break
         if start_dir is None:
             start_dir = str(Path(rel).resolve())
-        directory = QFileDialog.getExistingDirectory(
-            self, "Select ChromaDB Data Directory", start_dir
-        )
+        directory = QFileDialog.getExistingDirectory(self, "Select ChromaDB Data Directory", start_dir)
         if directory:
             # Set as relative to project root if within it, else absolute
             proj_root = None
@@ -543,11 +533,16 @@ class ConnectionDialog(QDialog):
         if not last_config:
             return
 
-        # Set provider
+        # Set provider — block signals so loading a saved provider never
+        # triggers the install-dialog prompt. The user can still switch
+        # providers manually after the dialog opens.
         provider = last_config.get("provider", "chromadb")
         index = self.provider_combo.findData(provider)
         if index >= 0:
+            self.provider_combo.blockSignals(True)
             self.provider_combo.setCurrentIndex(index)
+            self.provider_combo.blockSignals(False)
+            self.provider = provider
 
         # Set connection type
         conn_type = last_config.get("type", "persistent")
@@ -590,9 +585,7 @@ class ConnectionView(QWidget):
     """Widget for managing database connection."""
 
     connection_changed = Signal(bool)
-    connection_created = Signal(
-        VectorDBConnection
-    )  # Signal when new connection is created
+    connection_created = Signal(VectorDBConnection)  # Signal when new connection is created
 
     _raw_connection: Optional[VectorDBConnection]
     connection: Optional[VectorDBConnection]
@@ -661,9 +654,7 @@ class ConnectionView(QWidget):
                 self.loading_dialog.hide_loading()
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.warning(
-                    self, "Missing API Key", "Pinecone requires an API key to connect."
-                )
+                QMessageBox.warning(self, "Missing API Key", "Pinecone requires an API key to connect.")
                 return
             # Lazy import connection class
             try:
@@ -673,7 +664,7 @@ class ConnectionView(QWidget):
                 QMessageBox.critical(
                     self,
                     "Provider Not Installed",
-                    f"Pinecone provider is not installed.\n\n{str(e)}\n\n"
+                    f"Pinecone provider is not installed.\n\n{e!s}\n\n"
                     f"Install with: pip install vector-inspector[pinecone]",
                 )
                 return
@@ -694,8 +685,7 @@ class ConnectionView(QWidget):
                 QMessageBox.critical(
                     self,
                     "Provider Not Installed",
-                    f"Qdrant provider is not installed.\n\n{str(e)}\n\n"
-                    f"Install with: pip install vector-inspector[qdrant]",
+                    f"Qdrant provider is not installed.\n\n{e!s}\n\nInstall with: pip install vector-inspector[qdrant]",
                 )
                 return
         elif provider == "pgvector":
@@ -712,7 +702,7 @@ class ConnectionView(QWidget):
                 QMessageBox.critical(
                     self,
                     "Provider Not Installed",
-                    f"PostgreSQL/pgvector provider is not installed.\n\n{str(e)}\n\n"
+                    f"PostgreSQL/pgvector provider is not installed.\n\n{e!s}\n\n"
                     f"Install with: pip install vector-inspector[pgvector]",
                 )
                 return
@@ -729,7 +719,7 @@ class ConnectionView(QWidget):
                 QMessageBox.critical(
                     self,
                     "Provider Not Installed",
-                    f"ChromaDB provider is not installed.\n\n{str(e)}\n\n"
+                    f"ChromaDB provider is not installed.\n\n{e!s}\n\n"
                     f"Install with: pip install vector-inspector[chromadb]",
                 )
                 return
@@ -761,9 +751,7 @@ class ConnectionView(QWidget):
                 if path:
                     details.append(f"path: {path}")
             # Show host/port for HTTP or PgVector
-            if provider in ("qdrant", "chromadb", "pgvector") and hasattr(
-                self.connection, "host"
-            ):
+            if provider in ("qdrant", "chromadb", "pgvector") and hasattr(self.connection, "host"):
                 host = getattr(self.connection, "host", None)
                 port = getattr(self.connection, "port", None)
                 if host:

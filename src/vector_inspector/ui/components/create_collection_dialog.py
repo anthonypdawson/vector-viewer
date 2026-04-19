@@ -159,6 +159,22 @@ class CreateCollectionDialog(QDialog):
 
     def _on_sample_toggle(self, checked: bool):
         """Handle sample data checkbox toggle."""
+        if checked:
+            from vector_inspector.core.provider_detection import get_feature_info
+
+            feature = get_feature_info("embeddings")
+            if feature and not feature.available:
+                from vector_inspector.ui.dialogs.provider_install_dialog import ProviderInstallDialog
+
+                dlg = ProviderInstallDialog(feature, parent=self)
+                dlg.exec()
+                # If still not installed, revert the checkbox (block signals to avoid recursion)
+                updated = get_feature_info("embeddings")
+                if updated and not updated.available:
+                    self.add_sample_check.blockSignals(True)
+                    self.add_sample_check.setChecked(False)
+                    self.add_sample_check.blockSignals(False)
+                    return
         self.count_spin.setEnabled(checked)
         self.data_type_combo.setEnabled(checked)
         self.model_combo.setEnabled(checked)

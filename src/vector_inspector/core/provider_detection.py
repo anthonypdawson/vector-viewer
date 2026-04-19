@@ -4,6 +4,7 @@ Detects which vector database providers are available (installed) and provides
 installation instructions for missing ones.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
 
@@ -213,6 +214,26 @@ def check_viz_available() -> bool:
         return False
 
 
+def check_documents_available() -> bool:
+    """Check if document import dependencies (pypdf, python-docx) are available."""
+    try:
+        import docx  # noqa: F401
+        import pypdf  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def get_all_feature_info() -> list[FeatureInfo]:
+    """Get information about all optional feature groups in display order.
+
+    Returns:
+        List of FeatureInfo objects for every known feature group.
+    """
+    return [info for fid in ("viz", "embeddings", "clip", "documents") if (info := get_feature_info(fid)) is not None]
+
+
 def get_feature_info(feature_id: str) -> Optional[FeatureInfo]:
     """Get information about an optional feature.
 
@@ -244,5 +265,111 @@ def get_feature_info(feature_id: str) -> Optional[FeatureInfo]:
             install_command="pip install vector-inspector[viz]",
             description="UMAP, t-SNE, clustering algorithms",
         ),
+        "documents": FeatureInfo(
+            id="documents",
+            name="Document Import",
+            available=check_documents_available(),
+            install_command="pip install vector-inspector[documents]",
+            description="Import PDF and DOCX files",
+        ),
     }
     return features.get(feature_id)
+
+
+# ---------------------------------------------------------------------------
+# Static (no availability check) helpers — use these when building UI rows
+# before running checks in a background thread.
+# ---------------------------------------------------------------------------
+
+
+def get_feature_static_info(feature_id: str) -> Optional[FeatureInfo]:
+    """Return static feature info with ``available=False`` — no import checks run."""
+    _static: dict[str, FeatureInfo] = {
+        "viz": FeatureInfo(
+            id="viz",
+            name="Advanced Visualization",
+            available=False,
+            install_command="pip install vector-inspector[viz]",
+            description="UMAP, t-SNE, clustering algorithms",
+        ),
+        "embeddings": FeatureInfo(
+            id="embeddings",
+            name="Text Embeddings",
+            available=False,
+            install_command="pip install vector-inspector[embeddings]",
+            description="Generate embeddings for semantic search",
+        ),
+        "clip": FeatureInfo(
+            id="clip",
+            name="Multimodal (CLIP)",
+            available=False,
+            install_command="pip install vector-inspector[clip]",
+            description="Image and text embeddings with CLIP",
+        ),
+        "documents": FeatureInfo(
+            id="documents",
+            name="Document Import",
+            available=False,
+            install_command="pip install vector-inspector[documents]",
+            description="Import PDF and DOCX files",
+        ),
+    }
+    return _static.get(feature_id)
+
+
+def get_all_feature_metadata() -> list[FeatureInfo]:
+    """Return all feature info with ``available=False`` — no import checks run.
+
+    Use this to populate UI rows before a background availability check.
+    """
+    return [
+        info for fid in ("viz", "embeddings", "clip", "documents") if (info := get_feature_static_info(fid)) is not None
+    ]
+
+
+def get_feature_availability_checks() -> dict[str, Callable[[], bool]]:
+    """Return ``{feature_id: check_callable}`` for background availability checking."""
+    return {
+        "viz": check_viz_available,
+        "embeddings": check_embeddings_available,
+        "clip": check_clip_available,
+        "documents": check_documents_available,
+    }
+
+
+def get_provider_static_info(provider_id: str) -> Optional[ProviderInfo]:
+    """Return static provider info with ``available=False`` — no import checks run."""
+    for p in PROVIDERS:
+        if p["id"] == provider_id:
+            return ProviderInfo(
+                id=p["id"],
+                name=p["name"],
+                available=False,
+                install_command=p["install_command"],
+                import_name=p["import_name"],
+                description=p["description"],
+            )
+    return None
+
+
+def get_all_provider_metadata() -> list[ProviderInfo]:
+    """Return all provider info with ``available=False`` — no import checks run.
+
+    Use this to populate UI rows before a background availability check.
+    """
+    return [
+        ProviderInfo(
+            id=p["id"],
+            name=p["name"],
+            available=False,
+            install_command=p["install_command"],
+            import_name=p["import_name"],
+            description=p["description"],
+        )
+        for p in PROVIDERS
+    ]
+
+
+def get_provider_availability_checks() -> dict[str, Callable[[], bool]]:
+    """Return ``{provider_id: check_callable}`` for background availability checking."""
+    return {p["id"]: (lambda import_name=p["import_name"]: check_provider_available(import_name)) for p in PROVIDERS}

@@ -4,6 +4,7 @@ import contextlib
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vector_inspector.core.provider_detection import get_all_providers, get_provider_info
 from vector_inspector.services.profile_service import ConnectionProfile, ProfileService
 
 
@@ -385,14 +387,9 @@ class ProfileEditorDialog(QDialog):
         self.name_input = QLineEdit()
         form_layout.addRow("Profile Name:", self.name_input)
 
-        # Provider
+        # Provider — populated with availability detection
         self.provider_combo = QComboBox()
-        self.provider_combo.addItem("ChromaDB", "chromadb")
-        self.provider_combo.addItem("Qdrant", "qdrant")
-        self.provider_combo.addItem("PgVector/PostgreSQL", "pgvector")
-        self.provider_combo.addItem("Pinecone", "pinecone")
-        self.provider_combo.addItem("LanceDB", "lancedb")
-        self.provider_combo.addItem("Weaviate", "weaviate")
+        self._populate_providers()
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         form_layout.addRow("Provider:", self.provider_combo)
 
@@ -532,9 +529,63 @@ class ProfileEditorDialog(QDialog):
         except Exception:
             pass
 
+    def _populate_providers(self) -> None:
+        """Populate provider combo with availability-aware items."""
+        self.provider_combo.clear()
+        available_count = 0
+        display_names = {
+            "chromadb": "ChromaDB",
+            "qdrant": "Qdrant",
+            "pgvector": "PgVector/PostgreSQL",
+            "pinecone": "Pinecone",
+            "lancedb": "LanceDB",
+            "weaviate": "Weaviate",
+            "milvus": "Milvus",
+        }
+        for provider in get_all_providers():
+            label = display_names.get(provider.id, provider.name)
+            if provider.available:
+                self.provider_combo.addItem(label, provider.id)
+                available_count += 1
+            else:
+                self.provider_combo.addItem(f"{label} (not installed)", provider.id)
+                index = self.provider_combo.count() - 1
+                item = self.provider_combo.model().item(index)
+                if item:
+                    item.setForeground(QColor("gray"))
+        if available_count == 0:
+            self.provider_combo.addItem("(No providers installed)", None)
+
     def _on_provider_changed(self):
         """Handle provider change."""
         provider = self.provider_combo.currentData()
+
+        # If the selected provider is not installed, open the install dialog.
+        provider_info = get_provider_info(provider) if provider else None
+        if provider_info and not provider_info.available:
+            from vector_inspector.ui.dialogs.provider_install_dialog import ProviderInstallDialog
+
+            dlg = ProviderInstallDialog(provider_info, parent=self)
+            dlg.provider_installed.connect(lambda _pid: self._populate_providers())
+            dlg.exec()
+            # If still not installed after dialog closes, fall back to first available.
+            fresh = get_provider_info(provider)
+            if fresh and not fresh.available:
+                for i in range(self.provider_combo.count()):
+                    check_id = self.provider_combo.itemData(i)
+                    check_info = get_provider_info(check_id) if check_id else None
+                    if check_info and check_info.available:
+                        self.provider_combo.blockSignals(True)
+                        self.provider_combo.setCurrentIndex(i)
+                        self.provider_combo.blockSignals(False)
+                        provider = check_id
+                        break
+                else:
+                    return
+
+        # ---------------------------------------------------------------
+        # Original provider-change logic below
+        # ---------------------------------------------------------------
 
         # Set a conservative baseline: hide controls that are only relevant to
         # specific providers. Each branch will make the controls visible as
@@ -876,10 +927,13 @@ class ProfileEditorDialog(QDialog):
 
         self.name_input.setText(profile_data["name"])
 
-        # Set provider
+        # Set provider — block signals so loading a saved profile never
+        # triggers the install-dialog prompt.
         index = self.provider_combo.findData(profile_data["provider"])
         if index >= 0:
+            self.provider_combo.blockSignals(True)
             self.provider_combo.setCurrentIndex(index)
+            self.provider_combo.blockSignals(False)
 
         config = profile_data.get("config", {})
         conn_type = config.get("type", "persistent")
