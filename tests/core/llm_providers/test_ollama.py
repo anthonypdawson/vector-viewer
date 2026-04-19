@@ -27,10 +27,10 @@ class TestOllamaListModels:
     def test_list_models_fallback_on_error(self, caplog):
         p = OllamaProvider(model="llama3.2")
         with patch("urllib.request.urlopen", side_effect=OSError("unreachable")):
-            with caplog.at_level(logging.ERROR, logger="vector_inspector"):
+            with caplog.at_level(logging.INFO, logger="vector_inspector"):
                 models = p.list_models()
         assert len(models) == 0
-        assert any("Ollama list_models failed" in r.getMessage() for r in caplog.records)
+        assert any("unavailable" in r.getMessage().lower() for r in caplog.records)
 
     def test_get_health_ok_path(self):
         p = OllamaProvider(model="llama3.2")

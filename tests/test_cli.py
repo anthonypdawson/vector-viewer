@@ -6,7 +6,13 @@ from unittest.mock import patch
 import pytest
 
 from vector_inspector import get_version
-from vector_inspector._cli import GITHUB_URL, _handle_dump_settings, _maybe_send_first_run_telemetry, parse_cli_args
+from vector_inspector._cli import (
+    GITHUB_URL,
+    _handle_dump_settings,
+    _handle_install,
+    _maybe_send_first_run_telemetry,
+    parse_cli_args,
+)
 
 # ---------------------------------------------------------------------------
 # Output / exit-code tests (no subprocess needed; captured via capsys)
@@ -224,3 +230,203 @@ def test_dump_settings_via_parse_cli_args(tmp_path, capsys):
         parse_cli_args(["--dump-settings", "--config", str(settings_file)])
     assert exc_info.value.code == 0
     assert '"key"' in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# --install  (direct mode)
+# ---------------------------------------------------------------------------
+
+
+def _patch_install(monkeypatch, returncode: int = 0, output: str = "Successfully installed"):
+    """Patch install_provider so no real pip runs.
+
+    Also patches get_all_providers so every provider is reported as
+    unavailable — otherwise tests would exit early with "already installed"
+    in environments where the provider happens to be installed.
+
+    Both are local imports inside _handle_install, so patches must target
+    the source modules.
+    """
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    unavailable = [
+        ProviderInfo(
+            id=pid,
+            name=pid.title(),
+            available=False,
+            install_command=f"pip install vector-inspector[{pid}]",
+            import_name=pid,
+            description="",
+        )
+        for pid in ["chromadb", "qdrant", "pinecone", "lancedb", "pgvector", "weaviate", "milvus"]
+    ]
+    monkeypatch.setattr(
+        "vector_inspector.core.provider_detection.get_all_providers",
+        lambda: unavailable,
+    )
+    monkeypatch.setattr(
+        "vector_inspector.services.provider_install_service.install_provider",
+        lambda pid, on_output=None: (returncode, output),
+    )
+
+
+def test_install_known_provider_exits_zero(monkeypatch, capsys):
+    _patch_install(monkeypatch, returncode=0)
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("chromadb")
+    assert exc_info.value.code == 0
+
+
+def test_install_known_provider_success_message(monkeypatch, capsys):
+    _patch_install(monkeypatch, returncode=0)
+    with pytest.raises(SystemExit):
+        _handle_install("qdrant")
+    out = capsys.readouterr().out
+    assert "installed successfully" in out
+
+
+def test_install_failure_exits_nonzero(monkeypatch, capsys):
+    _patch_install(monkeypatch, returncode=1, output="ERROR: build failed")
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("chromadb")
+    assert exc_info.value.code != 0
+
+
+def test_install_unknown_provider_exits_nonzero(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("not_real")
+    assert exc_info.value.code != 0
+
+
+def test_install_already_installed_exits_zero(monkeypatch, capsys):
+    # Patch detection: report chromadb as available.
+    # Do NOT call _patch_install here — that would overwrite get_all_providers
+    # with an all-unavailable list, defeating the purpose of this test.
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    installed_providers = [
+        ProviderInfo(
+            id="chromadb",
+            name="ChromaDB",
+            available=True,
+            install_command="pip install vector-inspector[chromadb]",
+            import_name="chromadb",
+            description="Local persistent or HTTP client",
+        )
+    ]
+    monkeypatch.setattr("vector_inspector.core.provider_detection.get_all_providers", lambda: installed_providers)
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("chromadb")
+    assert exc_info.value.code == 0
+    assert "already installed" in capsys.readouterr().out
+
+
+# --install via parse_cli_args
+def test_install_flag_in_parse_cli_args_triggers_handler(monkeypatch, capsys):
+    called_with: list[str] = []
+    monkeypatch.setattr("vector_inspector._cli._handle_install", lambda arg: called_with.append(arg))
+    with patch("vector_inspector._cli._maybe_send_first_run_telemetry"):
+        parse_cli_args(["--install", "qdrant"])
+    assert called_with == ["qdrant"]
+
+
+def test_install_flag_no_value_uses_wizard_sentinel(monkeypatch, capsys):
+    called_with: list[str] = []
+    monkeypatch.setattr("vector_inspector._cli._handle_install", lambda arg: called_with.append(arg))
+    with patch("vector_inspector._cli._maybe_send_first_run_telemetry"):
+        parse_cli_args(["--install"])
+    assert called_with == ["_wizard_"]
+
+
+# --install wizard (interactive) — simulate user input via monkeypatch on builtins.input
+# Wizard tests — get_all_providers is also a local import inside _handle_install,
+# so the patch must target vector_inspector.core.provider_detection.
+_PROVIDER_DETECTION = "vector_inspector.core.provider_detection.get_all_providers"
+
+
+def test_install_wizard_cancel_on_empty_input(monkeypatch, capsys):
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    unavail = [
+        ProviderInfo(
+            id="qdrant",
+            name="Qdrant",
+            available=False,
+            install_command="pip install vector-inspector[qdrant]",
+            import_name="qdrant_client",
+            description="desc",
+        )
+    ]
+    monkeypatch.setattr(_PROVIDER_DETECTION, lambda: unavail)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "")
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("_wizard_")
+    assert exc_info.value.code == 0
+    assert "Cancelled" in capsys.readouterr().out
+
+
+def test_install_wizard_invalid_selection_exits_nonzero(monkeypatch, capsys):
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    unavail = [
+        ProviderInfo(
+            id="qdrant",
+            name="Qdrant",
+            available=False,
+            install_command="pip install vector-inspector[qdrant]",
+            import_name="qdrant_client",
+            description="desc",
+        )
+    ]
+    monkeypatch.setattr(_PROVIDER_DETECTION, lambda: unavail)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "99")
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("_wizard_")
+    assert exc_info.value.code != 0
+
+
+def test_install_wizard_by_number_installs_correct_provider(monkeypatch, capsys):
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    unavail = [
+        ProviderInfo(
+            id="lancedb",
+            name="LanceDB",
+            available=False,
+            install_command="pip install vector-inspector[lancedb]",
+            import_name="lancedb",
+            description="desc",
+        )
+    ]
+    monkeypatch.setattr(_PROVIDER_DETECTION, lambda: unavail)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "1")
+    installed: list[str] = []
+    # install_provider is also a local import — patch the source module.
+    monkeypatch.setattr(
+        "vector_inspector.services.provider_install_service.install_provider",
+        lambda pid, on_output=None: installed.append(pid) or (0, "ok"),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("_wizard_")
+    assert exc_info.value.code == 0
+    assert installed == ["lancedb"]
+
+
+def test_install_wizard_all_already_installed_exits_zero(monkeypatch, capsys):
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    all_avail = [
+        ProviderInfo(
+            id="chromadb",
+            name="ChromaDB",
+            available=True,
+            install_command="pip install vector-inspector[chromadb]",
+            import_name="chromadb",
+            description="desc",
+        )
+    ]
+    monkeypatch.setattr(_PROVIDER_DETECTION, lambda: all_avail)
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_install("_wizard_")
+    assert exc_info.value.code == 0
+    assert "already installed" in capsys.readouterr().out

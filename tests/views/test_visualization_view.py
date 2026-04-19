@@ -15,6 +15,24 @@ from vector_inspector.ui.views.visualization_view import (
 )
 
 # ---------------------------------------------------------------------------
+# Autouse fixture: prevent the viz feature-gate dialog from opening.
+#
+# sklearn/umap are optional deps that may not be installed in the test env.
+# Without this patch, _generate_visualization() opens a modal ProviderInstallDialog
+# (because check_viz_available() returns False), blocking the test suite.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _viz_feature_available(monkeypatch):
+    """Make the viz feature appear available so no install dialog opens."""
+    monkeypatch.setattr(
+        "vector_inspector.core.provider_detection.check_viz_available",
+        lambda: True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # VisualizationThread tests
 # ---------------------------------------------------------------------------
 
@@ -353,6 +371,7 @@ def test_on_data_loaded_starts_visualization_thread(qtbot, viz_view, monkeypatch
     class FakeVizThread:
         finished = MagicMock()
         error = MagicMock()
+        feature_missing = MagicMock()
 
         def start(self):
             started.append(True)
@@ -652,6 +671,7 @@ def test_on_data_loaded_tsne_method_handled(qtbot, viz_view, monkeypatch):
     class FakeVizThread:
         finished = MagicMock()
         error = MagicMock()
+        feature_missing = MagicMock()
 
         def __init__(self, embeddings, method, n_components):
             thread_methods.append(method)
@@ -1015,3 +1035,122 @@ def test_on_clustering_finished_hdbscan_reports_non_noise_clusters(viz_view):
     call_args = mock_reporter.report_action.call_args
     assert call_args[0][0] == "Clustering"
     assert call_args[1]["result_count"] == 2  # only non-noise clusters
+
+
+# ---------------------------------------------------------------------------
+# _on_feature_missing — opens install dialog for missing viz deps
+# ---------------------------------------------------------------------------
+
+
+def test_on_feature_missing_hides_loading_and_re_enables_button(viz_view, monkeypatch):
+    """_on_feature_missing restores UI state before showing the dialog."""
+    from unittest.mock import MagicMock
+
+    from vector_inspector.core.provider_detection import FeatureInfo
+
+    viz_view.loading_dialog = MagicMock()
+
+    # Patch ProviderInstallDialog and get_feature_info at their source modules so
+    # the local imports inside _on_feature_missing resolve correctly.
+    class _FakeDialog:
+        provider_installed = MagicMock()
+
+        def __init__(self, feature, parent=None):
+            pass
+
+        def exec(self):
+            pass
+
+    monkeypatch.setattr(
+        "vector_inspector.ui.dialogs.provider_install_dialog.ProviderInstallDialog",
+        _FakeDialog,
+    )
+    monkeypatch.setattr(
+        "vector_inspector.core.provider_detection.get_feature_info",
+        lambda fid: FeatureInfo(
+            id=fid,
+            name="Advanced Visualization",
+            available=False,
+            install_command=f"pip install vector-inspector[{fid}]",
+            description="test",
+        ),
+    )
+
+    viz_view.dr_panel.generate_button.setEnabled(False)
+    viz_view._on_feature_missing("viz")
+
+    viz_view.loading_dialog.hide_loading.assert_called_once()
+    assert viz_view.dr_panel.generate_button.isEnabled()
+
+
+def test_on_feature_missing_does_nothing_for_unknown_feature_id(viz_view, monkeypatch):
+    """If get_feature_info returns None, _on_feature_missing must not crash."""
+    from unittest.mock import MagicMock
+
+    viz_view.loading_dialog = MagicMock()
+    monkeypatch.setattr(
+        "vector_inspector.core.provider_detection.get_feature_info",
+        lambda _fid: None,
+    )
+
+    viz_view._on_feature_missing("unknown_feature")  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# VisualizationThread — feature_missing signal
+# ---------------------------------------------------------------------------
+
+
+def test_visualization_thread_emits_feature_missing_on_feature_dependency_error(qtbot, monkeypatch):
+    """VisualizationThread emits feature_missing(feature_id) when reduce_dimensions raises FeatureDependencyMissingError."""
+    import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationThread
+    from vector_inspector.utils.lazy_imports import FeatureDependencyMissingError
+
+    def _raise(*a, **kw):
+        raise FeatureDependencyMissingError("viz", "sklearn")
+
+    monkeypatch.setattr(
+        "vector_inspector.ui.views.visualization_view.VisualizationService.reduce_dimensions",
+        staticmethod(_raise),
+    )
+
+    thread = VisualizationThread(np.array([[1, 2]]), "pca", 2)
+
+    missing: list[str] = []
+    errors: list[str] = []
+    thread.feature_missing.connect(missing.append)
+    thread.error.connect(errors.append)
+
+    thread.run()  # Call directly so the test stays synchronous
+
+    assert missing == ["viz"]
+    assert errors == []
+
+
+def test_visualization_thread_does_not_emit_feature_missing_on_generic_error(qtbot, monkeypatch):
+    """A plain Exception must go through error signal, not feature_missing."""
+    import numpy as np
+
+    from vector_inspector.ui.views.visualization_view import VisualizationThread
+
+    def _raise(*a, **kw):
+        raise RuntimeError("generic failure")
+
+    monkeypatch.setattr(
+        "vector_inspector.ui.views.visualization_view.VisualizationService.reduce_dimensions",
+        staticmethod(_raise),
+    )
+
+    thread = VisualizationThread(np.array([[1, 2]]), "pca", 2)
+
+    missing: list[str] = []
+    errors: list[str] = []
+    thread.feature_missing.connect(missing.append)
+    thread.error.connect(errors.append)
+
+    thread.run()
+
+    assert missing == []
+    assert errors == ["generic failure"]

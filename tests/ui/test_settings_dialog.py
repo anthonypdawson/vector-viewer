@@ -428,6 +428,363 @@ def test_status_timeout_spinbox_change_calls_settings(qtbot):
     assert fake_settings.get_status_timeout_ms() == 12_000
 
 
+# ---------------------------------------------------------------------------
+# Extensions (Features) tab tests
+# ---------------------------------------------------------------------------
+
+
+def _make_settings_with_features_tab(monkeypatch, qtbot, *, features_available: dict | None = None):
+    """Build a SettingsDialog with all feature checks patched to avoid real imports."""
+    import vector_inspector.core.provider_detection as pd
+
+    if features_available is None:
+        features_available = {"viz": False, "embeddings": False, "clip": False, "documents": False}
+
+    for fid, available in features_available.items():
+        checker = {
+            "viz": "check_viz_available",
+            "embeddings": "check_embeddings_available",
+            "clip": "check_clip_available",
+            "documents": "check_documents_available",
+        }[fid]
+        monkeypatch.setattr(pd, checker, lambda a=available: a)
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    # Wait for both background check threads to finish applying results.
+    qtbot.waitUntil(lambda: dlg._features_checked and dlg._providers_checked, timeout=3000)
+    return dlg
+
+
+def test_features_tab_exists(monkeypatch, qtbot):
+    """SettingsDialog creates a 'Features' tab."""
+    dlg = _make_settings_with_features_tab(monkeypatch, qtbot)
+    tab_titles = [dlg._tabs.tabText(i) for i in range(dlg._tabs.count())]
+    assert "Features" in tab_titles
+
+
+def test_providers_tab_is_separate_from_features_tab(monkeypatch, qtbot):
+    """Database Providers live on their own 'Providers' tab, not on 'Features'."""
+    dlg = _make_settings_with_features_tab(monkeypatch, qtbot)
+    tab_titles = [dlg._tabs.tabText(i) for i in range(dlg._tabs.count())]
+    assert "Providers" in tab_titles
+    assert "Features" in tab_titles
+    assert tab_titles.index("Features") != tab_titles.index("Providers")
+
+
+def test_features_tab_has_all_four_feature_rows(monkeypatch, qtbot):
+    """_feature_rows contains entries for all four feature groups."""
+    dlg = _make_settings_with_features_tab(monkeypatch, qtbot)
+    assert set(dlg._feature_rows.keys()) == {"viz", "embeddings", "clip", "documents"}
+
+
+def test_feature_row_action_btn_tooltip_contains_package_spec(monkeypatch, qtbot):
+    """The Install/Uninstall button on a feature row has a tooltip listing package specs."""
+    from vector_inspector.services.provider_install_service import _FEATURE_PACKAGE_SPECS
+
+    dlg = _make_settings_with_features_tab(monkeypatch, qtbot)
+    tip = dlg._feature_rows["viz"]["action_btn"].toolTip()
+    # All viz package specs should appear in the tooltip
+    for spec in _FEATURE_PACKAGE_SPECS["viz"]:
+        assert spec in tip, f"Expected {spec!r} in tooltip, got: {tip!r}"
+
+
+def test_provider_row_action_btn_tooltip_contains_package_spec(monkeypatch, qtbot):
+    """The Install/Uninstall button on a provider row has a tooltip listing package specs."""
+    from vector_inspector.services.provider_install_service import _PROVIDER_PACKAGE_SPECS
+
+    dlg = _make_settings_with_features_tab(monkeypatch, qtbot)
+    tip = dlg._provider_rows["lancedb"]["action_btn"].toolTip()
+    for spec in _PROVIDER_PACKAGE_SPECS["lancedb"]:
+        assert spec in tip, f"Expected {spec!r} in tooltip, got: {tip!r}"
+
+
+def test_features_tab_not_installed_shows_install_button(monkeypatch, qtbot):
+    """When a feature is not installed its action button reads 'Install'."""
+    dlg = _make_settings_with_features_tab(
+        monkeypatch, qtbot, features_available={"viz": False, "embeddings": False, "clip": False, "documents": False}
+    )
+    assert dlg._feature_rows["viz"]["action_btn"].text() == "Install"
+
+
+def test_features_tab_installed_shows_uninstall_button(monkeypatch, qtbot):
+    """When a feature is installed its action button reads 'Uninstall'."""
+    dlg = _make_settings_with_features_tab(
+        monkeypatch, qtbot, features_available={"viz": True, "embeddings": False, "clip": False, "documents": False}
+    )
+    assert dlg._feature_rows["viz"]["action_btn"].text() == "Uninstall"
+
+
+def test_features_tab_installed_shows_checkmark(monkeypatch, qtbot):
+    """Status label shows a checkmark for installed features."""
+    dlg = _make_settings_with_features_tab(
+        monkeypatch, qtbot, features_available={"viz": True, "embeddings": False, "clip": False, "documents": False}
+    )
+    assert "✔" in dlg._feature_rows["viz"]["status_lbl"].text()
+
+
+def test_features_tab_not_installed_shows_cross(monkeypatch, qtbot):
+    """Status label shows a cross for missing features."""
+    dlg = _make_settings_with_features_tab(
+        monkeypatch, qtbot, features_available={"viz": False, "embeddings": False, "clip": False, "documents": False}
+    )
+    assert "✘" in dlg._feature_rows["viz"]["status_lbl"].text()
+
+
+def test_refresh_feature_statuses_updates_button_when_newly_installed(monkeypatch, qtbot):
+    """Calling _refresh_feature_statuses picks up a changed availability."""
+    import vector_inspector.core.provider_detection as pd
+
+    monkeypatch.setattr(pd, "check_viz_available", lambda: False)
+    monkeypatch.setattr(pd, "check_embeddings_available", lambda: False)
+    monkeypatch.setattr(pd, "check_clip_available", lambda: False)
+    monkeypatch.setattr(pd, "check_documents_available", lambda: False)
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    qtbot.waitUntil(lambda: dlg._features_checked and dlg._providers_checked, timeout=3000)
+
+    assert dlg._feature_rows["viz"]["action_btn"].text() == "Install"
+
+    # Simulate feature becoming available
+    monkeypatch.setattr(pd, "check_viz_available", lambda: True)
+    dlg._features_checked = False
+    dlg._refresh_feature_statuses()
+    qtbot.waitUntil(lambda: dlg._features_checked, timeout=3000)
+
+    assert dlg._feature_rows["viz"]["action_btn"].text() == "Uninstall"
+
+
+def test_on_install_clicked_opens_provider_install_dialog(monkeypatch, qtbot):
+    """_on_install_clicked opens ProviderInstallDialog and kicks off a background re-check."""
+    dlg = _make_settings_with_features_tab(monkeypatch, qtbot)
+
+    from unittest.mock import MagicMock
+
+    mock_dlg = MagicMock()
+    mock_dlg.exec.return_value = None
+
+    monkeypatch.setattr(
+        "vector_inspector.ui.dialogs.provider_install_dialog.ProviderInstallDialog",
+        lambda info, parent=None: mock_dlg,
+    )
+
+    with patch("vector_inspector.ui.dialogs.settings_dialog.SettingsDialog._start_feature_status_check") as mock_check:
+        dlg._on_install_clicked("viz")
+        mock_dlg.exec.assert_called_once()
+        mock_check.assert_called_once()
+
+
+def test_on_uninstall_clicked_cancelled_does_not_start_thread(monkeypatch, qtbot):
+    """When the user cancels the uninstall confirmation no thread is started."""
+    dlg = _make_settings_with_features_tab(
+        monkeypatch, qtbot, features_available={"viz": True, "embeddings": False, "clip": False, "documents": False}
+    )
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+
+    initial_threads = len(dlg._uninstall_threads)
+    dlg._on_uninstall_clicked("viz")
+    assert len(dlg._uninstall_threads) == initial_threads
+
+
+def test_on_uninstall_done_success_updates_status_message(monkeypatch, qtbot):
+    """A returncode of 0 sets the status message to 'Removed'."""
+    dlg = _make_settings_with_features_tab(
+        monkeypatch, qtbot, features_available={"viz": True, "embeddings": False, "clip": False, "documents": False}
+    )
+    dlg._on_uninstall_done("viz", 0, "Uninstalled successfully")
+    assert dlg._feature_rows["viz"]["status_msg"].text() == "Removed"
+
+
+def test_on_uninstall_done_failure_updates_status_message(monkeypatch, qtbot):
+    """A non-zero returncode sets the status message to a failure string."""
+    dlg = _make_settings_with_features_tab(
+        monkeypatch, qtbot, features_available={"viz": True, "embeddings": False, "clip": False, "documents": False}
+    )
+    monkeypatch.setattr("vector_inspector.core.logging.log_error", lambda *a, **k: None)
+    dlg._on_uninstall_done("viz", 1, "pip failed")
+    assert "Failed" in dlg._feature_rows["viz"]["status_msg"].text()
+
+
+# ---------------------------------------------------------------------------
+# Extensions (Features) tab — Database Providers section tests
+# ---------------------------------------------------------------------------
+
+
+def _make_settings_with_providers_patched(monkeypatch, qtbot, *, chromadb_available=True):
+    """Build a SettingsDialog with provider rows and availability patched for testing."""
+    import vector_inspector.core.provider_detection as pd
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    # Keep feature checkers consistent (all unavailable — not under test here)
+    monkeypatch.setattr(pd, "check_viz_available", lambda: False)
+    monkeypatch.setattr(pd, "check_embeddings_available", lambda: False)
+    monkeypatch.setattr(pd, "check_clip_available", lambda: False)
+    monkeypatch.setattr(pd, "check_documents_available", lambda: False)
+
+    # Static metadata for row building — no availability flags needed here
+    fake_provider_metadata = [
+        ProviderInfo(
+            id="chromadb",
+            name="ChromaDB",
+            available=False,
+            install_command="pip install ...",
+            import_name="chromadb",
+            description="Local persistent or HTTP client",
+        ),
+        ProviderInfo(
+            id="qdrant",
+            name="Qdrant",
+            available=False,
+            install_command="pip install ...",
+            import_name="qdrant_client",
+            description="Local, remote, or cloud vector database",
+        ),
+    ]
+    monkeypatch.setattr(pd, "get_all_provider_metadata", lambda: fake_provider_metadata)
+
+    # Background availability checks
+    monkeypatch.setattr(
+        pd,
+        "get_provider_availability_checks",
+        lambda: {"chromadb": (lambda: chromadb_available), "qdrant": (lambda: False)},
+    )
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    qtbot.waitUntil(lambda: dlg._features_checked and dlg._providers_checked, timeout=3000)
+    return dlg
+
+
+def test_provider_rows_created_for_patched_providers(monkeypatch, qtbot):
+    """_provider_rows contains an entry for every provider returned by get_all_providers."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot)
+    assert set(dlg._provider_rows.keys()) == {"chromadb", "qdrant"}
+
+
+def test_provider_not_installed_shows_install_button(monkeypatch, qtbot):
+    """An unavailable provider row shows an 'Install' button."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=False)
+    assert dlg._provider_rows["chromadb"]["action_btn"].text() == "Install"
+
+
+def test_provider_installed_shows_uninstall_button(monkeypatch, qtbot):
+    """An available provider row shows an 'Uninstall' button."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=True)
+    assert dlg._provider_rows["chromadb"]["action_btn"].text() == "Uninstall"
+
+
+def test_provider_installed_shows_checkmark(monkeypatch, qtbot):
+    """An available provider row shows ✔ in its status label."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=True)
+    assert "✔" in dlg._provider_rows["chromadb"]["status_lbl"].text()
+
+
+def test_provider_not_installed_shows_cross(monkeypatch, qtbot):
+    """An unavailable provider row shows ✘ in its status label."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=False)
+    assert "✘" in dlg._provider_rows["chromadb"]["status_lbl"].text()
+
+
+def test_refresh_provider_statuses_updates_button_when_newly_installed(monkeypatch, qtbot):
+    """Calling _refresh_provider_statuses picks up a changed availability."""
+    import vector_inspector.core.provider_detection as pd
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    monkeypatch.setattr(pd, "check_viz_available", lambda: False)
+    monkeypatch.setattr(pd, "check_embeddings_available", lambda: False)
+    monkeypatch.setattr(pd, "check_clip_available", lambda: False)
+    monkeypatch.setattr(pd, "check_documents_available", lambda: False)
+
+    # Start with chromadb unavailable
+    monkeypatch.setattr(
+        pd,
+        "get_all_provider_metadata",
+        lambda: [
+            ProviderInfo(
+                id="chromadb",
+                name="ChromaDB",
+                available=False,
+                install_command="pip install ...",
+                import_name="chromadb",
+                description="Local persistent or HTTP client",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        pd,
+        "get_provider_availability_checks",
+        lambda: {"chromadb": (lambda: False)},
+    )
+
+    fake_settings = FakeSettings()
+    dlg = SettingsDialog(settings_service=fake_settings)
+    qtbot.addWidget(dlg)
+    qtbot.waitUntil(lambda: dlg._features_checked and dlg._providers_checked, timeout=3000)
+
+    assert dlg._provider_rows["chromadb"]["action_btn"].text() == "Install"
+
+    # Simulate chromadb becoming available
+    monkeypatch.setattr(
+        pd,
+        "get_provider_availability_checks",
+        lambda: {"chromadb": (lambda: True)},
+    )
+    dlg._providers_checked = False
+    dlg._refresh_provider_statuses()
+    qtbot.waitUntil(lambda: dlg._providers_checked, timeout=3000)
+
+    assert dlg._provider_rows["chromadb"]["action_btn"].text() == "Uninstall"
+
+
+def test_on_provider_install_clicked_opens_install_dialog(monkeypatch, qtbot):
+    """_on_provider_install_clicked opens ProviderInstallDialog and kicks off a background re-check."""
+    from unittest.mock import MagicMock
+
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=False)
+
+    mock_dlg = MagicMock()
+    mock_dlg.exec.return_value = None
+
+    monkeypatch.setattr(
+        "vector_inspector.ui.dialogs.provider_install_dialog.ProviderInstallDialog",
+        lambda info, parent=None: mock_dlg,
+    )
+
+    with patch("vector_inspector.ui.dialogs.settings_dialog.SettingsDialog._start_provider_status_check") as mock_check:
+        dlg._on_provider_install_clicked("chromadb")
+        mock_dlg.exec.assert_called_once()
+        mock_check.assert_called_once()
+
+
+def test_on_provider_uninstall_clicked_cancelled_does_not_start_thread(monkeypatch, qtbot):
+    """When the user cancels the provider uninstall confirmation no thread is started."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=True)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+
+    initial_threads = len(dlg._provider_uninstall_threads)
+    dlg._on_provider_uninstall_clicked("chromadb")
+    assert len(dlg._provider_uninstall_threads) == initial_threads
+
+
+def test_on_provider_uninstall_done_success_updates_status_message(monkeypatch, qtbot):
+    """A returncode of 0 sets the provider status message to 'Removed'."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=True)
+    dlg._on_provider_uninstall_done("chromadb", 0, "Uninstalled successfully")
+    assert dlg._provider_rows["chromadb"]["status_msg"].text() == "Removed"
+
+
+def test_on_provider_uninstall_done_failure_updates_status_message(monkeypatch, qtbot):
+    """A non-zero returncode sets the provider status message to a failure string."""
+    dlg = _make_settings_with_providers_patched(monkeypatch, qtbot, chromadb_available=True)
+    monkeypatch.setattr("vector_inspector.core.logging.log_error", lambda *a, **k: None)
+    dlg._on_provider_uninstall_done("chromadb", 1, "pip failed")
+    assert "Failed" in dlg._provider_rows["chromadb"]["status_msg"].text()
+
+
 def test_reset_defaults_sets_timeout_to_5s(qtbot, monkeypatch):
     """_reset_defaults resets the status timeout spinbox to 5 seconds."""
     from PySide6.QtWidgets import QMessageBox

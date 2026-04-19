@@ -1,3 +1,63 @@
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_modal_install_dialog(monkeypatch):
+    """Two-part guard for every test in this module:
+
+    1. Replace ProviderInstallDialog with a non-blocking stub so tests that
+       programmatically select an unavailable provider never open a modal loop.
+    2. Patch get_provider_info in the connection_view module to report all
+       providers as available so _on_provider_changed's fallback logic doesn't
+       reset the combo back to the first available provider.
+
+    Tests that specifically exercise the install-dialog behaviour override the
+    ProviderInstallDialog patch by setting it again in their own test body
+    (the later monkeypatch call wins).
+    """
+    import vector_inspector.ui.dialogs.provider_install_dialog as _dlg_mod
+    from vector_inspector.core.provider_detection import (
+        ProviderInfo,
+        get_provider_info as _orig,
+    )
+
+    class _Sig:
+        def connect(self, _cb):
+            pass
+
+        def emit(self, *args):
+            pass
+
+    class _InstantCloseDialog:
+        provider_installed = _Sig()
+
+        def __init__(self, provider, parent=None):
+            pass
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(_dlg_mod, "ProviderInstallDialog", _InstantCloseDialog)
+
+    def _always_available(provider_id: str):
+        info = _orig(provider_id)
+        if info is None:
+            return None
+        return ProviderInfo(
+            id=info.id,
+            name=info.name,
+            available=True,
+            install_command=info.install_command,
+            import_name=info.import_name,
+            description=info.description,
+        )
+
+    monkeypatch.setattr(
+        "vector_inspector.ui.views.connection_view.get_provider_info",
+        _always_available,
+    )
+
+
 def make_fake_connection(success=True, raise_exc=False):
     class Fake:
         def __init__(self):
@@ -106,10 +166,7 @@ def test_connect_with_config_success(monkeypatch, qtbot):
         def disconnect(self):
             self.is_connected = False
 
-    monkeypatch.setattr(mod, "ChromaDBConnection", FakeConn)
-    monkeypatch.setattr(mod, "QdrantConnection", FakeConn)
-    monkeypatch.setattr(mod, "PgVectorConnection", FakeConn)
-    monkeypatch.setattr(mod, "PineconeConnection", FakeConn)
+    monkeypatch.setattr(mod, "get_connection_class", lambda _provider: FakeConn)
 
     # Fake thread that immediately emits finished
     class Emittable:
@@ -449,8 +506,9 @@ def _make_fake_connection_view_dependencies(monkeypatch, mod):
             cols = self.connection.list_collections() if ok else []
             self.finished.emit(ok, cols)
 
-    for cls_name in ("ChromaDBConnection", "QdrantConnection", "PgVectorConnection", "PineconeConnection"):
-        monkeypatch.setattr(mod, cls_name, FakeConn)
+    # connection_view uses get_connection_class() lazily, not module-level names.
+    # Patch get_connection_class in the module so every provider returns FakeConn.
+    monkeypatch.setattr(mod, "get_connection_class", lambda _provider: FakeConn)
     monkeypatch.setattr(mod, "ConnectionThread", SyncThread)
     return FakeConn, SyncThread
 
@@ -597,3 +655,132 @@ def test_show_connection_dialog_accepted(monkeypatch, qtbot):
     view.show_connection_dialog()
 
     assert "Connected" in view.status_label.text()
+
+
+# ---------------------------------------------------------------------------
+# _on_provider_changed — install dialog path
+# ---------------------------------------------------------------------------
+
+
+def test_on_provider_changed_unavailable_opens_install_dialog(monkeypatch, qtbot):
+    """Selecting an unavailable provider opens ProviderInstallDialog, not a plain QMessageBox."""
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    mod = __import__("vector_inspector.ui.views.connection_view", fromlist=["*"])
+
+    # Mark qdrant as unavailable; chromadb as available so there's a fallback.
+    def fake_get_all_providers():
+        return [
+            ProviderInfo("chromadb", "ChromaDB", True, "pip install vector-inspector[chromadb]", "chromadb", ""),
+            ProviderInfo("qdrant", "Qdrant", False, "pip install vector-inspector[qdrant]", "qdrant_client", ""),
+        ]
+
+    def fake_get_provider_info(pid):
+        for p in fake_get_all_providers():
+            if p.id == pid:
+                return p
+        return None
+
+    monkeypatch.setattr(mod, "get_all_providers", fake_get_all_providers)
+    monkeypatch.setattr(mod, "get_provider_info", fake_get_provider_info)
+
+    dialog_execs: list[str] = []
+
+    class FakeInstallDialog:
+        class _Sig:
+            def connect(self, _cb):
+                pass
+
+        provider_installed = _Sig()
+
+        def __init__(self, provider, parent=None):
+            dialog_execs.append(provider.id)
+
+        def exec(self):
+            pass  # user cancels (no install)
+
+    # _on_provider_changed uses a local import, so patch the source module.
+    monkeypatch.setattr(
+        "vector_inspector.ui.dialogs.provider_install_dialog.ProviderInstallDialog",
+        FakeInstallDialog,
+    )
+
+    conn_dialog = mod.ConnectionDialog()
+    qtbot.addWidget(conn_dialog)
+
+    # Block signals so setCurrentIndex doesn't fire _on_provider_changed a second
+    # time before we call it explicitly below.
+    conn_dialog.provider_combo.blockSignals(True)
+    conn_dialog.provider_combo.addItem("Qdrant (not installed)", "qdrant")
+    idx = conn_dialog.provider_combo.findData("qdrant")
+    conn_dialog.provider_combo.setCurrentIndex(idx)
+    conn_dialog.provider_combo.blockSignals(False)
+
+    conn_dialog._on_provider_changed()
+
+    assert "qdrant" in dialog_execs
+
+
+def test_on_provider_changed_unavailable_falls_back_after_cancel(monkeypatch, qtbot):
+    """After the install dialog closes without success the combo reverts to chromadb."""
+    from vector_inspector.core.provider_detection import ProviderInfo
+
+    mod = __import__("vector_inspector.ui.views.connection_view", fromlist=["*"])
+
+    def fake_get_all_providers():
+        return [
+            ProviderInfo("chromadb", "ChromaDB", True, "pip install vector-inspector[chromadb]", "chromadb", ""),
+            ProviderInfo("qdrant", "Qdrant", False, "pip install vector-inspector[qdrant]", "qdrant_client", ""),
+        ]
+
+    def fake_get_provider_info(pid):
+        for p in fake_get_all_providers():
+            if p.id == pid:
+                return p
+        return None
+
+    monkeypatch.setattr(mod, "get_all_providers", fake_get_all_providers)
+    monkeypatch.setattr(mod, "get_provider_info", fake_get_provider_info)
+
+    class FakeInstallDialog:
+        class _Sig:
+            def connect(self, _cb):
+                pass
+
+        provider_installed = _Sig()
+
+        def __init__(self, provider, parent=None):
+            pass
+
+        def exec(self):
+            pass  # cancelled — qdrant remains unavailable
+
+    # Patch at the source module (local import inside _on_provider_changed).
+    monkeypatch.setattr(
+        "vector_inspector.ui.dialogs.provider_install_dialog.ProviderInstallDialog",
+        FakeInstallDialog,
+    )
+
+    conn_dialog = mod.ConnectionDialog()
+    qtbot.addWidget(conn_dialog)
+
+    conn_dialog.provider_combo.blockSignals(True)
+    conn_dialog.provider_combo.addItem("Qdrant (not installed)", "qdrant")
+    idx = conn_dialog.provider_combo.findData("qdrant")
+    conn_dialog.provider_combo.setCurrentIndex(idx)
+    conn_dialog.provider_combo.blockSignals(False)
+
+    conn_dialog._on_provider_changed()
+
+    # After cancel the combo should have fallen back to the first available provider
+    assert conn_dialog.provider_combo.currentData() == "chromadb"
+
+
+def test_refresh_providers_silent_suppresses_messagebox(qtbot):
+    """_refresh_providers(silent=True) completes without showing any modal dialog."""
+    mod = __import__("vector_inspector.ui.views.connection_view", fromlist=["*"])
+
+    conn_dialog = mod.ConnectionDialog()
+    qtbot.addWidget(conn_dialog)
+    # Must not block, must not raise — the silent path skips QMessageBox entirely.
+    conn_dialog._refresh_providers(silent=True)
