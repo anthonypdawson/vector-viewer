@@ -31,9 +31,7 @@ def test_check_documents_available_false_when_docx_missing(monkeypatch):
 
 
 def test_check_viz_available_false_when_sklearn_missing(monkeypatch):
-    for name in list(sys.modules):
-        if name == "sklearn" or name.startswith("sklearn."):
-            monkeypatch.setitem(sys.modules, name, None)
+    monkeypatch.setitem(sys.modules, "sklearn", None)
     assert check_viz_available() is False
 
 
@@ -43,16 +41,12 @@ def test_check_viz_available_false_when_umap_missing(monkeypatch):
 
 
 def test_check_embeddings_available_false_when_sentence_transformers_missing(monkeypatch):
-    for name in list(sys.modules):
-        if name == "sentence_transformers" or name.startswith("sentence_transformers."):
-            monkeypatch.setitem(sys.modules, name, None)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", None)
     assert check_embeddings_available() is False
 
 
 def test_check_clip_available_false_when_torch_missing(monkeypatch):
-    for name in list(sys.modules):
-        if name == "torch" or name.startswith("torch."):
-            monkeypatch.setitem(sys.modules, name, None)
+    monkeypatch.setitem(sys.modules, "torch", None)
     assert check_clip_available() is False
 
 
