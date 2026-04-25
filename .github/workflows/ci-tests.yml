@@ -58,7 +58,7 @@ jobs:
       # LanceDB compatibility: tested against lancedb>=0.27.0 + pyarrow>=14.0.0 (pinned in pyproject.toml).
       # If tests fail after a lancedb/pyarrow bump, check delete_items native API detection in lancedb_connection.py.
       - name: Install dependencies (dev)
-        run: pdm install -d --extras all
+        run: pdm install -d -G all
 
       - name: Run tests
         continue-on-error: true
