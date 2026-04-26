@@ -20,6 +20,7 @@ import pytest
 
 def test_chroma_query_collection_includes_query_embedding(tmp_path):
     """query_collection with explicit embeddings always populates query_embedding."""
+    pytest.importorskip("chromadb")
     from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 
     col = f"qe_test_{uuid.uuid4().hex[:6]}"
@@ -39,6 +40,7 @@ def test_chroma_query_collection_includes_query_embedding(tmp_path):
 
 def test_chroma_query_collection_query_embedding_model_none_when_embeddings_provided(tmp_path):
     """When embeddings are passed directly (no texts), model name cannot be determined."""
+    pytest.importorskip("chromadb")
     from vector_inspector.core.connections.chroma_connection import ChromaDBConnection
 
     col = f"qe_test_{uuid.uuid4().hex[:6]}"
@@ -62,6 +64,7 @@ def test_chroma_query_collection_query_embedding_model_none_when_embeddings_prov
 
 def test_qdrant_query_collection_includes_query_embedding(tmp_path):
     """query_collection with explicit embeddings populates query_embedding."""
+    pytest.importorskip("qdrant_client")
     from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 
     col = f"qe_test_{uuid.uuid4().hex[:6]}"
@@ -81,6 +84,7 @@ def test_qdrant_query_collection_includes_query_embedding(tmp_path):
 
 def test_qdrant_query_collection_query_embedding_model_none_for_passthrough(tmp_path):
     """Model name is None when embeddings are passed directly (no text lookup)."""
+    pytest.importorskip("qdrant_client")
     from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 
     col = f"qe_test_{uuid.uuid4().hex[:6]}"
@@ -103,6 +107,7 @@ def test_qdrant_query_collection_query_embedding_model_none_for_passthrough(tmp_
 
 def test_lancedb_query_collection_includes_query_embedding(tmp_path):
     """query_collection with explicit embeddings populates query_embedding."""
+    pytest.importorskip("lancedb")
     from vector_inspector.core.connections.lancedb_connection import LanceDBConnection
 
     col = f"qe_test_{uuid.uuid4().hex[:6]}"
@@ -121,6 +126,7 @@ def test_lancedb_query_collection_includes_query_embedding(tmp_path):
 
 def test_lancedb_query_collection_query_embedding_model_is_none(tmp_path):
     """LanceDB does not expose the model name; query_embedding_model is None."""
+    pytest.importorskip("lancedb")
     from vector_inspector.core.connections.lancedb_connection import LanceDBConnection
 
     col = f"qe_test_{uuid.uuid4().hex[:6]}"
@@ -142,6 +148,7 @@ def test_lancedb_query_collection_query_embedding_model_is_none(tmp_path):
 
 @pytest.fixture
 def _mock_weaviate(monkeypatch):
+    pytest.importorskip("weaviate")
     mock_weaviate = MagicMock()
     mock_client = MagicMock()
     mock_client.is_ready.return_value = True
@@ -155,6 +162,7 @@ def _mock_weaviate(monkeypatch):
 
 
 def test_weaviate_query_collection_includes_query_embedding(_mock_weaviate):
+    pytest.importorskip("weaviate")
     from vector_inspector.core.connections.weaviate_connection import WeaviateConnection
 
     _mock_wv, mock_client = _mock_weaviate
@@ -183,6 +191,7 @@ def test_weaviate_query_collection_includes_query_embedding(_mock_weaviate):
 
 def test_weaviate_query_collection_query_embedding_model_is_none(_mock_weaviate):
     """Weaviate doesn't expose model name; query_embedding_model is None."""
+    pytest.importorskip("weaviate")
     from vector_inspector.core.connections.weaviate_connection import WeaviateConnection
 
     _mock_wv, mock_client = _mock_weaviate
@@ -209,6 +218,7 @@ def test_weaviate_query_collection_query_embedding_model_is_none(_mock_weaviate)
 
 @pytest.fixture
 def _mock_pg():
+    pytest.importorskip("psycopg2")
     with patch("psycopg2.connect") as mock_connect:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -218,6 +228,7 @@ def _mock_pg():
 
 
 def test_pgvector_query_collection_includes_query_embedding(_mock_pg):
+    pytest.importorskip("psycopg2")
     from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
 
     _mock_conn, mock_cursor = _mock_pg
@@ -244,6 +255,7 @@ def test_pgvector_query_collection_includes_query_embedding(_mock_pg):
 
 def test_pgvector_query_collection_query_embedding_model_none_for_passthrough(_mock_pg):
     """Model name is None when embeddings are passed directly."""
+    pytest.importorskip("psycopg2")
     from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
 
     _mock_conn, mock_cursor = _mock_pg
@@ -272,6 +284,7 @@ def test_pgvector_query_collection_query_embedding_model_none_for_passthrough(_m
 
 @pytest.fixture
 def _mock_pinecone():
+    pytest.importorskip("pinecone")
     from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 
     mock_client = MagicMock()
@@ -299,6 +312,7 @@ def _mock_pinecone():
 
 
 def test_pinecone_query_collection_includes_query_embedding(_mock_pinecone):
+    pytest.importorskip("pinecone")
     from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 
     _mock_client, _mock_index = _mock_pinecone
@@ -315,6 +329,7 @@ def test_pinecone_query_collection_includes_query_embedding(_mock_pinecone):
 
 def test_pinecone_query_collection_query_embedding_model_none(_mock_pinecone):
     """Pinecone non-hosted path doesn't expose model name."""
+    pytest.importorskip("pinecone")
     from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 
     _mock_client, _mock_index = _mock_pinecone

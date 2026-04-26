@@ -1,10 +1,16 @@
 """Tests for the core ProviderFactory (connection factory)."""
 
+import importlib.util
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from vector_inspector.core.provider_factory import ProviderFactory
+
+
+# Helper to check if a provider SDK is available
+def _provider_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
 
 
 class TestProviderFactoryUnsupported:
@@ -13,6 +19,7 @@ class TestProviderFactoryUnsupported:
             ProviderFactory.create("mysql", {})
 
 
+@pytest.mark.skipif(not _provider_available("chromadb"), reason="chromadb not installed")
 class TestCreateChroma:
     def test_ephemeral(self):
         with patch("vector_inspector.core.provider_factory.ChromaDBConnection") as MockChroma:
@@ -33,6 +40,7 @@ class TestCreateChroma:
             MockChroma.assert_called_once_with(host="localhost", port=8000)
 
 
+@pytest.mark.skipif(not _provider_available("qdrant_client"), reason="qdrant_client not installed")
 class TestCreateQdrant:
     def test_ephemeral(self):
         with patch("vector_inspector.core.provider_factory.QdrantConnection") as MockQdrant:
@@ -57,6 +65,7 @@ class TestCreateQdrant:
             MockQdrant.assert_called_once_with(host="localhost", port=6333, api_key="secret")
 
 
+@pytest.mark.skipif(not _provider_available("pinecone"), reason="pinecone not installed")
 class TestCreatePinecone:
     def test_requires_api_key(self):
         with pytest.raises(ValueError, match="API key"):
@@ -69,6 +78,7 @@ class TestCreatePinecone:
             MockPinecone.assert_called_once_with(api_key="pk-123")
 
 
+@pytest.mark.skipif(not _provider_available("psycopg2"), reason="psycopg2 not installed")
 class TestCreatePgVector:
     def test_http_type(self):
         with patch("vector_inspector.core.provider_factory.PgVectorConnection") as MockPg:
@@ -97,6 +107,7 @@ class TestCreatePgVector:
             ProviderFactory.create("pgvector", {"type": "persistent"})
 
 
+@pytest.mark.skipif(not _provider_available("lancedb"), reason="lancedb not installed")
 class TestCreateLanceDB:
     def test_default_path(self):
         with patch("vector_inspector.core.provider_factory.ProviderFactory._create_lancedb") as mock_lance:
@@ -112,6 +123,7 @@ class TestCreateLanceDB:
             MockLance.assert_called_once_with(uri="/custom/path")
 
 
+@pytest.mark.skipif(not _provider_available("weaviate"), reason="weaviate not installed")
 class TestCreateWeaviate:
     def test_persistent_embedded(self):
         with patch("vector_inspector.core.provider_factory.WeaviateConnection") as MockW:
