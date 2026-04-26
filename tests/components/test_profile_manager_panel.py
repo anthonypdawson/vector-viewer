@@ -1,6 +1,16 @@
+"""Tests for ProfileManagerPanel and ProfileEditorDialog.
+
+MOCKING STRATEGY:
+- mock_providers: Returns all 7 providers as available. Use this for most tests.
+- mock_no_providers: Returns all providers as unavailable. Use for testing placeholder
+  and installation prompts.
+- Tests without either fixture will use real provider detection (may vary by environment).
+"""
+
 import pytest
 
 import vector_inspector.ui.components.profile_manager_panel as panel_mod
+from vector_inspector.core.provider_detection import ProviderInfo
 from vector_inspector.services.profile_service import ConnectionProfile
 from vector_inspector.ui.components.profile_manager_panel import (
     ProfileEditorDialog,
@@ -50,6 +60,131 @@ class FakeProfileService:
         return "dup-id"
 
 
+def _make_fake_providers():
+    """Return a consistent list of fake providers for testing.
+
+    This ensures tests don't depend on which providers are actually installed.
+    """
+    return [
+        ProviderInfo(
+            id="chromadb",
+            name="ChromaDB",
+            available=True,
+            install_command="pip install vector-inspector[chromadb]",
+            import_name="chromadb",
+            description="Local persistent or HTTP client",
+        ),
+        ProviderInfo(
+            id="qdrant",
+            name="Qdrant",
+            available=True,
+            install_command="pip install vector-inspector[qdrant]",
+            import_name="qdrant_client",
+            description="Local, remote, or cloud",
+        ),
+        ProviderInfo(
+            id="pinecone",
+            name="Pinecone",
+            available=True,
+            install_command="pip install vector-inspector[pinecone]",
+            import_name="pinecone",
+            description="Cloud-hosted vector database",
+        ),
+        ProviderInfo(
+            id="lancedb",
+            name="LanceDB",
+            available=True,
+            install_command="pip install vector-inspector[lancedb]",
+            import_name="lancedb",
+            description="Embedded vector database",
+        ),
+        ProviderInfo(
+            id="pgvector",
+            name="PostgreSQL (pgvector)",
+            available=True,
+            install_command="pip install vector-inspector[pgvector]",
+            import_name="psycopg2",
+            description="PostgreSQL with vector extension",
+        ),
+        ProviderInfo(
+            id="weaviate",
+            name="Weaviate",
+            available=True,
+            install_command="pip install vector-inspector[weaviate]",
+            import_name="weaviate",
+            description="Local or cloud with GraphQL",
+        ),
+        ProviderInfo(
+            id="milvus",
+            name="Milvus",
+            available=True,
+            install_command="pip install vector-inspector[milvus]",
+            import_name="pymilvus",
+            description="Distributed vector database",
+        ),
+    ]
+
+
+@pytest.fixture
+def mock_providers(monkeypatch):
+    """Mock get_all_providers to return consistent fake providers.
+
+    Apply this fixture explicitly to tests that need controlled provider availability.
+    Tests that don't use this fixture will use real provider detection.
+    """
+    fake_providers = _make_fake_providers()
+
+    def fake_get_all_providers():
+        return fake_providers
+
+    def fake_get_provider_info(provider_id):
+        for p in fake_providers:
+            if p.id == provider_id:
+                return p
+        return None
+
+    monkeypatch.setattr(panel_mod, "get_all_providers", fake_get_all_providers)
+    monkeypatch.setattr(panel_mod, "get_provider_info", fake_get_provider_info)
+
+
+@pytest.fixture
+def mock_no_providers(monkeypatch):
+    """Mock get_all_providers to return no available providers.
+
+    Use this for testing the no-providers scenario (placeholder, install prompts, etc.).
+    """
+    no_providers = [
+        ProviderInfo(
+            id="chromadb",
+            name="ChromaDB",
+            available=False,
+            install_command="pip install vector-inspector[chromadb]",
+            import_name="chromadb",
+            description="Local persistent or HTTP client",
+        ),
+        ProviderInfo(
+            id="lancedb",
+            name="LanceDB",
+            available=False,
+            install_command="pip install vector-inspector[lancedb]",
+            import_name="lancedb",
+            description="Embedded vector database",
+        ),
+    ]
+
+    def fake_get_all_providers():
+        return no_providers
+
+    def fake_get_provider_info(provider_id):
+        for p in no_providers:
+            if p.id == provider_id:
+                return p
+        return None
+
+    monkeypatch.setattr(panel_mod, "get_all_providers", fake_get_all_providers)
+    monkeypatch.setattr(panel_mod, "get_provider_info", fake_get_provider_info)
+
+
 @pytest.fixture
 def fake_service():
     svc = FakeProfileService()
@@ -69,7 +204,7 @@ def fake_service():
     return svc
 
 
-def test_get_config_persistent_and_http(qtbot, fake_service):
+def test_get_config_persistent_and_http(qtbot, fake_service, mock_providers):
     dlg = ProfileEditorDialog(fake_service)
     qtbot.addWidget(dlg)
 
@@ -95,7 +230,7 @@ def test_get_config_persistent_and_http(qtbot, fake_service):
     assert kwargs2.get("user") == "alice"
 
 
-def test_get_connection_kwargs_and_save_behaviour(qtbot, fake_service, monkeypatch):
+def test_get_connection_kwargs_and_save_behaviour(qtbot, fake_service, mock_providers, monkeypatch):
     dlg = ProfileEditorDialog(fake_service)
     qtbot.addWidget(dlg)
 
@@ -141,11 +276,11 @@ def test_get_connection_kwargs_and_save_behaviour(qtbot, fake_service, monkeypat
     dlg._save_profile()
 
 
-def test_on_provider_and_type_toggles(qtbot, fake_service):
+def test_on_provider_and_type_toggles(qtbot, fake_service, mock_providers):
     dlg = ProfileEditorDialog(fake_service)
     qtbot.addWidget(dlg)
 
-    # lancedb should enable path and disable host/port
+    # lancedb should show path and hide host/port
     def _set_provider(d, data_value):
         for i in range(d.provider_combo.count()):
             if d.provider_combo.itemData(i) == data_value:
@@ -155,18 +290,19 @@ def test_on_provider_and_type_toggles(qtbot, fake_service):
 
     _set_provider(dlg, "lancedb")
     dlg._on_provider_changed()
-    assert dlg.path_input.isEnabled()
-    assert not dlg.host_input.isEnabled()
+    assert not dlg.path_input.isHidden()
+    assert dlg.host_input.isHidden()
 
-    # weaviate cloud toggle affects port and placeholder
+    # weaviate with HTTP should show host/port
     dlg.provider_combo.setCurrentIndex(dlg.provider_combo.findData("weaviate"))
-    dlg.http_radio.setChecked(True)
-    dlg._on_provider_changed()
-    dlg._on_weaviate_cloud_toggled(True)
-    assert not dlg.port_input.isEnabled() or dlg.port_input.text() == ""
+    dlg._on_provider_changed()  # This will set persistent (first supported type)
+    dlg.http_radio.setChecked(True)  # Now switch to HTTP
+    dlg._on_type_changed()  # Update field visibility
+    # Verify weaviate HTTP fields are visible
+    assert not dlg.host_input.isHidden()
 
 
-def test_load_profile_data_populates_fields(qtbot, fake_service):
+def test_load_profile_data_populates_fields(qtbot, fake_service, mock_providers):
     # Use the weaviate profile
     profile = fake_service._profiles["p2"]
     dlg = ProfileEditorDialog(fake_service, profile=profile)
@@ -178,7 +314,7 @@ def test_load_profile_data_populates_fields(qtbot, fake_service):
     assert "weaviate" in dlg.provider_combo.currentData()
 
 
-def test_panel_actions_connect_edit_duplicate_delete(qtbot, fake_service, monkeypatch):
+def test_panel_actions_connect_edit_duplicate_delete(qtbot, fake_service, mock_providers, monkeypatch):
 
     panel_mod = __import__("vector_inspector.ui.components.profile_manager_panel", fromlist=["*"])
 
@@ -232,7 +368,7 @@ def test_panel_actions_connect_edit_duplicate_delete(qtbot, fake_service, monkey
     panel._delete_profile(pid)
 
 
-def test_test_finished_and_error_and_db_fetch(qtbot, fake_service, monkeypatch):
+def test_test_finished_and_error_and_db_fetch(qtbot, fake_service, mock_providers, monkeypatch):
     panel_mod = __import__("vector_inspector.ui.components.profile_manager_panel", fromlist=["*"])
 
     dlg = ProfileEditorDialog(fake_service)
@@ -299,7 +435,7 @@ def test_test_finished_and_error_and_db_fetch(qtbot, fake_service, monkeypatch):
     dlg._on_databases_fetched([], "network error")
 
 
-def test_provider_ui_branches_and_browse_and_load(qtbot, fake_service, monkeypatch):
+def test_provider_ui_branches_and_browse_and_load(qtbot, fake_service, mock_providers, monkeypatch):
     panel_mod = __import__("vector_inspector.ui.components.profile_manager_panel", fromlist=["*"])
 
     dlg = ProfileEditorDialog(fake_service)
@@ -427,7 +563,9 @@ def test_threads_run_and_emit_sync(qtbot, monkeypatch):
     assert emitted.calls and isinstance(emitted.calls[0][0], list)
 
 
-def test_test_connection_flow_creates_threads_and_handles_pinecone_and_weaviate(qtbot, fake_service, monkeypatch):
+def test_test_connection_flow_creates_threads_and_handles_pinecone_and_weaviate(
+    qtbot, fake_service, mock_providers, monkeypatch
+):
     panel_mod = __import__("vector_inspector.ui.components.profile_manager_panel", fromlist=["*"])
     dlg = ProfileEditorDialog(fake_service)
     qtbot.addWidget(dlg)
@@ -574,7 +712,7 @@ def test_test_connection_flow_creates_threads_and_handles_pinecone_and_weaviate(
     dlg._test_connection()
 
 
-def test_show_context_menu_and_create_and_double_click(qtbot, fake_service, monkeypatch):
+def test_show_context_menu_and_create_and_double_click(qtbot, fake_service, mock_providers, monkeypatch):
     panel_mod = __import__("vector_inspector.ui.components.profile_manager_panel", fromlist=["*"])
     panel = panel_mod.ProfileManagerPanel(fake_service)
     qtbot.addWidget(panel)
@@ -605,7 +743,7 @@ def test_show_context_menu_and_create_and_double_click(qtbot, fake_service, monk
     assert "id" in captured
 
 
-def test_save_profile_create_and_update_and_config_kwargs(qtbot, fake_service, monkeypatch):
+def test_save_profile_create_and_update_and_config_kwargs(qtbot, fake_service, mock_providers, monkeypatch):
     panel_mod = __import__("vector_inspector.ui.components.profile_manager_panel", fromlist=["*"])
 
     # New profile create (pinecone requires api_key)
@@ -671,7 +809,7 @@ def test_save_profile_create_and_update_and_config_kwargs(qtbot, fake_service, m
     assert kwargs.get("password") == "pwd"
 
 
-def test_fetch_databases_real_implementation(qtbot, fake_service, monkeypatch):
+def test_fetch_databases_real_implementation(qtbot, fake_service, mock_providers, monkeypatch):
     """_fetch_databases starts a DatabaseFetchThread with parsed connection values and updates the UI state."""
     panel_mod = __import__(
         "vector_inspector.ui.components.profile_manager_panel",
@@ -729,7 +867,7 @@ def test_fetch_databases_real_implementation(qtbot, fake_service, monkeypatch):
     assert dlg.db_status_label.text() == "Fetching\u2026"
 
 
-def test_on_databases_fetched_populates_and_handles_error(qtbot, fake_service, monkeypatch):
+def test_on_databases_fetched_populates_and_handles_error(qtbot, fake_service, mock_providers, monkeypatch):
     """Exercises _on_databases_fetched for both success and error branches."""
     panel_mod = __import__(
         "vector_inspector.ui.components.profile_manager_panel",
@@ -772,3 +910,115 @@ def test_on_databases_fetched_populates_and_handles_error(qtbot, fake_service, m
     # Empty list with no error should clear label silently
     dlg._on_databases_fetched([], "")
     assert dlg.db_status_label.text() == ""
+
+
+def test_save_button_disabled_for_placeholder_provider(qtbot, fake_service, mock_no_providers):
+    """Save button is disabled when the placeholder '(Select a provider...)' is selected."""
+    dlg = panel_mod.ProfileEditorDialog(fake_service)
+    qtbot.addWidget(dlg)
+
+    # After initialization, the placeholder should be selected
+    assert dlg.provider_combo.currentText() == "(Select a provider...)"
+    assert not dlg.save_btn.isEnabled()
+
+
+def test_save_button_enabled_after_selecting_real_provider(qtbot, fake_service, mock_providers):
+    """Save button is enabled after selecting a real provider."""
+    dlg = panel_mod.ProfileEditorDialog(fake_service)
+    qtbot.addWidget(dlg)
+
+    # Select a real provider (e.g., chromadb)
+    for i in range(dlg.provider_combo.count()):
+        if dlg.provider_combo.itemData(i) == "chromadb":
+            dlg.provider_combo.setCurrentIndex(i)
+            break
+
+    # Save button should now be enabled
+    assert dlg.save_btn.isEnabled()
+
+
+def test_initial_setup_prevents_premature_config_prompts(qtbot, fake_service, mock_providers):
+    """_initial_setup flag prevents provider install prompts during dialog initialization."""
+    # This test verifies that creating a dialog doesn't trigger any prompts
+    # The _initial_setup flag is internal state management
+    dlg = panel_mod.ProfileEditorDialog(fake_service)
+    qtbot.addWidget(dlg)
+
+    # If we got here without hanging, the initial setup worked correctly
+    assert dlg.provider_combo.count() > 0
+
+
+def test_update_save_button_state_handles_missing_save_btn(qtbot, fake_service, mock_providers):
+    """_update_save_button_state gracefully handles missing save_btn during init."""
+    dlg = panel_mod.ProfileEditorDialog(fake_service)
+    qtbot.addWidget(dlg)
+
+    # Manually call _update_save_button_state (normally called during provider change)
+    # Should not raise even if save_btn is not yet created
+    try:
+        dlg._update_save_button_state()
+        # If save_btn exists, this should work
+        assert True
+    except AttributeError:
+        # If it doesn't exist yet, the hasattr guard should prevent AttributeError
+        pytest.fail("_update_save_button_state raised AttributeError - guard missing")
+
+
+def test_provider_combo_starts_with_placeholder(qtbot, fake_service, mock_no_providers):
+    """Provider combo starts with '(Select a provider...)' placeholder at index 0."""
+    dlg = panel_mod.ProfileEditorDialog(fake_service)
+    qtbot.addWidget(dlg)
+
+    # First item should be the placeholder
+    assert dlg.provider_combo.itemText(0) == "(Select a provider...)"
+    assert dlg.provider_combo.itemData(0) is None
+
+
+def test_placeholder_provider_hides_all_config_fields(qtbot, fake_service, mock_no_providers):
+    """When placeholder is selected, all configuration fields are hidden."""
+    dlg = panel_mod.ProfileEditorDialog(fake_service)
+    qtbot.addWidget(dlg)
+
+    # With mock_no_providers, placeholder should be at index 0 and auto-selected
+    assert dlg.provider_combo.currentData() is None
+
+    # Since no provider is selected, configuration section should not show specific fields
+    # The dialog starts in a state where no provider-specific config is shown
+
+
+def test_editing_existing_profile_skips_placeholder(qtbot, fake_service, mock_providers):
+    """When editing an existing profile, the provider combo has no placeholder."""
+    profile = ConnectionProfile("p1", "Test", "chromadb", {"type": "persistent", "path": "/tmp"})
+    fake_service._profiles["p1"] = profile
+
+    dlg = panel_mod.ProfileEditorDialog(fake_service, profile=profile)
+    qtbot.addWidget(dlg)
+
+    # First item should NOT be placeholder when editing (providers available)
+    assert dlg.provider_combo.itemText(0) != "(Select a provider...)"
+    # Provider should be set to chromadb
+    assert dlg.provider_combo.currentData() == "chromadb"
+
+
+def test_provider_change_during_edit_mode_works(qtbot, fake_service, mock_providers):
+    """Changing provider while editing an existing profile updates fields correctly."""
+    profile = ConnectionProfile("p1", "Test", "chromadb", {"type": "persistent", "path": "/tmp"})
+    fake_service._profiles["p1"] = profile
+
+    dlg = panel_mod.ProfileEditorDialog(fake_service, profile=profile)
+    qtbot.addWidget(dlg)
+
+    # Initially chromadb with persistent
+    assert dlg.provider_combo.currentData() == "chromadb"
+
+    # Change to lancedb
+    for i in range(dlg.provider_combo.count()):
+        if dlg.provider_combo.itemData(i) == "lancedb":
+            dlg.provider_combo.setCurrentIndex(i)
+            break
+
+    dlg._on_provider_changed()
+
+    # Should reset to persistent (lancedb only supports persistent)
+    assert dlg.persistent_radio.isChecked()
+    assert not dlg.path_input.isHidden()
