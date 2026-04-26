@@ -253,21 +253,22 @@ def test_get_sklearn_hdbscan_raises_plain_import_error_not_feature_error(monkeyp
 def test_get_sentence_transformer_raises_feature_error_when_absent(monkeypatch):
     """Test that get_sentence_transformer raises proper error when sentence_transformers is not importable."""
     import builtins
+
     import vector_inspector.utils.lazy_imports as li
 
     # Clear the cache
     monkeypatch.setattr(li, "_sentence_transformer_cache", {})
-    
+
     # Create a mock that raises ImportError when trying to import sentence_transformers
     original_import = builtins.__import__
-    
+
     def mock_import(name, *args, **kwargs):
         if name == "sentence_transformers" or name.startswith("sentence_transformers."):
             raise ImportError(f"No module named '{name}'")
         return original_import(name, *args, **kwargs)
-    
+
     monkeypatch.setattr(builtins, "__import__", mock_import)
-    
+
     from vector_inspector.utils.lazy_imports import FeatureDependencyMissingError, get_sentence_transformer
 
     with pytest.raises(FeatureDependencyMissingError) as exc_info:
@@ -284,21 +285,22 @@ def test_get_sentence_transformer_raises_feature_error_when_absent(monkeypatch):
 def test_get_clip_raises_feature_error_when_transformers_absent(monkeypatch):
     """Test that get_clip_model_and_processor raises proper error when transformers is not importable."""
     import builtins
+
     import vector_inspector.utils.lazy_imports as li
 
     # Clear the cache
     monkeypatch.setattr(li, "_clip_cache", {})
-    
+
     # Create a mock that raises ImportError when trying to import transformers
     original_import = builtins.__import__
-    
+
     def mock_import(name, *args, **kwargs):
         if name == "transformers" or name.startswith("transformers."):
             raise ImportError(f"No module named '{name}'")
         return original_import(name, *args, **kwargs)
-    
+
     monkeypatch.setattr(builtins, "__import__", mock_import)
-    
+
     from vector_inspector.utils.lazy_imports import FeatureDependencyMissingError, get_clip_model_and_processor
 
     with pytest.raises(FeatureDependencyMissingError) as exc_info:
