@@ -261,15 +261,21 @@ class ConnectionDialog(QDialog):
         # without unloading modules that may already be in use elsewhere.
         importlib.invalidate_caches()
 
-        # Repopulate combo
-        self._populate_providers()
-        self._update_help_text()
+        # Block signals during repopulation to prevent install dialog from
+        # opening when restoring the previous selection.
+        self.provider_combo.blockSignals(True)
+        try:
+            # Repopulate combo
+            self._populate_providers()
+            self._update_help_text()
 
-        # Try to restore previous selection
-        for i in range(self.provider_combo.count()):
-            if self.provider_combo.itemData(i) == current_provider:
-                self.provider_combo.setCurrentIndex(i)
-                break
+            # Try to restore previous selection
+            for i in range(self.provider_combo.count()):
+                if self.provider_combo.itemData(i) == current_provider:
+                    self.provider_combo.setCurrentIndex(i)
+                    break
+        finally:
+            self.provider_combo.blockSignals(False)
 
         # Show success message (suppressed when called silently after an in-app install)
         if not silent:
