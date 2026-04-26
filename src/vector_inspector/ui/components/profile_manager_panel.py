@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -30,6 +31,70 @@ from PySide6.QtWidgets import (
 
 from vector_inspector.core.provider_detection import get_all_providers, get_provider_info
 from vector_inspector.services.profile_service import ConnectionProfile, ProfileService
+
+# Configuration mapping: (provider, connection_type) -> list of visible field names
+PROVIDER_FIELD_CONFIG = {
+    # LanceDB: only persistent mode with path
+    ("lancedb", "persistent"): ["path"],
+    ("lancedb", "http"): [],
+    ("lancedb", "ephemeral"): [],
+    # Pinecone: only HTTP mode with API key
+    ("pinecone", "persistent"): [],
+    ("pinecone", "http"): ["api_key"],
+    ("pinecone", "ephemeral"): [],
+    # Weaviate: persistent (embedded) or HTTP (cloud/local)
+    ("weaviate", "persistent"): ["path"],
+    ("weaviate", "http"): ["host", "port", "api_key"],
+    ("weaviate", "ephemeral"): [],
+    # PgVector: only HTTP with database credentials
+    ("pgvector", "persistent"): [],
+    ("pgvector", "http"): ["host", "port", "database", "user", "password"],
+    ("pgvector", "ephemeral"): [],
+    # ChromaDB: all three modes
+    ("chromadb", "persistent"): ["path"],
+    ("chromadb", "http"): ["host", "port"],
+    ("chromadb", "ephemeral"): [],
+    # Qdrant: all three modes, API key for HTTP
+    ("qdrant", "persistent"): ["path"],
+    ("qdrant", "http"): ["host", "port", "api_key"],
+    ("qdrant", "ephemeral"): [],
+    # Milvus: persistent or HTTP
+    ("milvus", "persistent"): ["path"],
+    ("milvus", "http"): ["host", "port"],
+    ("milvus", "ephemeral"): [],
+}
+
+# Default configuration for unknown providers
+DEFAULT_FIELD_CONFIG = {
+    "persistent": ["path"],
+    "http": ["host", "port"],
+    "ephemeral": [],
+}
+
+# Map field names to their widget/layout objects
+FIELD_WIDGET_MAP = {
+    "path": "path_layout",
+    "host": "host_input",
+    "port": "port_input",
+    "api_key": "api_key_input",
+    "database": "db_layout",
+    "user": "user_input",
+    "password": "password_input",
+}
+
+# Supported connection types per provider
+PROVIDER_SUPPORTED_TYPES = {
+    "lancedb": ["persistent"],
+    "pinecone": ["http"],
+    "weaviate": ["persistent", "http"],
+    "pgvector": ["http"],
+    "chromadb": ["persistent", "http", "ephemeral"],
+    "qdrant": ["persistent", "http", "ephemeral"],
+    "milvus": ["persistent", "http", "ephemeral"],
+}
+
+# Default supported types for unknown providers
+DEFAULT_SUPPORTED_TYPES = ["persistent", "http", "ephemeral"]
 
 
 class TestConnectionThread(QThread):
@@ -368,6 +433,7 @@ class ProfileEditorDialog(QDialog):
         self.profile = profile
         self.is_edit_mode = profile is not None
         self.test_thread = None
+        self._initial_setup = True  # Flag to prevent install prompt on dialog open
 
         self.setWindowTitle("Edit Profile" if self.is_edit_mode else "New Profile")
         self.setMinimumWidth(500)
@@ -376,6 +442,8 @@ class ProfileEditorDialog(QDialog):
 
         if self.is_edit_mode:
             self._load_profile_data()
+
+        self._initial_setup = False  # Setup complete, allow install prompts
 
     def _setup_ui(self):
         """Setup the UI."""
@@ -389,14 +457,14 @@ class ProfileEditorDialog(QDialog):
 
         # Provider — populated with availability detection
         self.provider_combo = QComboBox()
-        self._populate_providers()
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+        self._populate_providers()
         form_layout.addRow("Provider:", self.provider_combo)
 
         layout.addLayout(form_layout)
 
         # Connection type group
-        type_group = QGroupBox("Connection Type")
+        self.type_group = QGroupBox("Connection Type")
         type_layout = QVBoxLayout()
 
         self.button_group = QButtonGroup()
@@ -406,8 +474,10 @@ class ProfileEditorDialog(QDialog):
         self.persistent_radio.toggled.connect(self._on_type_changed)
 
         self.http_radio = QRadioButton("HTTP (Remote Server)")
+        self.http_radio.toggled.connect(self._on_type_changed)
 
         self.ephemeral_radio = QRadioButton("Ephemeral (In-Memory)")
+        self.ephemeral_radio.toggled.connect(self._on_type_changed)
 
         self.button_group.addButton(self.persistent_radio)
         self.button_group.addButton(self.http_radio)
@@ -416,16 +486,16 @@ class ProfileEditorDialog(QDialog):
         type_layout.addWidget(self.persistent_radio)
         type_layout.addWidget(self.http_radio)
         type_layout.addWidget(self.ephemeral_radio)
-        type_group.setLayout(type_layout)
+        self.type_group.setLayout(type_layout)
 
         # Ensure the Connection Type group hugs the top and doesn't get
         # pushed around when other form rows are hidden or shown.
-        type_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        layout.addWidget(type_group)
-        layout.setAlignment(type_group, Qt.AlignTop)
+        self.type_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        layout.addWidget(self.type_group)
+        layout.setAlignment(self.type_group, Qt.AlignTop)
 
         # Connection details
-        details_group = QGroupBox("Connection Details")
+        self.details_group = QGroupBox("Connection Details")
         details_layout = QFormLayout()
 
         # Persistent path
@@ -494,9 +564,9 @@ class ProfileEditorDialog(QDialog):
         # Keep reference to the details layout so we can toggle labels too
         self.db_layout = db_layout
 
-        details_group.setLayout(details_layout)
+        self.details_group.setLayout(details_layout)
         self.details_layout = details_layout
-        layout.addWidget(details_group)
+        layout.addWidget(self.details_group)
 
         # Test connection button
         self.test_btn = QPushButton("Test Connection")
@@ -520,18 +590,22 @@ class ProfileEditorDialog(QDialog):
         # Ensure provider-specific visibility and type state are applied
         self._on_provider_changed()
         self._on_type_changed()
+        self._update_save_button_state()
         # Make details_group expand so the Connection Type group remains
         # anchored to the top when rows are hidden or shown.
         try:
-            details_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-            layout.setStretch(layout.indexOf(type_group), 0)
-            layout.setStretch(layout.indexOf(details_group), 1)
+            self.details_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+            layout.setStretch(layout.indexOf(self.type_group), 0)
+            layout.setStretch(layout.indexOf(self.details_group), 1)
         except Exception:
             pass
 
     def _populate_providers(self) -> None:
         """Populate provider combo with availability-aware items."""
+        # Block signals during population to prevent premature install prompts
+        self.provider_combo.blockSignals(True)
         self.provider_combo.clear()
+
         available_count = 0
         display_names = {
             "chromadb": "ChromaDB",
@@ -542,72 +616,122 @@ class ProfileEditorDialog(QDialog):
             "weaviate": "Weaviate",
             "milvus": "Milvus",
         }
+
+        # First pass: count available providers
+        for provider in get_all_providers():
+            if provider.available:
+                available_count += 1
+
+        # Add placeholder only if no providers are installed (for new profiles only)
+        if not self.is_edit_mode and available_count == 0:
+            self.provider_combo.addItem("(Select a provider...)", None)
+
+        # Add all providers (available first, then unavailable)
         for provider in get_all_providers():
             label = display_names.get(provider.id, provider.name)
             if provider.available:
                 self.provider_combo.addItem(label, provider.id)
-                available_count += 1
             else:
                 self.provider_combo.addItem(f"{label} (not installed)", provider.id)
                 index = self.provider_combo.count() - 1
                 item = self.provider_combo.model().item(index)
                 if item:
                     item.setForeground(QColor("gray"))
-        if available_count == 0:
+
+        # For edit mode with no providers, show message
+        if available_count == 0 and self.is_edit_mode:
             self.provider_combo.addItem("(No providers installed)", None)
+
+        self.provider_combo.blockSignals(False)
+
+        # Update button state based on initial selection
+        self._update_save_button_state()
+
+    def _update_save_button_state(self):
+        """Enable/disable save button based on whether a valid provider is selected."""
+        # Guard: save button may not exist yet during initial UI setup
+        if not hasattr(self, "save_btn"):
+            return
+
+        provider = self.provider_combo.currentData()
+        provider_info = get_provider_info(provider) if provider else None
+
+        # Enable save button only if:
+        # 1. A provider is selected (not the placeholder)
+        # 2. The provider is installed/available
+        if provider_info and provider_info.available:
+            self.save_btn.setEnabled(True)
+            self.save_btn.setToolTip("")
+        else:
+            self.save_btn.setEnabled(False)
+            if provider is None:
+                self.save_btn.setToolTip("Select a provider to continue")
+            elif provider_info and not provider_info.available:
+                self.save_btn.setToolTip(f"{provider_info.name} must be installed first")
+            else:
+                self.save_btn.setToolTip("No valid provider selected")
 
     def _on_provider_changed(self):
         """Handle provider change."""
         provider = self.provider_combo.currentData()
 
-        # If the selected provider is not installed, open the install dialog.
-        provider_info = get_provider_info(provider) if provider else None
-        if provider_info and not provider_info.available:
-            from vector_inspector.ui.dialogs.provider_install_dialog import ProviderInstallDialog
+        # Update save button state
+        self._update_save_button_state()
 
-            dlg = ProviderInstallDialog(provider_info, parent=self)
-            dlg.provider_installed.connect(lambda _pid: self._populate_providers())
-            dlg.exec()
-            # If still not installed after dialog closes, fall back to first available.
-            fresh = get_provider_info(provider)
-            if fresh and not fresh.available:
-                for i in range(self.provider_combo.count()):
-                    check_id = self.provider_combo.itemData(i)
-                    check_info = get_provider_info(check_id) if check_id else None
-                    if check_info and check_info.available:
-                        self.provider_combo.blockSignals(True)
-                        self.provider_combo.setCurrentIndex(i)
-                        self.provider_combo.blockSignals(False)
-                        # Force visual update and re-read the provider value
-                        self.provider_combo.update()
-                        provider = self.provider_combo.currentData()
-                        break
+        # If no provider selected (placeholder), hide configuration sections
+        if provider is None:
+            self.type_group.setVisible(False)
+            self.details_group.setVisible(False)
+            return
+
+        # Show configuration sections when a provider is selected
+        self.type_group.setVisible(True)
+        self.details_group.setVisible(True)
+
+        # Handle install prompt (skip during initial dialog setup)
+        if not self._initial_setup:
+            # If the selected provider is not installed, open the install dialog.
+            provider_info = get_provider_info(provider) if provider else None
+            if provider_info and not provider_info.available:
+                from vector_inspector.ui.dialogs.provider_install_dialog import ProviderInstallDialog
+
+                dlg = ProviderInstallDialog(provider_info, parent=self)
+                # Disconnect the auto-populate to control it manually
+                result = dlg.exec()
+
+                # Repopulate providers list after dialog closes
+                self._populate_providers()
+
+                # Check if provider was successfully installed
+                fresh = get_provider_info(provider)
+                if fresh and fresh.available:
+                    # Provider was installed successfully - select it
+                    for i in range(self.provider_combo.count()):
+                        if self.provider_combo.itemData(i) == provider:
+                            self.provider_combo.blockSignals(True)
+                            self.provider_combo.setCurrentIndex(i)
+                            self.provider_combo.blockSignals(False)
+                            self.provider_combo.update()
+                            provider = self.provider_combo.currentData()
+                            break
                 else:
-                    return
+                    # Provider not installed (user cancelled or install failed)
+                    # Fall back to first available provider
+                    for i in range(self.provider_combo.count()):
+                        check_id = self.provider_combo.itemData(i)
+                        check_info = get_provider_info(check_id) if check_id else None
+                        if check_info and check_info.available:
+                            self.provider_combo.blockSignals(True)
+                            self.provider_combo.setCurrentIndex(i)
+                            self.provider_combo.blockSignals(False)
+                            self.provider_combo.update()
+                            provider = self.provider_combo.currentData()
+                            break
+                    else:
+                        # No providers available - stay on placeholder
+                        return
 
-        # ---------------------------------------------------------------
-        # Original provider-change logic below
-        # ---------------------------------------------------------------
-
-        # Set a conservative baseline: hide controls that are only relevant to
-        # specific providers. Each branch will make the controls visible as
-        # required so the form shows only what's needed.
-        with contextlib.suppress(Exception):
-            self._set_field_and_label_visible(self.path_layout, False)
-            self._set_field_and_label_visible(self.host_input, False)
-            self._set_field_and_label_visible(self.port_input, False)
-            self._set_field_and_label_visible(self.api_key_input, False)
-            self._set_field_and_label_visible(self.db_layout, False)
-            self._set_field_and_label_visible(self.user_input, False)
-            self._set_field_and_label_visible(self.password_input, False)
-            self._set_field_and_label_visible(self.grpc_checkbox, False)
-            self._set_field_and_label_visible(self.weaviate_cloud_checkbox, False)
-            # gRPC and WCD are handled above
-
-        # Reset persistent radio button text (may be changed for specific providers)
-        self.persistent_radio.setText("Persistent (Local File)")
-
-        # Update default port
+        # Update default port based on provider
         if provider == "qdrant":
             if self.port_input.text() == "8000":
                 self.port_input.setText("6333")
@@ -619,263 +743,130 @@ class ProfileEditorDialog(QDialog):
         elif provider == "weaviate" and self.port_input.text() in ("8000", "6333", "5432"):
             self.port_input.setText("8080")
 
-        if provider == "lancedb":
-            self.persistent_radio.setEnabled(True)
+        # Enable/disable connection type radio buttons based on provider support
+        supported_types = PROVIDER_SUPPORTED_TYPES.get(provider, DEFAULT_SUPPORTED_TYPES)
+
+        self.persistent_radio.setEnabled("persistent" in supported_types)
+        self.http_radio.setEnabled("http" in supported_types)
+        self.ephemeral_radio.setEnabled("ephemeral" in supported_types)
+
+        # Always reset to the first supported connection type when provider changes
+        # Order of preference: persistent > http > ephemeral
+        if "persistent" in supported_types:
             self.persistent_radio.setChecked(True)
-            self.http_radio.setEnabled(False)
-            self.ephemeral_radio.setEnabled(False)
-            # Visible: path controls only
-            with contextlib.suppress(Exception):
-                self._set_field_and_label_visible(self.path_layout, True)
-                self.path_input.setEnabled(True)
-                self.path_browse_btn.setEnabled(True)
-        elif provider == "pinecone":
-            self.persistent_radio.setEnabled(False)
-            self.http_radio.setEnabled(True)
+        elif "http" in supported_types:
             self.http_radio.setChecked(True)
-            self.ephemeral_radio.setEnabled(False)
-            # Pinecone uses cloud API key flow; show API key only
-            with contextlib.suppress(Exception):
-                self._set_field_and_label_visible(self.api_key_input, True)
-                self.api_key_input.setEnabled(True)
-                self._set_field_and_label_visible(self.path_layout, False)
-                self._set_field_and_label_visible(self.host_input, False)
-                self._set_field_and_label_visible(self.port_input, False)
-        elif provider == "weaviate":
-            # Weaviate supports HTTP (local/cloud) and Persistent (embedded)
-            self.persistent_radio.setEnabled(True)
+        elif "ephemeral" in supported_types:
+            self.ephemeral_radio.setChecked(True)
+
+        # Special UI text for Weaviate persistent mode
+        if provider == "weaviate":
             self.persistent_radio.setText("Embedded (In-Process)")
-            self.http_radio.setEnabled(True)
-            self.ephemeral_radio.setEnabled(False)
-            # Weaviate may use path (embedded) or host/port/api_key (HTTP/cloud).
-            # Show all Weaviate-relevant controls; the type handlers will
-            # enable/disable them according to connection type.
-            with contextlib.suppress(Exception):
-                self._set_field_and_label_visible(self.path_layout, True)
-                self._set_field_and_label_visible(self.host_input, True)
-                self._set_field_and_label_visible(self.port_input, True)
-                self._set_field_and_label_visible(self.api_key_input, True)
-                self.grpc_checkbox.setVisible(True)
-                self.weaviate_cloud_checkbox.setVisible(True)
-
-            is_persistent = self.persistent_radio.isChecked()
-            if is_persistent:
-                # Embedded mode: enable path for persistence directory
-                self.path_input.setEnabled(True)
-                self.path_browse_btn.setEnabled(True)
-                self.host_input.setEnabled(False)
-                self.port_input.setEnabled(False)
-                self.api_key_input.setEnabled(False)
-                # disable gRPC and cloud selector when embedded
-                try:
-                    self.grpc_checkbox.setEnabled(False)
-                except Exception:
-                    pass
-                try:
-                    self.weaviate_cloud_checkbox.setEnabled(False)
-                except Exception:
-                    pass
-            else:
-                # HTTP mode: enable host/port/api_key
-                self.path_input.setEnabled(False)
-                self.path_browse_btn.setEnabled(False)
-                self.host_input.setEnabled(True)
-                self.port_input.setEnabled(True)
-                self.api_key_input.setEnabled(True)
-                # enable gRPC for HTTP mode
-                try:
-                    self.grpc_checkbox.setEnabled(True)
-                except Exception:
-                    pass
-                try:
-                    self.weaviate_cloud_checkbox.setEnabled(True)
-                except Exception:
-                    pass
-
-            self.database_input.setEnabled(False)
-            self.user_input.setEnabled(False)
-            self.password_input.setEnabled(False)
-            # Hide DB fetch UI for Weaviate
-            with contextlib.suppress(Exception):
-                self._set_field_and_label_visible(self.db_layout, False)
-        elif provider == "pgvector":
-            self.persistent_radio.setEnabled(False)
-            self.http_radio.setEnabled(True)
-            self.http_radio.setChecked(True)
-            self.ephemeral_radio.setEnabled(False)
-            self.path_input.setEnabled(False)
-            self.path_browse_btn.setEnabled(False)
-            self.host_input.setEnabled(True)
-            self.port_input.setEnabled(True)
-            self.api_key_input.setEnabled(False)
-            self.database_input.setEnabled(True)
-            self.user_input.setEnabled(True)
-            self.password_input.setEnabled(True)
-            # Show Postgres-related controls
-            with contextlib.suppress(Exception):
-                self._set_field_and_label_visible(self.host_input, True)
-                self._set_field_and_label_visible(self.port_input, True)
-                self._set_field_and_label_visible(self.db_layout, True)
-                self._set_field_and_label_visible(self.user_input, True)
-                self._set_field_and_label_visible(self.password_input, True)
-                self._set_field_and_label_visible(self.api_key_input, False)
-                self._set_field_and_label_visible(self.path_layout, False)
         else:
-            self.persistent_radio.setEnabled(True)
-            self.http_radio.setEnabled(True)
-            self.ephemeral_radio.setEnabled(True)
-            is_http = self.http_radio.isChecked()
-            # Default: show host/port and API key only when relevant
-            with contextlib.suppress(Exception):
-                self._set_field_and_label_visible(self.host_input, True)
-                self._set_field_and_label_visible(self.port_input, True)
-                self._set_field_and_label_visible(self.api_key_input, provider == "qdrant")
-                if provider == "qdrant":
-                    self.api_key_input.setEnabled(is_http)
-                # Hide DB-related controls for generic providers
-                self._set_field_and_label_visible(self.db_layout, False)
-                self._set_field_and_label_visible(self.user_input, False)
-                self._set_field_and_label_visible(self.password_input, False)
-            self._on_type_changed()
+            self.persistent_radio.setText("Persistent (Local File)")
+
+        # Update field visibility based on the selected connection type
+        self._on_type_changed()
 
     def _on_type_changed(self):
-        """Handle connection type change."""
-        is_persistent = self.persistent_radio.isChecked()
-        is_http = self.http_radio.isChecked()
+        """Handle connection type change using configuration-based approach."""
+        # Determine connection type
+        if self.persistent_radio.isChecked():
+            connection_type = "persistent"
+        elif self.http_radio.isChecked():
+            connection_type = "http"
+        else:
+            connection_type = "ephemeral"
 
         provider = self.provider_combo.currentData()
 
-        if provider == "lancedb":
+        # Look up configuration for this provider and connection type
+        config_key = (provider, connection_type)
+        if config_key in PROVIDER_FIELD_CONFIG:
+            visible_fields = PROVIDER_FIELD_CONFIG[config_key]
+        else:
+            # Fall back to default config for unknown providers
+            visible_fields = DEFAULT_FIELD_CONFIG.get(connection_type, [])
+
+        # First, hide ALL fields to ensure clean state
+        all_field_names = ["path", "host", "port", "api_key", "database", "user", "password"]
+        for field_name in all_field_names:
+            widget_attr = FIELD_WIDGET_MAP.get(field_name)
+            if widget_attr:
+                widget_or_layout = getattr(self, widget_attr, None)
+                if widget_or_layout:
+                    self._set_form_row_visible(widget_or_layout, False)
+
+        # Now show only the fields that should be visible
+        for field_name in visible_fields:
+            widget_attr = FIELD_WIDGET_MAP.get(field_name)
+            if widget_attr:
+                widget_or_layout = getattr(self, widget_attr, None)
+                if widget_or_layout:
+                    self._set_form_row_visible(widget_or_layout, True)
+                    # Enable widgets (not layouts)
+                    if hasattr(widget_or_layout, "setEnabled") and not isinstance(widget_or_layout, QLayout):
+                        widget_or_layout.setEnabled(True)
+
+        # Enable child widgets within layouts (path_layout, db_layout)
+        if "path" in visible_fields:
             self.path_input.setEnabled(True)
             self.path_browse_btn.setEnabled(True)
-            self.host_input.setEnabled(False)
-            self.port_input.setEnabled(False)
-            self.api_key_input.setEnabled(False)
-            self.database_input.setEnabled(False)
-            self.user_input.setEnabled(False)
-            self.password_input.setEnabled(False)
-        elif provider == "pinecone":
+        else:
             self.path_input.setEnabled(False)
             self.path_browse_btn.setEnabled(False)
-            self.host_input.setEnabled(False)
-            self.port_input.setEnabled(False)
-            self.api_key_input.setEnabled(True)
-        elif provider == "weaviate":
-            # Embedded mode uses path, HTTP mode uses host/port/api_key
-            self.path_input.setEnabled(is_persistent)
-            self.path_browse_btn.setEnabled(is_persistent)
-            self.host_input.setEnabled(is_http)
-            self.port_input.setEnabled(is_http)
-            self.api_key_input.setEnabled(is_http)
-            # gRPC checkbox enabled only when HTTP selected
+
+        if "database" in visible_fields:
+            self.database_input.setEnabled(True)
+            self.db_refresh_btn.setEnabled(True)
+        else:
+            self.database_input.setEnabled(False)
+            self.db_refresh_btn.setEnabled(False)
+
+        # Special handling for Weaviate checkboxes
+        if provider == "weaviate":
+            is_http = connection_type == "http"
             try:
                 self.grpc_checkbox.setEnabled(is_http)
-            except Exception:
-                pass
-            try:
                 self.weaviate_cloud_checkbox.setEnabled(is_http)
             except Exception:
                 pass
-            self.database_input.setEnabled(False)
-            self.user_input.setEnabled(False)
-            self.password_input.setEnabled(False)
-        elif provider == "pgvector":
-            self.path_input.setEnabled(False)
-            self.path_browse_btn.setEnabled(False)
-            self.host_input.setEnabled(is_http)
-            self.port_input.setEnabled(is_http)
-            self.api_key_input.setEnabled(False)
-            self.database_input.setEnabled(is_http)
-            self.user_input.setEnabled(is_http)
-            self.password_input.setEnabled(is_http)
-        else:
-            self.path_input.setEnabled(is_persistent)
-            self.path_browse_btn.setEnabled(is_persistent)
-            self.host_input.setEnabled(is_http)
-            self.port_input.setEnabled(is_http)
-            self.api_key_input.setEnabled(is_http and provider == "qdrant")
 
-    def _set_field_and_label_visible(self, field_obj, visible: bool):
-        """Show/hide a form field (widget or layout) and its label in the details layout.
+    def _set_form_row_visible(self, widget_or_layout, visible: bool):
+        """Show or hide a form row (field widget/layout and its label) in details_layout."""
+        if not hasattr(self, "details_layout"):
+            return
 
-        This covers rows where the field is a QWidget (e.g. QLineEdit) or a
-        QLayout (e.g. HBox containing multiple widgets). If the row cannot be
-        found the method will fall back to setting visibility on the object
-        itself.
-        """
-        with contextlib.suppress(Exception):
-            layout = getattr(self, "details_layout", None)
-            if layout is None:
-                # fallback
-                try:
-                    field_obj.setVisible(visible)
-                except Exception:
-                    pass
-                return
+        layout = self.details_layout
+        if not isinstance(layout, QFormLayout):
+            return
 
-            # iterate rows to find matching field
-            rows = layout.rowCount()
-            for row in range(rows):
-                field_item = layout.itemAt(row, QFormLayout.FieldRole)
+        # For both widgets and layouts, find the row and hide/show the label widget
+        for row in range(layout.rowCount()):
+            field_item = layout.itemAt(row, QFormLayout.FieldRole)
+            if not field_item:
+                continue
+
+            # Check if this is our row
+            is_our_row = False
+            if field_item.widget() == widget_or_layout or field_item.layout() == widget_or_layout:
+                is_our_row = True
+
+            if is_our_row:
+                # Hide/show the label
                 label_item = layout.itemAt(row, QFormLayout.LabelRole)
-                if field_item is None:
-                    continue
-                # widget field
-                w = field_item.widget()
-                if w is not None:
-                    if w is field_obj:
-                        w.setVisible(visible)
-                        if label_item and label_item.widget():
-                            label_item.widget().setVisible(visible)
-                        return
-                    # if field_obj is a child widget inside this widget
-                    if isinstance(w, QWidget):
-                        # check children
-                        if field_obj in w.findChildren(QWidget):
-                            w.setVisible(visible)
-                            if label_item and label_item.widget():
-                                label_item.widget().setVisible(visible)
-                            return
-                else:
-                    # layout field
-                    sub_layout = field_item.layout()
-                    if sub_layout is None:
-                        continue
-                    if sub_layout is field_obj:
-                        # toggle all child widgets in the layout
-                        for i in range(sub_layout.count()):
-                            it = sub_layout.itemAt(i)
-                            try:
-                                child = it.widget()
-                                if child:
-                                    child.setVisible(visible)
-                            except Exception:
-                                pass
-                        if label_item and label_item.widget():
-                            label_item.widget().setVisible(visible)
-                        return
-                    # check children of sub_layout
-                    for i in range(sub_layout.count()):
-                        it = sub_layout.itemAt(i)
-                        try:
-                            child = it.widget()
-                            if child is field_obj:
-                                # toggle all children so row looks consistent
-                                for j in range(sub_layout.count()):
-                                    c = sub_layout.itemAt(j).widget()
-                                    if c:
-                                        c.setVisible(visible)
-                                if label_item and label_item.widget():
-                                    label_item.widget().setVisible(visible)
-                                return
-                        except Exception:
-                            pass
+                if label_item and label_item.widget():
+                    label_item.widget().setVisible(visible)
 
-            # fallback: try setting visibility directly
-            try:
-                field_obj.setVisible(visible)
-            except Exception:
-                pass
+                # Hide/show the field (widget or layout's children)
+                if isinstance(widget_or_layout, QLayout):
+                    for i in range(widget_or_layout.count()):
+                        item = widget_or_layout.itemAt(i)
+                        if item and item.widget():
+                            item.widget().setVisible(visible)
+                else:
+                    widget_or_layout.setVisible(visible)
+                return
 
     def _browse_for_path(self):
         """Browse for persistent storage path."""
