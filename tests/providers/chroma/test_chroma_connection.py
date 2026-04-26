@@ -1,8 +1,11 @@
+import pytest
+
+# Skip entire module if chromadb not installed
+pytest.importorskip("chromadb")
+
 import os
 import uuid
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from vector_inspector.core.connections.chroma_connection import (
     ChromaDBConnection,

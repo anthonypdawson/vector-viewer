@@ -1,8 +1,11 @@
 """Tests for Pinecone connection."""
 
-from unittest.mock import MagicMock, Mock, patch
-
 import pytest
+
+# Skip entire module if pinecone not installed
+pytest.importorskip("pinecone")
+
+from unittest.mock import MagicMock, Mock, patch
 
 from vector_inspector.core.connections.pinecone_connection import PineconeConnection
 

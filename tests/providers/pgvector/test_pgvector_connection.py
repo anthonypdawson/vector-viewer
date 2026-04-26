@@ -1,7 +1,10 @@
+import pytest
+
+# Skip entire module if psycopg2 not installed
+pytest.importorskip("psycopg2")
+
 import json
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from vector_inspector.core.connections.pgvector_connection import PgVectorConnection
 

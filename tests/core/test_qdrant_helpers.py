@@ -1,5 +1,10 @@
 """Tests for qdrant_filter_builder and qdrant_embedding_resolver helpers."""
 
+import pytest
+
+# Skip entire module if qdrant_client not installed
+pytest.importorskip("qdrant_client")
+
 from unittest.mock import MagicMock
 
 from vector_inspector.core.connections.qdrant_helpers.qdrant_filter_builder import build_filter

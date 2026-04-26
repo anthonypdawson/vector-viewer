@@ -1,3 +1,8 @@
+import pytest
+
+# Skip entire module if lancedb not installed
+pytest.importorskip("lancedb")
+
 import uuid
 from unittest.mock import MagicMock
 

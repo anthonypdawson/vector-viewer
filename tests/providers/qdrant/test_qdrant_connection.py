@@ -1,8 +1,11 @@
+import pytest
+
+# Skip entire module if qdrant_client not installed
+pytest.importorskip("qdrant_client")
+
 import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from vector_inspector.core.connections.qdrant_connection import QdrantConnection
 

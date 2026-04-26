@@ -1,3 +1,9 @@
+import pytest
+
+# Skip entire module if lancedb or pyarrow not installed
+pytest.importorskip("lancedb")
+pytest.importorskip("pyarrow")
+
 import threading
 import time
 from unittest.mock import MagicMock
